@@ -1,0 +1,3 @@
+[submodule "tools/tex3ds"]
+	path = tools/tex3ds
+	url = https://github.com/TheGag96/tex3ds
