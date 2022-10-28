@@ -1,5 +1,92 @@
 module bible.bible;
 
+@nogc: nothrow:
+
+import std.algorithm;
+import std.string : representation;
+import std.range;
+import bible.util;
+
+struct OpenBook {
+  char[] rawFile;
+  char[][] lines;
+  char[][][] chapters;
+}
+
+char[] until(char[] haystack, char needle) {
+  foreach (i, c; haystack.representation) {
+    if (c == needle) {
+      return haystack[0..i];
+    }
+  }
+
+  return [];
+}
+
+OpenBook openBibleBook(Translation translation, Book book) {
+
+  OpenBook result;
+
+  auto bookText = readTextFile(gTempStorage.printf("romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
+  result.rawFile = bookText;
+
+  int numLines = bookText.representation.count('\n');
+  char[][] lines = allocArray!(char[])(numLines);
+
+  foreach (i, line; bookText.representation.splitter('\n').enumerate) {
+    if (i != numLines) lines[i] = cast(char[])line;
+  }
+
+  //C2D_WrapInfo[] wrapInfos = allocArray!C2D_WrapInfo(numLines);
+
+  //hackily convert all lines to null-terminated strings so that C2D text functions work per-line.
+  foreach (ref c; bookText.representation) {
+    if (c == '\n') c = '\0';
+  }
+
+  result.lines = lines;
+
+  int numChapters = 0;
+  char[] lastChapter;
+  foreach (line; lines[1..$]) { //skip heading
+    auto chapter = line[1..$].until(':');
+    if (chapter != lastChapter) {
+      lastChapter = chapter;
+      numChapters++;
+    }
+  }
+
+  char[][][] chapters = allocArray!(char[][])(numChapters);
+
+  lastChapter = [];
+  size_t chapterStart = 0;
+  int curChapter = 0;
+  foreach (i, line; lines) {
+    if (i == 0) continue; //skip heading
+
+    auto chapter = line[1..$].until(':');
+    if (chapter != lastChapter) {
+      lastChapter = chapter;
+      chapters[curChapter] = lines[chapterStart..i];
+      chapterStart = i;
+      curChapter++;
+    }
+  }
+  chapters[$-1] = lines[chapterStart..$];
+
+  result.chapters = chapters;
+
+  return result;
+}
+
+enum Translation {
+  asv,
+}
+
+static immutable string[] TRANSLATION_NAMES = [
+  Translation.asv : "asv",
+];
+
 enum Book {
   Genesis,
   Exodus,

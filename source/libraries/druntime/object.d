@@ -196,6 +196,10 @@ debug {
    * sudo $DEVKITARM/bin/arm-none-eabi-objcopy --weaken-symbol=__assert $DEVKITARM/arm-none-eabi/lib/armv6k/fpu/libg.a /opt/devkitpro/devkitARM/arm-none-eabi/lib/armv6k/fpu/libg.a
    **/
   extern (C) void __assert(const char* msg_, const char* file_, int line) @trusted {
+    import ctru.console : consoleInit;
+    import ctru.gfx     : GFXScreen;
+
+    consoleInit(GFXScreen.bottom, null);
     printf("\x1b[1;1HAssert failed in file %s at line %d: %s\x1b[K", file_, line, msg_);
 
     printf("\n\nPress Start to exit...\n");

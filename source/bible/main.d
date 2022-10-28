@@ -13,6 +13,7 @@ import bible.bible, bible.audio, bible.input, bible.util, bible.save;
 import std.algorithm;
 import std.string : representation;
 import std.range;
+import std.math;
 
 //debug import bible.debugging;
 
@@ -27,6 +28,16 @@ __gshared TickCounter tickCounter;
 __gshared float size = 0.5f;
 __gshared C2D_TextBuf g_staticBuf,  g_dynamicBuf;
 __gshared C2D_Text[512] g_staticText;
+
+struct LoadedPage {
+  C2D_WrapInfo[] wrapInfos;
+
+  static struct LineTableEntry {
+    uint textLineIndex;
+    float realPos;
+  }
+  LineTableEntry[] actualLineNumberTable;
+}
 
 extern(C) int main(int argc, char** argv) {
   srand(time(null));
@@ -59,31 +70,16 @@ extern(C) int main(int argc, char** argv) {
 
   osTickCounterStart(&tickCounter);
 
-  g_staticBuf = C2D_TextBufNew(4096);
-  g_dynamicBuf = C2D_TextBufNew(4096);
+  g_staticBuf = C2D_TextBufNew(16384);
 
-  auto book = readTextFile(gTempStorage.printf("romfs:/bibles/asv/%s", BOOK_FILENAMES[Book.Romans].ptr));
+  auto book = openBibleBook(Translation.asv, Book.Romans);
+  auto loadedPage = loadPage(g_staticText[], g_staticBuf, book.chapters[1]);
 
-  int numLines = book.representation.count('\n');
-  char[][] lines = allocArray!(char[])(numLines);
-  C2D_WrapInfo[] wrapInfos = allocArray!C2D_WrapInfo(numLines);
+  float glyphWidth, glyphHeight;
+  C2D_TextGetDimensions(&g_staticText[0], size, size, &glyphWidth, &glyphHeight);
 
-  foreach (i, line; book.representation.splitter('\n').enumerate) {
-    if (i != numLines) lines[i] = cast(char[])line;
-  }
-
-  foreach (ref c; book.representation) {
-    if (c == '\n') c = '\0';
-  }
-
-  foreach (lineNum; 0..numLines) {
-    C2D_TextParse(&g_staticText[lineNum], g_staticBuf, lines[lineNum].ptr);
-    wrapInfos[lineNum] = C2D_CalcWrapInfo(&g_staticText[lineNum], size, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
-  }
-
-  foreach (lineNum; 0..numLines) {
-    C2D_TextOptimize(&g_staticText[lineNum]);
-  }
+  touchPosition touchLast = {0, 0}, touchLastLast = {0, 0};
+  float scrollOffset = 0, scrollOffsetLast = 0, scrollVel = 0, scrollDistance = 0;
 
   // Main loop
   while (aptMainLoop()) {
@@ -111,12 +107,46 @@ extern(C) int main(int argc, char** argv) {
     if ((kHeld & (Key.start | Key.select)) == (Key.start | Key.select))
       break; // break in order to return to hbmenu
 
+    touchPosition touch;
+    hidTouchRead(&touch);
+
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
     input.update(kDown, kHeld);
 
-    //TODO: ui/stuff
+    scrollOffsetLast = scrollOffset;
+
+    if (input.held(Key.touch) && !input.down(Key.touch)) {
+      scrollOffset += touch.py - touchLast.py;
+    }
+    else {
+      if (input.prevHeld(Key.touch)) {
+        scrollVel = max(min(touchLast.py - touchLastLast.py, 40), -40);
+      }
+      scrollOffset += scrollVel;
+      scrollVel *= 0.95;
+
+      if (fabs(scrollVel) < 3) {
+        scrollVel = 0;
+      }
+    }
+
+    float scrollLimit = loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
+    if (scrollOffset > 0) {
+      scrollOffset = 0;
+      scrollVel = 0;
+    }
+    else if (scrollOffset < -scrollLimit) {
+      scrollOffset = -scrollLimit;
+      scrollVel = 0;
+    }
+
+    touchLastLast = touchLast;
+    touchLast = touch;
+
+
+
 
     audioUpdate();
 
@@ -131,18 +161,22 @@ extern(C) int main(int argc, char** argv) {
       C2D_TargetClear(topLeft, CLEAR_COLOR);
       C2D_SceneBegin(topLeft);
 
-      auto result = renderPage(GFXScreen.top, GFX3DSide.left, slider, lines, wrapInfos, 0, 0);
+      int virtualLine = max(cast(int) floor((-round(scrollOffset+MARGIN))/glyphHeight), 0);
+      int renderStartLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
+      float renderStartOffset = round(scrollOffset + loadedPage.actualLineNumberTable[virtualLine].realPos + MARGIN);
+
+      auto result = renderPage(GFXScreen.top, GFX3DSide.left, slider, book.chapters[1], loadedPage.wrapInfos, renderStartLine, renderStartOffset);
 
       if (_3DEnabled) {
         C2D_TargetClear(topRight, CLEAR_COLOR);
         C2D_SceneBegin(topRight);
 
-        renderPage(GFXScreen.top, GFX3DSide.right, slider, lines, wrapInfos, 0, 0);
+        renderPage(GFXScreen.top, GFX3DSide.right, slider, book.chapters[1], loadedPage.wrapInfos, renderStartLine, renderStartOffset);
       }
 
       C2D_TargetClear(bottom, CLEAR_COLOR);
       C2D_SceneBegin(bottom);
-      renderPage(GFXScreen.bottom, GFX3DSide.left, slider, lines, wrapInfos, result.line, result.offsetY);
+      renderPage(GFXScreen.bottom, GFX3DSide.left, slider, book.chapters[1], loadedPage.wrapInfos, result.line, result.offsetY);
     }
     C3D_FrameEnd(0);
   }
@@ -154,6 +188,44 @@ extern(C) int main(int argc, char** argv) {
   gfxExit();
   romfsExit();
   return 0;
+}
+
+LoadedPage loadPage(C2D_Text[] textArray, C2D_TextBuf textBuf, char[][] pageLines) {
+  LoadedPage result;
+  result.wrapInfos = allocArray!C2D_WrapInfo(pageLines.length);
+
+  foreach (lineNum; 0..pageLines.length) {
+    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum].ptr);
+    result.wrapInfos[lineNum] = C2D_CalcWrapInfo(&textArray[lineNum], size, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
+  }
+
+  auto actualNumLines = pageLines.length;
+  foreach (ref wrapInfo; result.wrapInfos) {
+    actualNumLines += wrapInfo.words[$-1].newLineNumber;
+  }
+
+  float glyphWidth, glyphHeight;
+  C2D_TextGetDimensions(&textArray[0], size, size, &glyphWidth, &glyphHeight);
+  result.actualLineNumberTable = allocArray!(LoadedPage.LineTableEntry)(actualNumLines);
+  size_t runner = 0;
+  foreach (i, ref wrapInfo; result.wrapInfos) {
+    auto realLines = wrapInfo.words[$-1].newLineNumber + 1;
+
+    result.actualLineNumberTable[runner..runner+realLines] = LoadedPage.LineTableEntry(i, runner * glyphHeight);
+
+    runner += realLines;
+  }
+
+  foreach (lineNum; 0..pageLines.length) {
+    C2D_TextOptimize(&textArray[lineNum]);
+  }
+
+  return result;
+}
+
+void unloadPage(LoadedPage* page) {
+  freeArray(page.wrapInfos);
+  freeArray(page.actualLineNumberTable);
 }
 
 enum SCREEN_TOP_WIDTH    = 400.0f;
@@ -169,26 +241,24 @@ struct RenderResult {
 RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, char[][] lines, C2D_WrapInfo[] wrapInfos, int startLine, float offsetY) {
   float width, height;
 
-  float startX, startY;
+  float startX;
   if (screen == GFXScreen.top) {
-    startX = (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2 + MARGIN + (side == GFX3DSide.left ? -1 : 1) * slider3DState * 4;
-    startY = MARGIN;
+    startX = (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2 + MARGIN;
   }
   else {
     startX = MARGIN;
-    startY = 0;
   }
 
-  int i = startLine;
+  C2D_TextGetDimensions(&g_staticText[0], size, size, &width, &height);
+
+  int i = max(startLine, 0);
   float extra = 0;
-  while (offsetY < SCREEN_HEIGHT) {
-    C2D_DrawText(&g_staticText[i], C2D_WordWrapPrecalc, startX, startY + offsetY, 0.5f, size, size, &wrapInfos[i]); //, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
-    C2D_TextGetDimensions(&g_staticText[i], size, size, &width, &height);
-    auto text = &g_staticText[i];
-    extra = height * (1 + wrapInfos[i].words[text.words-1].newLineNumber);
+  while (offsetY < SCREEN_HEIGHT && i < lines.length) {
+    C2D_DrawText(&g_staticText[i], C2D_WordWrapPrecalc, startX, offsetY, 0.5f, size, size, &wrapInfos[i]); //, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
+    extra = height * (1 + wrapInfos[i].words[g_staticText[i].words-1].newLineNumber);
     offsetY += extra;
     i++;
   }
 
-  return RenderResult(i - 1, startY + offsetY - SCREEN_HEIGHT - extra);
+  return RenderResult(i - 1, offsetY - SCREEN_HEIGHT - extra);
 }

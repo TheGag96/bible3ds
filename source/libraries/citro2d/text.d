@@ -376,7 +376,7 @@ void C2D_TextGetDimensions(const(C2D_Text)* text, float scaleX, float scaleY, fl
   }
 }
 
-void C2Di_CalcLineInfo(const(C2D_Text)* text_, C2Di_LineInfo* lines, C2Di_WordInfo* words)
+void C2Di_CalcLineInfo(const(C2D_Text)* text_, C2Di_LineInfo[] lines, C2Di_WordInfo[] words)
 {
   auto text = cast(C2D_Text*) text_; // get around lack of head const
 
@@ -384,7 +384,7 @@ void C2Di_CalcLineInfo(const(C2D_Text)* text_, C2Di_LineInfo* lines, C2Di_WordIn
   C2Di_Glyph* end   = cast(C2Di_Glyph*) &text.buf.glyphs[text.end];
   C2Di_Glyph* cur;
   // Get information about lines
-  memset(lines, 0, C2Di_LineInfo.sizeof * text.lines);
+  lines[] = C2Di_LineInfo.init;
   for (cur = begin; cur != end; cur++)
     if (cur.wordNo >= lines[cur.lineNo].words)
       lines[cur.lineNo].words = cur.wordNo + 1;
@@ -410,10 +410,10 @@ void C2Di_CalcLineInfo(const(C2D_Text)* text_, C2Di_LineInfo* lines, C2Di_WordIn
   }
 }
 
-void C2Di_CalcLineWidths(float* widths, const(C2D_Text)* text_, const(C2Di_WordInfo)* words_, bool wrap)
+void C2Di_CalcLineWidths(float* widths, const(C2D_Text)* text_, const(C2Di_WordInfo)[] words_, bool wrap)
 {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
-  auto words = cast(C2Di_WordInfo*) words_; // get around lack of head const
+  auto words = cast(C2Di_WordInfo[]) words_; // get around lack of head const
 
   uint currentWord = 0;
   if (words)
@@ -448,18 +448,23 @@ void C2Di_CalcLineWidths(float* widths, const(C2D_Text)* text_, const(C2Di_WordI
 }
 
 struct C2D_WrapInfo {
-  C2Di_LineInfo* lines;
-  C2Di_WordInfo* words;
+  C2Di_LineInfo[] lines;
+  C2Di_WordInfo[] words;
 }
+
+__gshared uint biggerBytes = 0, lesserBytes = 0;
 
 C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, float scaleX, float maxWidth) {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
 
-  C2Di_LineInfo* lines = null;
-  C2Di_WordInfo* words = null;
+  C2Di_LineInfo[] lines = null;
+  C2Di_WordInfo[] words = null;
 
-  lines = cast(C2Di_LineInfo*) malloc(typeof(*lines).sizeof*text.lines);
-  words = cast(C2Di_WordInfo*) malloc(typeof(*words).sizeof*text.words);
+  lines = (cast(C2Di_LineInfo*) malloc(C2Di_LineInfo.sizeof*text.lines))[0..text.lines];
+  words = (cast(C2Di_WordInfo*) malloc(C2Di_WordInfo.sizeof*text.words))[0..text.words];
+  biggerBytes += C2D_WrapInfo.sizeof;
+  lesserBytes += (C2Di_LineInfo*).sizeof * 2;
+
   C2Di_CalcLineInfo(text, lines, words);
   // The first word will never have a wrap offset in X or Y
   for (uint i = 1; i < text.words; i++)
@@ -531,8 +536,8 @@ void C2D_DrawText(const(C2D_Text)* text_, uint flags, float x, float y, float z,
   uint color = 0xFF000000;
   float maxWidth = scaleX*text.width;
 
-  C2Di_LineInfo* lines = null;
-  C2Di_WordInfo* words = null;
+  C2Di_LineInfo[] lines = null;
+  C2Di_WordInfo[] words = null;
 
   va_list va;
   va_start(va, scaleY);
@@ -560,8 +565,8 @@ void C2D_DrawText(const(C2D_Text)* text_, uint flags, float x, float y, float z,
 
   if (flags & C2D_WordWrap)
   {
-    lines = cast(C2Di_LineInfo*) alloca(typeof(*lines).sizeof*text.lines);
-    words = cast(C2Di_WordInfo*) alloca(typeof(*words).sizeof*text.words);
+    lines = (cast(C2Di_LineInfo*) alloca(C2Di_LineInfo.sizeof*text.lines))[0..text.lines];
+    words = (cast(C2Di_WordInfo*) alloca(C2Di_WordInfo.sizeof*text.words))[0..text.words];
     C2Di_CalcLineInfo(text, lines, words);
     // The first word will never have a wrap offset in X or Y
     for (uint i = 1; i < text.words; i++)
@@ -695,8 +700,8 @@ void C2D_DrawText(const(C2D_Text)* text_, uint flags, float x, float y, float z,
     {
       if (!(flags & C2D_WordWrap))
       {
-        lines = cast(C2Di_LineInfo*) alloca((*lines).sizeof*text.lines);
-        words = cast(C2Di_WordInfo*) alloca((*words).sizeof*text.words);
+        lines = (cast(C2Di_LineInfo*) alloca(C2Di_LineInfo.sizeof*text.lines))[0..text.lines];
+        words = (cast(C2Di_WordInfo*) alloca(C2Di_WordInfo.sizeof*text.words))[0..text.words];
         C2Di_CalcLineInfo(text, lines, words);
       }
       // Get total width available for whitespace for all lines after wrapping
