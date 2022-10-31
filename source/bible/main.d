@@ -78,9 +78,13 @@ extern(C) int main(int argc, char** argv) {
   float glyphWidth, glyphHeight;
   C2D_TextGetDimensions(&gTextArr[0], size, size, &glyphWidth, &glyphHeight);
 
+  enum ScrollMethod {
+    none, dpad, circle, touch
+  }
+
   touchPosition touchLast = {0, 0}, touchLastLast = {0, 0};
   float scrollOffset = 0, scrollOffsetLast = 0, scrollVel = 0, scrollDistance = 0;
-
+  ScrollMethod scrollMethodCur;
 
   enum OneFrameEvent {
     not_triggered, triggered, already_processed,
@@ -118,6 +122,13 @@ extern(C) int main(int argc, char** argv) {
     touchPosition touch;
     hidTouchRead(&touch);
 
+    circlePosition circle;
+    hidCircleRead(&circle);
+
+    if (circle != circlePosition.init) {
+      int xzz = 3;
+    }
+
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
@@ -127,22 +138,97 @@ extern(C) int main(int argc, char** argv) {
     // update scrolling
     ////
 
+    static struct ScrollDiff {
+      float x = 0, y = 0;
+    }
+    ScrollDiff scrollDiff;
+
+    enum CIRCLE_DEADZONE = 10;
+
+    final switch (scrollMethodCur) {
+      case ScrollMethod.none: break;
+      case ScrollMethod.dpad:
+        if (!input.held(Key.dup | Key.ddown | Key.dleft | Key.dright)) {
+          scrollMethodCur = ScrollMethod.none;
+        }
+        break;
+      case ScrollMethod.circle:
+        if (circle.dy * circle.dy + circle.dx * circle.dx <= CIRCLE_DEADZONE * CIRCLE_DEADZONE) {
+          scrollMethodCur = ScrollMethod.none;
+        }
+        break;
+      case ScrollMethod.touch:
+        if (!input.held(Key.touch)) {
+          scrollMethodCur = ScrollMethod.none;
+        }
+        break;
+    }
+
+    if (scrollMethodCur == ScrollMethod.none) {
+      StartScrollingSwitch:
+      foreach (method; ScrollMethod.min..ScrollMethod.max+1) {
+        final switch (method) {
+          case ScrollMethod.none: break;
+          case ScrollMethod.dpad:
+            if (input.held(Key.dup | Key.ddown | Key.dleft | Key.dright)) {
+              scrollMethodCur = cast(ScrollMethod) method;
+              break StartScrollingSwitch;
+            }
+            break;
+          case ScrollMethod.circle:
+            if (circle.dy * circle.dy + circle.dx * circle.dx > CIRCLE_DEADZONE * CIRCLE_DEADZONE) {
+              scrollMethodCur = cast(ScrollMethod) method;
+              break StartScrollingSwitch;
+            }
+            break;
+          case ScrollMethod.touch:
+            if (input.held(Key.touch)) {
+              scrollMethodCur = cast(ScrollMethod) method;
+              break StartScrollingSwitch;
+            }
+            break;
+        }
+      }
+
+      if (scrollMethodCur != ScrollMethod.none) scrollVel = 0;
+    }
+
+    final switch (scrollMethodCur) {
+      case ScrollMethod.none:
+        if (input.prevHeld(Key.touch)) {
+          scrollVel = max(min(touchLast.py - touchLastLast.py, 40), -40);
+        }
+        scrollDiff.y = scrollVel;
+        scrollVel *= 0.95;
+
+        if (fabs(scrollVel) < 3) {
+          scrollVel = 0;
+        }
+        break;
+      case ScrollMethod.dpad:
+        if      (input.held(Key.dup))    scrollDiff.y =  5;
+        else if (input.held(Key.ddown))  scrollDiff.y = -5;
+        else if (input.held(Key.dleft))  scrollDiff.x = -5;
+        else if (input.held(Key.dright)) scrollDiff.x =  5;
+        break;
+      case ScrollMethod.circle:
+        scrollDiff = ScrollDiff(circle.dx/10, circle.dy/10);
+        break;
+      case ScrollMethod.touch:
+        scrollDiff = ScrollDiff(touch.px - touchLast.px, touch.py - touchLast.py);
+        break;
+    }
+
+
     scrollOffsetLast = scrollOffset;
 
-    if (input.held(Key.touch) && !input.down(Key.touch)) {
-      float scrollDiff = touch.py - touchLast.py;
-      scrollOffset += scrollDiff;
+    if (scrollMethodCur == ScrollMethod.touch) {
+      if (!input.down(Key.touch)) {
+        scrollOffset += scrollDiff.y;
+      }
     }
     else {
-      if (input.prevHeld(Key.touch)) {
-        scrollVel = max(min(touchLast.py - touchLastLast.py, 40), -40);
-      }
-      scrollOffset += scrollVel;
-      scrollVel *= 0.95;
-
-      if (fabs(scrollVel) < 3) {
-        scrollVel = 0;
-      }
+      scrollOffset += scrollDiff.y;
     }
 
     float scrollLimit = loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
