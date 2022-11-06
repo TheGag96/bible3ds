@@ -26,8 +26,8 @@ nothrow: @nogc:
 __gshared TickCounter tickCounter;
 
 __gshared float size = 0.5f;
-__gshared C2D_TextBuf g_staticBuf,  g_dynamicBuf;
-__gshared C2D_Text[512] g_staticText;
+__gshared C2D_TextBuf gTextBuf;
+__gshared C2D_Text[512] gTextArr;
 
 struct LoadedPage {
   C2D_WrapInfo[] wrapInfos;
@@ -70,16 +70,24 @@ extern(C) int main(int argc, char** argv) {
 
   osTickCounterStart(&tickCounter);
 
-  g_staticBuf = C2D_TextBufNew(16384);
+  gTextBuf = C2D_TextBufNew(16384);
 
   auto book = openBibleBook(Translation.asv, Book.Romans);
-  auto loadedPage = loadPage(g_staticText[], g_staticBuf, book.chapters[1]);
+  auto loadedPage = loadPage(gTextArr[], gTextBuf, book.chapters[1]);
 
   float glyphWidth, glyphHeight;
-  C2D_TextGetDimensions(&g_staticText[0], size, size, &glyphWidth, &glyphHeight);
+  C2D_TextGetDimensions(&gTextArr[0], size, size, &glyphWidth, &glyphHeight);
 
   touchPosition touchLast = {0, 0}, touchLastLast = {0, 0};
   float scrollOffset = 0, scrollOffsetLast = 0, scrollVel = 0, scrollDistance = 0;
+
+
+  enum OneFrameEvent {
+    not_triggered, triggered, already_processed,
+  }
+
+  OneFrameEvent startedScrolling;
+  OneFrameEvent scrollJustStopped;
 
   // Main loop
   while (aptMainLoop()) {
@@ -115,10 +123,15 @@ extern(C) int main(int argc, char** argv) {
 
     input.update(kDown, kHeld);
 
+    ////
+    // update scrolling
+    ////
+
     scrollOffsetLast = scrollOffset;
 
     if (input.held(Key.touch) && !input.down(Key.touch)) {
-      scrollOffset += touch.py - touchLast.py;
+      float scrollDiff = touch.py - touchLast.py;
+      scrollOffset += scrollDiff;
     }
     else {
       if (input.prevHeld(Key.touch)) {
@@ -142,11 +155,44 @@ extern(C) int main(int argc, char** argv) {
       scrollVel = 0;
     }
 
+    ////
+    // handle scrolling events
+    ////
+
+    if (scrollJustStopped == OneFrameEvent.not_triggered && (scrollOffset == 0 || scrollOffset == -scrollLimit) && scrollOffset != scrollOffsetLast) {
+      scrollJustStopped = OneFrameEvent.triggered;
+    }
+    else if (scrollOffset != 0 && scrollOffset != -scrollLimit) {
+      scrollJustStopped = OneFrameEvent.not_triggered;
+    }
+
+    if (startedScrolling == OneFrameEvent.not_triggered && input.held(Key.touch) && scrollOffset != scrollOffsetLast) {
+      startedScrolling = OneFrameEvent.triggered;
+    }
+    else if (!input.held(Key.touch)) {
+      startedScrolling = OneFrameEvent.not_triggered;
+    }
+
+    ////
+    // play sounds
+    ////
+
+    if (startedScrolling == OneFrameEvent.triggered) {
+      audioPlaySound(SoundEffect.scroll_tick, 0.1);
+      startedScrolling = OneFrameEvent.already_processed;
+    }
+
+    if (floor(scrollOffset/(glyphHeight*4)) != floor(scrollOffsetLast/(glyphHeight*4))) {
+      audioPlaySound(SoundEffect.scroll_tick, 0.05);
+    }
+
+    if (scrollJustStopped == OneFrameEvent.triggered) {
+      audioPlaySound(SoundEffect.scroll_stop, 0.1);
+      scrollJustStopped = OneFrameEvent.already_processed;
+    }
+
     touchLastLast = touchLast;
     touchLast = touch;
-
-
-
 
     audioUpdate();
 
@@ -249,13 +295,13 @@ RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, c
     startX = MARGIN;
   }
 
-  C2D_TextGetDimensions(&g_staticText[0], size, size, &width, &height);
+  C2D_TextGetDimensions(&gTextArr[0], size, size, &width, &height);
 
   int i = max(startLine, 0);
   float extra = 0;
   while (offsetY < SCREEN_HEIGHT && i < lines.length) {
-    C2D_DrawText(&g_staticText[i], C2D_WordWrapPrecalc, startX, offsetY, 0.5f, size, size, &wrapInfos[i]); //, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
-    extra = height * (1 + wrapInfos[i].words[g_staticText[i].words-1].newLineNumber);
+    C2D_DrawText(&gTextArr[i], C2D_WordWrapPrecalc, startX, offsetY, 0.5f, size, size, &wrapInfos[i]); //, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
+    extra = height * (1 + wrapInfos[i].words[gTextArr[i].words-1].newLineNumber);
     offsetY += extra;
     i++;
   }

@@ -87,6 +87,8 @@ struct MusicCommand {
 
 enum SoundEffect : ubyte {
   none = 0,
+  scroll_tick,
+  scroll_stop,
 }
 
 enum SoundType : ubyte {
@@ -108,11 +110,14 @@ static immutable MusicInfo[Music.max + 1] MUSIC_INFO_TABLE = [
 
 static immutable SoundInfo[SoundEffect.max + 1] SOUND_INFO_TABLE = [
   SoundEffect.none                   : { path : "",                                           soundType : SoundType.normal },
+  SoundEffect.scroll_tick            : { path : "romfs:/sound/sfx/scroll_tick.raw",           soundType : SoundType.normal },
+  SoundEffect.scroll_stop            : { path : "romfs:/sound/sfx/scroll_stop.raw",           soundType : SoundType.normal },
 ];
 
 ///sounds loaded all the time
 static immutable SoundEffect[] GLOBAL_SOUNDS = [
-
+  SoundEffect.scroll_tick,
+  SoundEffect.scroll_stop,
 ];
 
 
@@ -216,7 +221,7 @@ byte audioPlaySoundCommon(SoundEffect se) {
 
   ndspChnSetInterp(channelToUse, NDSPInterpType.polyphase);
   ndspChnSetRate(channelToUse, SAMPLERATE);
-  ndspChnSetFormat(channelToUse, NDSP_FORMAT_STEREO_PCM16);
+  ndspChnSetFormat(channelToUse, NDSP_FORMAT_MONO_PCM16);
 
   return channelToUse;
 }
