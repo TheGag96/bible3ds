@@ -91,6 +91,11 @@ enum SoundEffect : ubyte {
   scroll_stop,
 }
 
+enum SoundSlot : ubyte {
+  none = 0,
+  scrolling,
+}
+
 enum SoundType : ubyte {
   normal,
   looping
@@ -186,8 +191,8 @@ void audioLoadSoundEffect(SoundEffect se) {
   DSP_FlushDataCache(buf.data_pcm16, soundData.length);
 }
 
-void audioPlaySound(SoundEffect se, float volume = 1) {
-  byte channelToUse = audioPlaySoundCommon(se);
+void audioPlaySound(SoundSlot soundSlot, SoundEffect se, float volume = 1) {
+  byte channelToUse = audioPlaySoundCommon(soundSlot, se);
   if (!channelToUse) return;
 
   float[12] mix;
@@ -199,31 +204,19 @@ void audioPlaySound(SoundEffect se, float volume = 1) {
   ndspChnWaveBufAdd(channelToUse, &gSeData.waveBufs[se]);
 }
 
-byte audioPlaySoundCommon(SoundEffect se) {
-  if (!gSeData.waveBufs[se].data_vaddr) return 0;
+byte audioPlaySoundCommon(SoundSlot soundSlot, SoundEffect se) {
+  if (!gSeData.waveBufs[soundSlot].data_vaddr) return 0;
 
-  byte channelToUse = gSeData.channelSoundsPlaying[se];
+  //@TODO: make soundslot support smarter
+  ndspChnReset(soundSlot);
 
-  if (channelToUse == 0) {
-    foreach (byte i; FIRST_SFX_CHANNEL..MAX_CHANNELS) {
-      if (!ndspChnIsPlaying(i)) {
-        channelToUse = i;
-        break;
-      }
-    }
-    if (!channelToUse) return 0;
-  }
-  else {
-    ndspChnReset(channelToUse);
-  }
+  gSeData.channelSoundsPlaying[se] = soundSlot;
 
-  gSeData.channelSoundsPlaying[se] = channelToUse;
+  ndspChnSetInterp(soundSlot, NDSPInterpType.polyphase);
+  ndspChnSetRate(soundSlot, SAMPLERATE);
+  ndspChnSetFormat(soundSlot, NDSP_FORMAT_MONO_PCM16);
 
-  ndspChnSetInterp(channelToUse, NDSPInterpType.polyphase);
-  ndspChnSetRate(channelToUse, SAMPLERATE);
-  ndspChnSetFormat(channelToUse, NDSP_FORMAT_MONO_PCM16);
-
-  return channelToUse;
+  return soundSlot;
 }
 
 void audioStopSound(SoundEffect se) {

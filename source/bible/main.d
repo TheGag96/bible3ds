@@ -264,16 +264,16 @@ extern(C) int main(int argc, char** argv) {
     ////
 
     if (startedScrolling == OneFrameEvent.triggered) {
-      audioPlaySound(SoundEffect.scroll_tick, 0.1);
+      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.1);
       startedScrolling = OneFrameEvent.already_processed;
     }
 
     if (floor(scrollOffset/(glyphHeight*4)) != floor(scrollOffsetLast/(glyphHeight*4))) {
-      audioPlaySound(SoundEffect.scroll_tick, 0.05);
+      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.05);
     }
 
     if (scrollJustStopped == OneFrameEvent.triggered) {
-      audioPlaySound(SoundEffect.scroll_stop, 0.1);
+      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_stop, 0.1);
       scrollJustStopped = OneFrameEvent.already_processed;
     }
 
