@@ -72,8 +72,10 @@ extern(C) int main(int argc, char** argv) {
 
   gTextBuf = C2D_TextBufNew(16384);
 
+  int curChapter = 1;
+
   auto book = openBibleBook(Translation.asv, Book.Romans);
-  auto loadedPage = loadPage(gTextArr[], gTextBuf, book.chapters[1]);
+  auto loadedPage = loadPage(gTextArr[], gTextBuf, book.chapters[curChapter]);
 
   float glyphWidth, glyphHeight;
   C2D_TextGetDimensions(&gTextArr[0], size, size, &glyphWidth, &glyphHeight);
@@ -297,18 +299,18 @@ extern(C) int main(int argc, char** argv) {
       int renderStartLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
       float renderStartOffset = round(scrollOffset + loadedPage.actualLineNumberTable[virtualLine].realPos + MARGIN);
 
-      auto result = renderPage(GFXScreen.top, GFX3DSide.left, slider, book.chapters[1], loadedPage.wrapInfos, renderStartLine, renderStartOffset);
+      auto result = renderPage(GFXScreen.top, GFX3DSide.left, slider, book.chapters[curChapter], loadedPage.wrapInfos, gTextArr[], renderStartLine, 0, renderStartOffset);
 
       if (_3DEnabled) {
         C2D_TargetClear(topRight, CLEAR_COLOR);
         C2D_SceneBegin(topRight);
 
-        renderPage(GFXScreen.top, GFX3DSide.right, slider, book.chapters[1], loadedPage.wrapInfos, renderStartLine, renderStartOffset);
+        renderPage(GFXScreen.top, GFX3DSide.right, slider, book.chapters[curChapter], loadedPage.wrapInfos, gTextArr[], renderStartLine, 0, renderStartOffset);
       }
 
       C2D_TargetClear(bottom, CLEAR_COLOR);
       C2D_SceneBegin(bottom);
-      renderPage(GFXScreen.bottom, GFX3DSide.left, slider, book.chapters[1], loadedPage.wrapInfos, result.line, result.offsetY);
+      renderPage(GFXScreen.bottom, GFX3DSide.left, slider, book.chapters[curChapter], loadedPage.wrapInfos, gTextArr[], result.line, 0, result.offsetY);
     }
     C3D_FrameEnd(0);
   }
@@ -370,24 +372,24 @@ struct RenderResult {
   float offsetY;
 }
 
-RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, char[][] lines, C2D_WrapInfo[] wrapInfos, int startLine, float offsetY) {
+RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, char[][] lines, C2D_WrapInfo[] wrapInfos, C2D_Text[] textArray, int startLine, float offsetX, float offsetY) {
   float width, height;
 
   float startX;
   if (screen == GFXScreen.top) {
-    startX = (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2 + MARGIN;
+    startX = offsetX + (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2 + MARGIN;
   }
   else {
-    startX = MARGIN;
+    startX = offsetX + MARGIN;
   }
 
-  C2D_TextGetDimensions(&gTextArr[0], size, size, &width, &height);
+  C2D_TextGetDimensions(&textArray[0], size, size, &width, &height);
 
   int i = max(startLine, 0);
   float extra = 0;
   while (offsetY < SCREEN_HEIGHT && i < lines.length) {
-    C2D_DrawText(&gTextArr[i], C2D_WordWrapPrecalc, startX, offsetY, 0.5f, size, size, &wrapInfos[i]); //, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
-    extra = height * (1 + wrapInfos[i].words[gTextArr[i].words-1].newLineNumber);
+    C2D_DrawText(&textArray[i], C2D_WordWrapPrecalc, screen, startX, offsetY, 0.5f, size, size, &wrapInfos[i]); //, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
+    extra = height * (1 + wrapInfos[i].words[textArray[i].words-1].newLineNumber);
     offsetY += extra;
     i++;
   }

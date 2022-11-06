@@ -11,7 +11,9 @@ import citro2d.base;
 import citro2d.font;
 import citro3d.texture;
 import ctru.services.cfgu;
+import ctru.services.gspgpu;
 import ctru.font;
+import ctru.gfx;
 import ctru.gpu.enums;
 import ctru.result;
 import ctru.svc;
@@ -506,9 +508,11 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, float scaleX, float maxWid
  *  @param[in] scaleY Vertical size of the font. 1.0f corresponds to the native size of the font.
  *  @remarks The default 3DS system font has a glyph height of 30px, and the baseline is at 25px.
  */
-void C2D_DrawText(const(C2D_Text)* text_, uint flags, float x, float y, float z, float scaleX, float scaleY, ...)
+void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen, float x, float y, float z, float scaleX, float scaleY, ...)
 {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
+
+  const screenWidth = screen == GFXScreen.top ? GSP_SCREEN_HEIGHT_TOP : GSP_SCREEN_HEIGHT_BOTTOM;
 
   // If there are no words, we can't do the math calculations necessary with them. Just return; nothing would be drawn anyway.
   if (text.words == 0)
@@ -612,6 +616,10 @@ void C2D_DrawText(const(C2D_Text)* text_, uint flags, float x, float y, float z,
         {
           glyphX = x+scaleX*cur.xPos;
           glyphY = y+dispY*cur.lineNo;
+        }
+
+        if (glyphX > screenWidth || glyphX+glyphW < 0) {
+          continue;
         }
 
         C2Di_SetTex(cur.sheet);
