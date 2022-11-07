@@ -145,7 +145,7 @@ extern(C) int main(int argc, char** argv) {
     }
     ScrollDiff scrollDiff;
 
-    enum CIRCLE_DEADZONE = 10;
+    enum CIRCLE_DEADZONE = 15;
 
     final switch (scrollMethodCur) {
       case ScrollMethod.none: break;
