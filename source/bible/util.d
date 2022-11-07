@@ -273,6 +273,11 @@ T lerp(T)(T a, T b, float amount) {
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;
 
+  static struct ProfileResult {
+    T returnVal;
+    float time, timeMin, timeMax, timeAvg;
+  }
+
   __gshared TickCounter tickCounter;
   static float timeMin = float.infinity, timeMax = -float.infinity, timeAvg = 0;
   static int num = 0;
@@ -301,11 +306,7 @@ auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   timeAvg = (timeAvg * num + time) / (num + 1);
   num++;
 
-  printf("\x1b[%d;1H%s Min:   %6.4f\x1b[K",      line,     id.ptr, timeMin);
-  printf("\x1b[%d;1H%s Max:   %6.4f\x1b[K",      line + 1, id.ptr, timeMax);
-  printf("\x1b[%d;1H%s Avg:   %6.4f @ %d\x1b[K", line + 2, id.ptr, timeAvg, num);
-
   static if (!is(T == void)) {
-    return result;
+    return ProfileResult(result, time, timeMin, timeMax, timeAvg);
   }
 }
