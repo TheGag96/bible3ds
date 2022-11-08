@@ -33,12 +33,12 @@ struct C2Di_Glyph
 {
   uint lineNo;
   C3D_Tex* sheet;
-  float xPos;
-  float width;
+  float xPos = 0;
+  float width = 0;
 
   struct _anon
   {
-    float left, top, right, bottom;
+    float left = 0, top = 0, right = 0, bottom = 0;
   };
 
   _anon texcoord;
@@ -62,13 +62,13 @@ alias C2D_TextBuf = C2D_TextBuf_s*;
 /// Text object.
 struct C2D_Text
 {
-    C2D_TextBuf buf;   ///< Buffer associated with the text.
-    size_t      begin; ///< Reserved for internal use.
-    size_t      end;   ///< Reserved for internal use.
-    float       width; ///< Width of the text in pixels, according to 1x scale metrics.
-    uint        lines; ///< Number of lines in the text, according to 1x scale metrics;
-    uint        words; ///< Number of words in the text.
-    C2D_Font    font;  ///< Font used to draw the text, or null for system font
+    C2D_TextBuf buf;       ///< Buffer associated with the text.
+    size_t      begin;     ///< Reserved for internal use.
+    size_t      end;       ///< Reserved for internal use.
+    float       width = 0; ///< Width of the text in pixels, according to 1x scale metrics.
+    uint        lines;     ///< Number of lines in the text, according to 1x scale metrics;
+    uint        words;     ///< Number of words in the text.
+    C2D_Font    font;      ///< Font used to draw the text, or null for system font
 }
 
 enum : ubyte
@@ -94,7 +94,7 @@ struct C2Di_WordInfo
 {
   C2Di_Glyph* start;
   C2Di_Glyph* end;
-  float wrapXOffset;
+  float wrapXOffset = 0;
   uint newLineNumber;
 }
 

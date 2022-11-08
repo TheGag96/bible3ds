@@ -29,7 +29,7 @@ struct C2D_Font_s
 {
   CFNT_s* cfnt;
   C3D_Tex* glyphSheets;
-  float textScale;
+  float textScale = 0;
 };
 alias C2D_Font = C2D_Font_s*;
 
