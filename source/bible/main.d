@@ -27,6 +27,9 @@ __gshared TickCounter tickCounter;
 
 
 struct LoadedPage {
+  C2D_TextBuf textBuf;
+  C2D_Text[] textArray;
+
   C2D_WrapInfo[] wrapInfos;
 
   static struct LineTableEntry {
@@ -43,10 +46,20 @@ enum View {
   reading,
 }
 
-__gshared View curView = View.reading;
+__gshared View curView = View.book;
+
+struct Button {
+  float x = 0, y = 0, w = 0, h = 0;
+  C2D_Text* text;
+}
 
 struct BookViewData {
+  C2D_TextBuf textBuf;
+  C2D_Text[] textArray;
 
+  Button[Book.max+1] bookButtons;
+
+  float scrollOffset = 0, scrollOffsetLast = 0;
 }
 
 enum OneFrameEvent {
@@ -57,10 +70,8 @@ struct ReadingViewData {
   float size = 0;
   float glyphWidth = 0, glyphHeight = 0;
 
-  C2D_TextBuf textBuf;
-  C2D_Text[512] textArray;
-
   OpenBook book;
+  Book curBook;
   LoadedPage loadedPage;
   int curChapter;
 
@@ -71,6 +82,7 @@ struct ReadingViewData {
 enum CLEAR_COLOR = 0xFFEEEEEE;
 
 ReadingViewData readingViewData;
+BookViewData    bookViewData;
 
 extern(C) int main(int argc, char** argv) {
   // Init libs
@@ -101,18 +113,8 @@ extern(C) int main(int argc, char** argv) {
 
   osTickCounterStart(&tickCounter);
 
-  readingViewData.size = 0.5f;
-  readingViewData.textBuf = C2D_TextBufNew(16384);
-  readingViewData.curChapter = 1;
-  readingViewData.book = openBibleBook(Translation.asv, Book.Romans);
-  readingViewData.loadedPage = loadPage(
-    readingViewData.textArray[], readingViewData.textBuf,
-    readingViewData.book.chapters[readingViewData.curChapter], readingViewData.size
-  );
-  C2D_TextGetDimensions(
-    &readingViewData.textArray[0], readingViewData.size, readingViewData.size,
-    &readingViewData.glyphWidth, &readingViewData.glyphHeight
-  );
+  initReadingView(&readingViewData);
+  initBookView(&bookViewData);
 
   // Main loop
   while (aptMainLoop()) {
@@ -154,6 +156,7 @@ extern(C) int main(int argc, char** argv) {
 
     final switch (curView) {
       case View.book:
+        updateBookView(&bookViewData, &input);
         break;
 
       case View.reading:
@@ -173,6 +176,7 @@ extern(C) int main(int argc, char** argv) {
     {
       final switch (curView) {
         case View.book:
+          renderBookView(&bookViewData, topLeft, topRight, bottom, _3DEnabled, slider);
           break;
 
         case View.reading:
@@ -192,49 +196,117 @@ extern(C) int main(int argc, char** argv) {
   return 0;
 }
 
-LoadedPage loadPage(C2D_Text[] textArray, C2D_TextBuf textBuf, char[][] pageLines, float size) {
-  LoadedPage result;
-  result.wrapInfos = allocArray!C2D_WrapInfo(pageLines.length);
+void loadPage(LoadedPage* page, char[][] pageLines, float size) {
+  if (!page.textArray.length) page.textArray = allocArray!C2D_Text(512);
+  if (!page.textBuf)          page.textBuf   = C2D_TextBufNew(16384);
+
+  if (page.wrapInfos.length < pageLines.length) {
+    freeArray(page.wrapInfos);
+    page.wrapInfos = allocArray!C2D_WrapInfo(pageLines.length);
+  }
+  else {
+    //reuse memory if possible
+    page.wrapInfos = page.wrapInfos[0..pageLines.length];
+  }
 
   foreach (lineNum; 0..pageLines.length) {
-    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum].ptr);
-    result.wrapInfos[lineNum] = C2D_CalcWrapInfo(&textArray[lineNum], size, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
+    C2D_TextParse(&page.textArray[lineNum], page.textBuf, pageLines[lineNum].ptr);
+    page.wrapInfos[lineNum] = C2D_CalcWrapInfo(&page.textArray[lineNum], size, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
   }
 
   auto actualNumLines = pageLines.length;
-  foreach (ref wrapInfo; result.wrapInfos) {
+  foreach (ref wrapInfo; page.wrapInfos) {
     actualNumLines += wrapInfo.words[$-1].newLineNumber;
   }
 
   float glyphWidth, glyphHeight;
-  C2D_TextGetDimensions(&textArray[0], size, size, &glyphWidth, &glyphHeight);
-  result.actualLineNumberTable = allocArray!(LoadedPage.LineTableEntry)(actualNumLines);
+  C2D_TextGetDimensions(&page.textArray[0], size, size, &glyphWidth, &glyphHeight);
+
+  if (page.actualLineNumberTable.length < actualNumLines) {
+    freeArray(page.actualLineNumberTable);
+    page.actualLineNumberTable = allocArray!(LoadedPage.LineTableEntry)(actualNumLines);
+  }
+  else {
+    //reuse memory if possible
+    page.actualLineNumberTable = page.actualLineNumberTable[0..actualNumLines];
+  }
+
   size_t runner = 0;
-  foreach (i, ref wrapInfo; result.wrapInfos) {
+  foreach (i, ref wrapInfo; page.wrapInfos) {
     auto realLines = wrapInfo.words[$-1].newLineNumber + 1;
 
-    result.actualLineNumberTable[runner..runner+realLines] = LoadedPage.LineTableEntry(i, runner * glyphHeight);
+    page.actualLineNumberTable[runner..runner+realLines] = LoadedPage.LineTableEntry(i, runner * glyphHeight);
 
     runner += realLines;
   }
 
   foreach (lineNum; 0..pageLines.length) {
-    C2D_TextOptimize(&textArray[lineNum]);
+    C2D_TextOptimize(&page.textArray[lineNum]);
   }
-
-  return result;
 }
 
 void unloadPage(LoadedPage* page) {
-  freeArray(page.wrapInfos);
-  freeArray(page.actualLineNumberTable);
+  if (page.textBuf) C2D_TextBufClear(page.textBuf);
 }
 
 enum SCREEN_TOP_WIDTH    = 400.0f;
 enum SCREEN_BOTTOM_WIDTH = 320.0f;
 enum SCREEN_HEIGHT       = 240.0f;
 
+void initReadingView(ReadingViewData* viewData) {
+  viewData.size = 0.5f;
+  viewData.curBook = Book.Joshua;
+  viewData.curChapter = 1;
+  viewData.book = openBibleBook(Translation.asv, viewData.curBook);
+  loadPage(&viewData.loadedPage, viewData.book.chapters[viewData.curChapter], viewData.size);
+  C2D_TextGetDimensions(
+    &viewData.loadedPage.textArray[0], viewData.size, viewData.size,
+    &viewData.glyphWidth, &viewData.glyphHeight
+  );
+}
+
 void updateReadingView(ReadingViewData* viewData, Input* input) {
+  if (input.down(Key.b)) {
+    curView = View.book;
+    return;
+  }
+
+  int chapterDiff, bookDiff;
+  if (input.down(Key.l)) {
+    chapterDiff = -1;
+    if (viewData.curChapter == 1 && viewData.curBook != Book.min) {
+      bookDiff = -1;
+    }
+  }
+  else if (input.down(Key.r)) {
+    chapterDiff = 1;
+    if (viewData.curChapter == viewData.book.chapters.length-1 && viewData.curBook != Book.max) {
+      bookDiff = 1;
+    }
+  }
+
+  if (bookDiff) {
+    unloadPage(&viewData.loadedPage);
+
+    closeBibleBook(&viewData.book);
+    viewData.curBook = cast(Book) (viewData.curBook + bookDiff);
+    viewData.book = openBibleBook(Translation.asv, viewData.curBook);
+
+    if (bookDiff > 0) {
+      viewData.curChapter = 1;
+    }
+    else {
+      viewData.curChapter = viewData.book.chapters.length-1;
+    }
+
+    loadPage(&viewData.loadedPage, viewData.book.chapters[viewData.curChapter], viewData.size);
+  }
+  else if (chapterDiff) {
+    unloadPage(&viewData.loadedPage);
+    viewData.curChapter += chapterDiff;
+    loadPage(&viewData.loadedPage, viewData.book.chapters[viewData.curChapter], viewData.size);
+  }
+
   ////
   // update scrolling
   ////
@@ -353,7 +425,7 @@ RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, i
     startX = offsetX + MARGIN;
   }
 
-  C2D_TextGetDimensions(&viewData.textArray[0], viewData.size, viewData.size, &width, &height);
+  C2D_TextGetDimensions(&viewData.loadedPage.textArray[0], viewData.size, viewData.size, &width, &height);
 
   const(char[][]) lines = viewData.book.chapters[viewData.curChapter];
 
@@ -361,10 +433,10 @@ RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, i
   float extra = 0;
   while (offsetY < SCREEN_HEIGHT && i < lines.length) {
     C2D_DrawText(
-      &viewData.textArray[i], C2D_WordWrapPrecalc, screen, startX, offsetY, 0.5f, viewData.size, viewData.size,
+      &viewData.loadedPage.textArray[i], C2D_WordWrapPrecalc, screen, startX, offsetY, 0.5f, viewData.size, viewData.size,
       &viewData.loadedPage.wrapInfos[i]
     );
-    extra = height * (1 + viewData.loadedPage.wrapInfos[i].words[viewData.textArray[i].words-1].newLineNumber);
+    extra = height * (1 + viewData.loadedPage.wrapInfos[i].words[viewData.loadedPage.textArray[i].words-1].newLineNumber);
     offsetY += extra;
     i++;
   }
@@ -372,6 +444,97 @@ RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, i
   return RenderResult(i - 1, offsetY - SCREEN_HEIGHT - extra);
 }
 
-void updateBookView() {
+void initBookView(BookViewData* viewData) {
+  viewData.textBuf = C2D_TextBufNew(4096);
+  viewData.textArray = allocArray!C2D_Text(128);
+
+  foreach (i, name; BOOK_NAMES) {
+    Button* btn = &viewData.bookButtons[i];
+
+    btn.text = &viewData.textArray[i];
+    C2D_TextParse(btn.text, viewData.textBuf, name.ptr);
+    float textWidth, textHeight;
+    C2D_TextGetDimensions(btn.text, 0.5, 0.5, &textWidth, &textHeight);
+    btn.x = 100;
+    btn.y = i*(textHeight+24);
+    btn.w = textWidth + 16;
+    btn.h = textHeight + 16;
+  }
+}
+
+int curBookButton = -1;
+
+void updateBookView(BookViewData* viewData, Input* input) {
+  if (input.down(Key.touch)) {
+
+    foreach (i, ref btn; viewData.bookButtons) {
+      float btnRealY = btn.y + viewData.scrollOffset;
+
+      if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
+        if ( input.touchRaw.px >= btn.x    && input.touchRaw.px <= btn.x    + btn.w &&
+             input.touchRaw.py >= btnRealY && input.touchRaw.py <= btnRealY + btn.h )
+        {
+          curBookButton = i;
+          break;
+        }
+      }
+    }
+
+  }
+  else if (!input.held(Key.touch) && input.prevHeld(Key.touch)) {
+    if (curBookButton != -1) {
+      Button* btn = &viewData.bookButtons[curBookButton];
+      float btnRealY = btn.y + viewData.scrollOffset;
+
+      if ( input.prevTouchRaw.px >= btn.x    && input.prevTouchRaw.px <= btn.x    + btn.w &&
+           input.prevTouchRaw.py >= btnRealY && input.prevTouchRaw.py <= btnRealY + btn.h )
+      {
+        unloadPage(&readingViewData.loadedPage);
+        closeBibleBook(&readingViewData.book);
+        readingViewData.curBook = cast(Book) curBookButton;
+        readingViewData.book = openBibleBook(Translation.asv, readingViewData.curBook);
+        readingViewData.curChapter = 1;
+        loadPage(&readingViewData.loadedPage, readingViewData.book.chapters[readingViewData.curChapter], 0.5);
+        curView = View.reading;
+      }
+      curBookButton = -1;
+    }
+  }
+
+  viewData.scrollOffsetLast = viewData.scrollOffset;
+
+  if (curBookButton == -1) {
+    auto scrollDiff = input.scrollDiff();
+
+    if (input.scrollMethodCur == ScrollMethod.touch) {
+      if (!input.down(Key.touch)) {
+        viewData.scrollOffset += scrollDiff.y;
+      }
+    }
+    else {
+      viewData.scrollOffset += scrollDiff.y;
+    }
+  }
+  else {
+    input.scrollVel = 0;
+  }
+}
+
+void renderBookView(BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom, bool _3DEnabled, float slider3DState) {
+  C2D_TargetClear(bottom, CLEAR_COLOR);
+  C2D_SceneBegin(bottom);
+
+
+  foreach (i, ref btn; viewData.bookButtons) {
+    float btnRealY = btn.y + viewData.scrollOffset;
+
+    if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
+      C2D_DrawRectSolid(btn.x, btnRealY, 0.0, btn.w, btn.h, 0xFFFF0000);
+
+      C2D_DrawText(
+        &viewData.textArray[i], 0, GFXScreen.top, btn.x+8, btn.y+8 + viewData.scrollOffset, 0.5f, 0.5, 0.5
+      );
+    }
+  }
 
 }

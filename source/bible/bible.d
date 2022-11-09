@@ -24,7 +24,6 @@ char[] until(char[] haystack, char needle) {
 }
 
 OpenBook openBibleBook(Translation translation, Book book) {
-
   OpenBook result;
 
   auto bookText = readTextFile(gTempStorage.printf("romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
@@ -36,8 +35,6 @@ OpenBook openBibleBook(Translation translation, Book book) {
   foreach (i, line; bookText.representation.splitter('\n').enumerate) {
     if (i != numLines) lines[i] = cast(char[])line;
   }
-
-  //C2D_WrapInfo[] wrapInfos = allocArray!C2D_WrapInfo(numLines);
 
   //hackily convert all lines to null-terminated strings so that C2D text functions work per-line.
   foreach (ref c; bookText.representation) {
@@ -77,6 +74,12 @@ OpenBook openBibleBook(Translation translation, Book book) {
   result.chapters = chapters;
 
   return result;
+}
+
+void closeBibleBook(OpenBook* book) {
+  freeArray(book.rawFile);
+  freeArray(book.lines);
+  freeArray(book.chapters);
 }
 
 enum Translation {
