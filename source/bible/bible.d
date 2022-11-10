@@ -53,7 +53,7 @@ OpenBook openBibleBook(Translation translation, Book book) {
     }
   }
 
-  char[][][] chapters = allocArray!(char[][])(numChapters);
+  char[][][] chapters = allocArray!(char[][])(numChapters+1);
 
   lastChapter = [];
   size_t chapterStart = 0;
