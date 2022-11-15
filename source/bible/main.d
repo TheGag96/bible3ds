@@ -251,6 +251,76 @@ void unloadPage(LoadedPage* page) {
   if (page.textBuf) C2D_TextBufClear(page.textBuf);
 }
 
+void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float limitBottom) { with (scrollInfo) {
+  enum SCROLL_TICK_DISTANCE = 60;
+
+  auto scrollDiff = input.scrollDiff();
+
+  scrollOffsetLast = scrollOffset;
+
+  if (input.scrollMethodCur == ScrollMethod.touch) {
+    if (!input.down(Key.touch)) {
+      scrollOffset += scrollDiff.y;
+    }
+  }
+  else {
+    scrollOffset += scrollDiff.y;
+  }
+
+  if (scrollOffset > limitTop) {
+    scrollOffset = limitTop;
+    input.scrollVel = 0;
+  }
+  else if (scrollOffset < -limitBottom) {
+    scrollOffset = -limitBottom;
+    input.scrollVel = 0;
+  }
+
+
+  ////
+  // handle scrolling events
+  ////
+
+  if ( scrollJustStopped == OneFrameEvent.not_triggered &&
+       ( scrollOffset == limitTop || scrollOffset == -limitBottom ) &&
+       scrollOffset != scrollOffsetLast )
+  {
+    scrollJustStopped = OneFrameEvent.triggered;
+  }
+  else if (scrollOffset != limitTop && scrollOffset != -limitBottom) {
+    scrollJustStopped = OneFrameEvent.not_triggered;
+  }
+
+  if ( startedScrolling == OneFrameEvent.not_triggered &&
+       input.held(Key.touch) &&
+       scrollOffset != scrollOffsetLast )
+  {
+    startedScrolling = OneFrameEvent.triggered;
+  }
+  else if (!input.held(Key.touch)) {
+    startedScrolling = OneFrameEvent.not_triggered;
+  }
+
+
+  ////
+  // play sounds
+  ////
+
+  if (startedScrolling == OneFrameEvent.triggered) {
+    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.1);
+    startedScrolling = OneFrameEvent.already_processed;
+  }
+
+  if (floor(scrollOffset/SCROLL_TICK_DISTANCE) != floor(scrollOffsetLast/SCROLL_TICK_DISTANCE)) {
+    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.05);
+  }
+
+  if (scrollJustStopped == OneFrameEvent.triggered) {
+    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_stop, 0.1);
+    scrollJustStopped = OneFrameEvent.already_processed;
+  }
+}}
+
 enum SCREEN_TOP_WIDTH    = 400.0f;
 enum SCREEN_BOTTOM_WIDTH = 320.0f;
 enum SCREEN_HEIGHT       = 240.0f;
@@ -314,74 +384,8 @@ void updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
   // update scrolling
   ////
 
-  with (loadedPage.scrollInfo) {
-    auto scrollDiff = input.scrollDiff();
-
-    scrollOffsetLast = scrollOffset;
-
-    if (input.scrollMethodCur == ScrollMethod.touch) {
-      if (!input.down(Key.touch)) {
-        scrollOffset += scrollDiff.y;
-      }
-    }
-    else {
-      scrollOffset += scrollDiff.y;
-    }
-
-    float scrollLimit = loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
-    if (scrollOffset > 0) {
-      scrollOffset = 0;
-      input.scrollVel = 0;
-    }
-    else if (scrollOffset < -scrollLimit) {
-      scrollOffset = -scrollLimit;
-      input.scrollVel = 0;
-    }
-
-
-    ////
-    // handle scrolling events
-    ////
-
-    if ( scrollJustStopped == OneFrameEvent.not_triggered &&
-         ( scrollOffset == 0 || scrollOffset == -scrollLimit ) &&
-         scrollOffset != scrollOffsetLast )
-    {
-      scrollJustStopped = OneFrameEvent.triggered;
-    }
-    else if (scrollOffset != 0 && scrollOffset != -scrollLimit) {
-      scrollJustStopped = OneFrameEvent.not_triggered;
-    }
-
-    if ( startedScrolling == OneFrameEvent.not_triggered &&
-         input.held(Key.touch) &&
-         scrollOffset != scrollOffsetLast )
-    {
-      startedScrolling = OneFrameEvent.triggered;
-    }
-    else if (!input.held(Key.touch)) {
-      startedScrolling = OneFrameEvent.not_triggered;
-    }
-
-
-    ////
-    // play sounds
-    ////
-
-    if (startedScrolling == OneFrameEvent.triggered) {
-      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.1);
-      startedScrolling = OneFrameEvent.already_processed;
-    }
-
-    if (floor(scrollOffset/(glyphHeight*4)) != floor(scrollOffsetLast/(glyphHeight*4))) {
-      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.05);
-    }
-
-    if (scrollJustStopped == OneFrameEvent.triggered) {
-      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_stop, 0.1);
-      scrollJustStopped = OneFrameEvent.already_processed;
-    }
-  }
+  float scrollLimit = loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
+  handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
 }}
 
 void renderReadingView(
@@ -513,21 +517,11 @@ void updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
     }
   }
 
-  scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
-
   if (curBookButton == -1) {
-    auto scrollDiff = input.scrollDiff();
-
-    if (input.scrollMethodCur == ScrollMethod.touch) {
-      if (!input.down(Key.touch)) {
-        scrollInfo.scrollOffset += scrollDiff.y;
-      }
-    }
-    else {
-      scrollInfo.scrollOffset += scrollDiff.y;
-    }
+    handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT);
   }
   else {
+    scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
     input.scrollVel = 0;
   }
 }}
