@@ -144,7 +144,7 @@ extern(C) int main(int argc, char** argv) {
     circlePosition circle;
     hidCircleRead(&circle);
 
-    input.update(kDown, kHeld, touch, circle);
+    updateInput(&input, kDown, kHeld, touch, circle);
 
     //@TODO: Probably remove for release
     if ((kHeld & (Key.start | Key.select)) == (Key.start | Key.select))
@@ -247,14 +247,14 @@ void loadPage(LoadedPage* page, char[][] pageLines, float size) { with (page) {
   }
 }}
 
-void unloadPage(LoadedPage* page) {
-  if (page.textBuf) C2D_TextBufClear(page.textBuf);
-}
+void unloadPage(LoadedPage* page) { with (page) {
+  if (textBuf) C2D_TextBufClear(textBuf);
+}}
 
 void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float limitBottom) { with (scrollInfo) {
   enum SCROLL_TICK_DISTANCE = 60;
 
-  auto scrollDiff = input.scrollDiff();
+  auto scrollDiff = updateScrollDiff(input);
 
   scrollOffsetLast = scrollOffset;
 
@@ -402,7 +402,7 @@ void renderReadingView(
                                   MARGIN);
 
   auto result = renderPage(
-    GFXScreen.top, GFX3DSide.left, slider3DState, renderStartLine, 0, renderStartOffset, *viewData
+    *viewData, GFXScreen.top, GFX3DSide.left, slider3DState, renderStartLine, 0, renderStartOffset
   );
 
   if (_3DEnabled) {
@@ -410,14 +410,14 @@ void renderReadingView(
     C2D_SceneBegin(topRight);
 
     renderPage(
-      GFXScreen.top, GFX3DSide.right, slider3DState, renderStartLine, 0, renderStartOffset, *viewData
+      *viewData, GFXScreen.top, GFX3DSide.right, slider3DState, renderStartLine, 0, renderStartOffset
     );
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
   C2D_SceneBegin(bottom);
   renderPage(
-    GFXScreen.bottom, GFX3DSide.left, slider3DState, result.line, 0, result.offsetY, *viewData
+    *viewData, GFXScreen.bottom, GFX3DSide.left, slider3DState, result.line, 0, result.offsetY
   );
 }}
 
@@ -428,7 +428,10 @@ struct RenderResult {
   float offsetY;
 }
 
-RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, int startLine, float offsetX, float offsetY, const ref ReadingViewData viewData) {
+RenderResult renderPage(
+  const ref ReadingViewData viewData, GFXScreen screen, GFX3DSide side, float slider3DState, int startLine,
+  float offsetX, float offsetY
+) { with (viewData) {
   float width, height;
 
   float startX;
@@ -439,24 +442,24 @@ RenderResult renderPage(GFXScreen screen, GFX3DSide side, float slider3DState, i
     startX = offsetX + MARGIN;
   }
 
-  C2D_TextGetDimensions(&viewData.loadedPage.textArray[0], viewData.size, viewData.size, &width, &height);
+  C2D_TextGetDimensions(&loadedPage.textArray[0], size, size, &width, &height);
 
-  const(char[][]) lines = viewData.book.chapters[viewData.curChapter];
+  const(char[][]) lines = book.chapters[curChapter];
 
   int i = max(startLine, 0);
   float extra = 0;
   while (offsetY < SCREEN_HEIGHT && i < lines.length) {
     C2D_DrawText(
-      &viewData.loadedPage.textArray[i], C2D_WordWrapPrecalc, screen, startX, offsetY, 0.5f, viewData.size, viewData.size,
-      &viewData.loadedPage.wrapInfos[i]
+      &loadedPage.textArray[i], C2D_WordWrapPrecalc, screen, startX, offsetY, 0.5f, size, size,
+      &loadedPage.wrapInfos[i]
     );
-    extra = height * (1 + viewData.loadedPage.wrapInfos[i].words[viewData.loadedPage.textArray[i].words-1].newLineNumber);
+    extra = height * (1 + loadedPage.wrapInfos[i].words[loadedPage.textArray[i].words-1].newLineNumber);
     offsetY += extra;
     i++;
   }
 
   return RenderResult(i - 1, offsetY - SCREEN_HEIGHT - extra);
-}
+}}
 
 void initBookView(BookViewData* viewData) { with (viewData) {
   textBuf = C2D_TextBufNew(4096);
@@ -526,7 +529,10 @@ void updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   }
 }}
 
-void renderBookView(BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom, bool _3DEnabled, float slider3DState) { with (viewData) {
+void renderBookView(
+  BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom,
+  bool _3DEnabled, float slider3DState
+) { with (viewData) {
   void renderButtons(float offsetX, float offsetY) {
     foreach (i, ref btn; bookButtons) {
       float btnRealX = btn.x + offsetX, btnRealY = btn.y + offsetY;

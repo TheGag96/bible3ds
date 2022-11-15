@@ -76,11 +76,11 @@ OpenBook openBibleBook(Translation translation, Book book) {
   return result;
 }
 
-void closeBibleBook(OpenBook* book) {
-  freeArray(book.rawFile);
-  freeArray(book.lines);
-  freeArray(book.chapters);
-}
+void closeBibleBook(OpenBook* book) { with (book) {
+  freeArray(rawFile);
+  freeArray(lines);
+  freeArray(chapters);
+}}
 
 enum Translation {
   asv,
