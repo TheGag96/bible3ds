@@ -25,6 +25,11 @@ nothrow: @nogc:
 
 __gshared TickCounter tickCounter;
 
+struct ScrollInfo {
+  float scrollOffset = 0, scrollOffsetLast = 0;
+  OneFrameEvent startedScrolling;
+  OneFrameEvent scrollJustStopped;
+}
 
 struct LoadedPage {
   C2D_TextBuf textBuf;
@@ -38,7 +43,7 @@ struct LoadedPage {
   }
   LineTableEntry[] actualLineNumberTable;
 
-  float scrollOffset = 0, scrollOffsetLast = 0;
+  ScrollInfo scrollInfo;
 }
 
 enum View {
@@ -59,7 +64,7 @@ struct BookViewData {
 
   Button[Book.max+1] bookButtons;
 
-  float scrollOffset = 0, scrollOffsetLast = 0;
+  ScrollInfo scrollInfo;
 }
 
 enum OneFrameEvent {
@@ -74,9 +79,6 @@ struct ReadingViewData {
   Book curBook;
   LoadedPage loadedPage;
   int curChapter;
-
-  OneFrameEvent startedScrolling;
-  OneFrameEvent scrollJustStopped;
 }
 
 enum CLEAR_COLOR = 0xFFEEEEEE;
@@ -307,73 +309,78 @@ void updateReadingView(ReadingViewData* viewData, Input* input) {
     loadPage(&viewData.loadedPage, viewData.book.chapters[viewData.curChapter], viewData.size);
   }
 
+
   ////
   // update scrolling
   ////
 
-  auto scrollDiff = input.scrollDiff();
+  with (viewData.loadedPage.scrollInfo) {
+    auto scrollDiff = input.scrollDiff();
 
-  viewData.loadedPage.scrollOffsetLast = viewData.loadedPage.scrollOffset;
+    scrollOffsetLast = scrollOffset;
 
-  if (input.scrollMethodCur == ScrollMethod.touch) {
-    if (!input.down(Key.touch)) {
-      viewData.loadedPage.scrollOffset += scrollDiff.y;
+    if (input.scrollMethodCur == ScrollMethod.touch) {
+      if (!input.down(Key.touch)) {
+        scrollOffset += scrollDiff.y;
+      }
     }
-  }
-  else {
-    viewData.loadedPage.scrollOffset += scrollDiff.y;
-  }
+    else {
+      scrollOffset += scrollDiff.y;
+    }
 
-  float scrollLimit = viewData.loadedPage.actualLineNumberTable.length * viewData.glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
-  if (viewData.loadedPage.scrollOffset > 0) {
-    viewData.loadedPage.scrollOffset = 0;
-    input.scrollVel = 0;
-  }
-  else if (viewData.loadedPage.scrollOffset < -scrollLimit) {
-    viewData.loadedPage.scrollOffset = -scrollLimit;
-    input.scrollVel = 0;
-  }
+    float scrollLimit = viewData.loadedPage.actualLineNumberTable.length * viewData.glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
+    if (scrollOffset > 0) {
+      scrollOffset = 0;
+      input.scrollVel = 0;
+    }
+    else if (scrollOffset < -scrollLimit) {
+      scrollOffset = -scrollLimit;
+      input.scrollVel = 0;
+    }
 
-  ////
-  // handle scrolling events
-  ////
 
-  if ( viewData.scrollJustStopped == OneFrameEvent.not_triggered &&
-       ( viewData.loadedPage.scrollOffset == 0 || viewData.loadedPage.scrollOffset == -scrollLimit ) &&
-       viewData.loadedPage.scrollOffset != viewData.loadedPage.scrollOffsetLast )
-  {
-    viewData.scrollJustStopped = OneFrameEvent.triggered;
-  }
-  else if (viewData.loadedPage.scrollOffset != 0 && viewData.loadedPage.scrollOffset != -scrollLimit) {
-    viewData.scrollJustStopped = OneFrameEvent.not_triggered;
-  }
+    ////
+    // handle scrolling events
+    ////
 
-  if ( viewData.startedScrolling == OneFrameEvent.not_triggered &&
-       input.held(Key.touch) &&
-       viewData.loadedPage.scrollOffset != viewData.loadedPage.scrollOffsetLast )
-  {
-    viewData.startedScrolling = OneFrameEvent.triggered;
-  }
-  else if (!input.held(Key.touch)) {
-    viewData.startedScrolling = OneFrameEvent.not_triggered;
-  }
+    if ( scrollJustStopped == OneFrameEvent.not_triggered &&
+         ( scrollOffset == 0 || scrollOffset == -scrollLimit ) &&
+         scrollOffset != scrollOffsetLast )
+    {
+      scrollJustStopped = OneFrameEvent.triggered;
+    }
+    else if (scrollOffset != 0 && scrollOffset != -scrollLimit) {
+      scrollJustStopped = OneFrameEvent.not_triggered;
+    }
 
-  ////
-  // play sounds
-  ////
+    if ( startedScrolling == OneFrameEvent.not_triggered &&
+         input.held(Key.touch) &&
+         scrollOffset != scrollOffsetLast )
+    {
+      startedScrolling = OneFrameEvent.triggered;
+    }
+    else if (!input.held(Key.touch)) {
+      startedScrolling = OneFrameEvent.not_triggered;
+    }
 
-  if (viewData.startedScrolling == OneFrameEvent.triggered) {
-    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.1);
-    viewData.startedScrolling = OneFrameEvent.already_processed;
-  }
 
-  if (floor(viewData.loadedPage.scrollOffset/(viewData.glyphHeight*4)) != floor(viewData.loadedPage.scrollOffsetLast/(viewData.glyphHeight*4))) {
-    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.05);
-  }
+    ////
+    // play sounds
+    ////
 
-  if (viewData.scrollJustStopped == OneFrameEvent.triggered) {
-    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_stop, 0.1);
-    viewData.scrollJustStopped = OneFrameEvent.already_processed;
+    if (startedScrolling == OneFrameEvent.triggered) {
+      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.1);
+      startedScrolling = OneFrameEvent.already_processed;
+    }
+
+    if (floor(scrollOffset/(viewData.glyphHeight*4)) != floor(scrollOffsetLast/(viewData.glyphHeight*4))) {
+      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.05);
+    }
+
+    if (scrollJustStopped == OneFrameEvent.triggered) {
+      audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_stop, 0.1);
+      scrollJustStopped = OneFrameEvent.already_processed;
+    }
   }
 }
 
@@ -381,9 +388,9 @@ void renderReadingView(ReadingViewData* viewData, C3D_RenderTarget* topLeft, C3D
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  int virtualLine = max(cast(int) floor((-round(viewData.loadedPage.scrollOffset+MARGIN))/viewData.glyphHeight), 0);
+  int virtualLine = max(cast(int) floor((-round(viewData.loadedPage.scrollInfo.scrollOffset+MARGIN))/viewData.glyphHeight), 0);
   int renderStartLine = viewData.loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
-  float renderStartOffset = round(viewData.loadedPage.scrollOffset +
+  float renderStartOffset = round(viewData.loadedPage.scrollInfo.scrollOffset +
                                   viewData.loadedPage.actualLineNumberTable[virtualLine].realPos +
                                   MARGIN);
 
@@ -468,7 +475,7 @@ void updateBookView(BookViewData* viewData, Input* input) {
   if (input.down(Key.touch)) {
 
     foreach (i, ref btn; viewData.bookButtons) {
-      float btnRealY = btn.y + viewData.scrollOffset;
+      float btnRealY = btn.y + viewData.scrollInfo.scrollOffset;
 
       if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
         if ( input.touchRaw.px >= btn.x    && input.touchRaw.px <= btn.x    + btn.w &&
@@ -484,7 +491,7 @@ void updateBookView(BookViewData* viewData, Input* input) {
   else if (!input.held(Key.touch) && input.prevHeld(Key.touch)) {
     if (curBookButton != -1) {
       Button* btn = &viewData.bookButtons[curBookButton];
-      float btnRealY = btn.y + viewData.scrollOffset;
+      float btnRealY = btn.y + viewData.scrollInfo.scrollOffset;
 
       if ( input.prevTouchRaw.px >= btn.x    && input.prevTouchRaw.px <= btn.x    + btn.w &&
            input.prevTouchRaw.py >= btnRealY && input.prevTouchRaw.py <= btnRealY + btn.h )
@@ -501,18 +508,18 @@ void updateBookView(BookViewData* viewData, Input* input) {
     }
   }
 
-  viewData.scrollOffsetLast = viewData.scrollOffset;
+  viewData.scrollInfo.scrollOffsetLast = viewData.scrollInfo.scrollOffset;
 
   if (curBookButton == -1) {
     auto scrollDiff = input.scrollDiff();
 
     if (input.scrollMethodCur == ScrollMethod.touch) {
       if (!input.down(Key.touch)) {
-        viewData.scrollOffset += scrollDiff.y;
+        viewData.scrollInfo.scrollOffset += scrollDiff.y;
       }
     }
     else {
-      viewData.scrollOffset += scrollDiff.y;
+      viewData.scrollInfo.scrollOffset += scrollDiff.y;
     }
   }
   else {
@@ -521,20 +528,37 @@ void updateBookView(BookViewData* viewData, Input* input) {
 }
 
 void renderBookView(BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom, bool _3DEnabled, float slider3DState) {
-  C2D_TargetClear(bottom, CLEAR_COLOR);
-  C2D_SceneBegin(bottom);
+  void renderButtons(float offsetX, float offsetY) {
+    foreach (i, ref btn; viewData.bookButtons) {
+      float btnRealX = btn.x + offsetX, btnRealY = btn.y + offsetY;
 
+      if (btnRealY + btn.h < 0) {
+      }
+      else if (btnRealY > SCREEN_HEIGHT){
+        break;
+      }
+      else {
+        C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, 0xFFFF0000);
 
-  foreach (i, ref btn; viewData.bookButtons) {
-    float btnRealY = btn.y + viewData.scrollOffset;
-
-    if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
-      C2D_DrawRectSolid(btn.x, btnRealY, 0.0, btn.w, btn.h, 0xFFFF0000);
-
-      C2D_DrawText(
-        &viewData.textArray[i], 0, GFXScreen.top, btn.x+8, btn.y+8 + viewData.scrollOffset, 0.5f, 0.5, 0.5
-      );
+        C2D_DrawText(
+          &viewData.textArray[i], 0, GFXScreen.top, btnRealX+8, btn.y+8 + offsetY, 0.5f, 0.5, 0.5
+        );
+      }
     }
   }
 
+  C2D_TargetClear(topLeft, CLEAR_COLOR);
+  C2D_SceneBegin(topLeft);
+  renderButtons((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2, viewData.scrollInfo.scrollOffset + SCREEN_HEIGHT);
+
+  if (_3DEnabled) {
+    C2D_TargetClear(topRight, CLEAR_COLOR);
+    C2D_SceneBegin(topRight);
+
+    renderButtons((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2, viewData.scrollInfo.scrollOffset + SCREEN_HEIGHT);
+  }
+
+  C2D_TargetClear(bottom, CLEAR_COLOR);
+  C2D_SceneBegin(bottom);
+  renderButtons(0, viewData.scrollInfo.scrollOffset);
 }
