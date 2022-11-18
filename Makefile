@@ -105,7 +105,8 @@ else # LDC
 				-mtriple=armv6k-none-eabi -float-abi=hard -mcpu=mpcorenovfp -mattr=+vfp2 \
 				-linkonce-templates \
 				--preview=dip1021 \
-				--preview=dip1000
+				--preview=dip1000 \
+				--preview=in
 
 	ifeq ($(TARGET_TYPE),CIA)
 		DFLAGS := $(DFLAGS) \

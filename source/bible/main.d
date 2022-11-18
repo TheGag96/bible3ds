@@ -429,7 +429,7 @@ struct RenderResult {
 }
 
 RenderResult renderPage(
-  const ref ReadingViewData viewData, GFXScreen screen, GFX3DSide side, float slider3DState, int startLine,
+  in ReadingViewData viewData, GFXScreen screen, GFX3DSide side, float slider3DState, int startLine,
   float offsetX, float offsetY
 ) { with (viewData) {
   float width, height;
