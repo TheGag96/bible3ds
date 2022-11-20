@@ -6,6 +6,8 @@ import bible.util;
 import core.stdc.stdlib;
 import core.atomic, core.volatile;
 
+import bible.bcwav;
+
 nothrow: @nogc:
 
 enum THREADED_MUSIC = false;  //keeping the threaded code in just in case it turns out to be the better option...
@@ -26,6 +28,7 @@ enum MAX_CHANNELS      = 24;
 
 struct SeData {
   ndspWaveBuf[SoundEffect.max + 1] waveBufs;
+  Bcwav[SoundEffect.max + 1]       bcwavs;
   byte[SoundEffect.max + 1]        channelSoundsPlaying;
 }
 __gshared SeData gSeData;
@@ -94,6 +97,7 @@ enum SoundEffect : ubyte {
 enum SoundSlot : ubyte {
   none = 0,
   scrolling,
+  bcwav,
 }
 
 enum SoundType : ubyte {
@@ -107,16 +111,16 @@ struct SoundInfo {
 }
 
 enum musicPath(Music music)  = "romfs:/sound/music/" ~ __traits(allMembers, Music)[music]    ~ ".vgz";
-enum sfxPath(SoundEffect se) = "romfs:/sound/sfx/"   ~ __traits(allMembers, SoundEffect)[se] ~ ".raw";
+enum sfxPath(SoundEffect se) = "romfs:/sound/sfx/"   ~ __traits(allMembers, SoundEffect)[se] ~ ".bcwav";
 
 static immutable MusicInfo[Music.max + 1] MUSIC_INFO_TABLE = [
   Music.none                : { path : ""                                    },
 ];
 
 static immutable SoundInfo[SoundEffect.max + 1] SOUND_INFO_TABLE = [
-  SoundEffect.none                   : { path : "",                                           soundType : SoundType.normal },
-  SoundEffect.scroll_tick            : { path : "romfs:/sound/sfx/scroll_tick.raw",           soundType : SoundType.normal },
-  SoundEffect.scroll_stop            : { path : "romfs:/sound/sfx/scroll_stop.raw",           soundType : SoundType.normal },
+  SoundEffect.none                   : { path : "",                                soundType : SoundType.normal },
+  SoundEffect.scroll_tick            : { path : sfxPath!(SoundEffect.scroll_tick), soundType : SoundType.normal },
+  SoundEffect.scroll_stop            : { path : sfxPath!(SoundEffect.scroll_stop), soundType : SoundType.normal },
 ];
 
 ///sounds loaded all the time
@@ -178,45 +182,66 @@ void audioFini() {
 
 void audioLoadSoundEffect(SoundEffect se) {
   auto buf    = &gSeData.waveBufs[se];
+  auto bcw    = &gSeData.bcwavs[se];
   auto seInfo = &SOUND_INFO_TABLE[se];
 
   if (buf.data_vaddr) return;
 
   auto soundData = readFile!linearAlloc(seInfo.path);
+  *bcw = parseBcwav(soundData);
 
-  buf.data_vaddr = cast(uint*) soundData.ptr;
-  buf.nsamples   = soundData.length / BYTESPERSAMPLE;
+  buf.data_vaddr = bcw.channels[0].samples;
+  buf.nsamples   = bcw.info.loopEndFrame - bcw.info.loopStartFrame;
   buf.looping    = seInfo.soundType == SoundType.looping;
 
-  DSP_FlushDataCache(buf.data_pcm16, soundData.length);
+  DSP_FlushDataCache(soundData.ptr, soundData.length);
 }
 
 void audioPlaySound(SoundSlot soundSlot, SoundEffect se, float volume = 1) {
-  byte channelToUse = audioPlaySoundCommon(soundSlot, se);
-  if (!channelToUse) return;
+  auto buf = &gSeData.waveBufs[se];
+  auto bcw = &gSeData.bcwavs[se];
+
+  if (!buf.data_vaddr) return;
+
+  //@TODO: make soundslot support smarter
+  byte channelToUse = soundSlot;
+
+  ndspChnReset(channelToUse);
+
+  gSeData.channelSoundsPlaying[se] = channelToUse;
+
+  ndspChnSetInterp(channelToUse, NDSPInterpType.polyphase);
+  ndspChnSetRate(channelToUse, bcw.info.sampleRate);
+
+  ushort encoding;
+  final switch (bcw.info.encoding) {
+    case BcwavInfoBlock.Encoding.pcm8:
+      encoding = NDSP_ENCODING_PCM8;
+      break;
+
+    case BcwavInfoBlock.Encoding.pcm16:
+      encoding = NDSP_ENCODING_PCM16;
+      break;
+
+    case BcwavInfoBlock.Encoding.dsp_adpcm:
+      encoding = NDSP_ENCODING_ADPCM;
+      ndspChnSetAdpcmCoefs(channelToUse, bcw.channels[0].adpcmInfo.coefficients);
+      buf.adpcm_data = &bcw.channels[0].adpcmInfo.context; //todo: stereo context?
+      break;
+
+    case BcwavInfoBlock.Encoding.ima_adpcm: assert(0, "IMA ADPCM unsupported");
+  }
+
+  ndspChnSetFormat(channelToUse, cast(ushort) (NDSP_CHANNELS(bcw.numChannels) | NDSP_ENCODING(encoding)));
 
   float[12] mix;
   mix[0]    = volume;
   mix[1]    = volume;
   mix[2..$] = 0;
 
+  //@TODO: looping
   ndspChnSetMix(channelToUse, mix);
-  ndspChnWaveBufAdd(channelToUse, &gSeData.waveBufs[se]);
-}
-
-byte audioPlaySoundCommon(SoundSlot soundSlot, SoundEffect se) {
-  if (!gSeData.waveBufs[soundSlot].data_vaddr) return 0;
-
-  //@TODO: make soundslot support smarter
-  ndspChnReset(soundSlot);
-
-  gSeData.channelSoundsPlaying[se] = soundSlot;
-
-  ndspChnSetInterp(soundSlot, NDSPInterpType.polyphase);
-  ndspChnSetRate(soundSlot, SAMPLERATE);
-  ndspChnSetFormat(soundSlot, NDSP_FORMAT_MONO_PCM16);
-
-  return soundSlot;
+  ndspChnWaveBufAdd(channelToUse, buf);
 }
 
 void audioStopSound(SoundEffect se) {
