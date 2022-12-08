@@ -92,12 +92,16 @@ enum SoundEffect : ubyte {
   none = 0,
   scroll_tick,
   scroll_stop,
+  button_down,
+  button_off,
+  button_confirm,
+  button_back,
 }
 
 enum SoundSlot : ubyte {
   none = 0,
   scrolling,
-  bcwav,
+  button,
 }
 
 enum SoundType : ubyte {
@@ -118,15 +122,23 @@ static immutable MusicInfo[Music.max + 1] MUSIC_INFO_TABLE = [
 ];
 
 static immutable SoundInfo[SoundEffect.max + 1] SOUND_INFO_TABLE = [
-  SoundEffect.none                   : { path : "",                                soundType : SoundType.normal },
-  SoundEffect.scroll_tick            : { path : sfxPath!(SoundEffect.scroll_tick), soundType : SoundType.normal },
-  SoundEffect.scroll_stop            : { path : sfxPath!(SoundEffect.scroll_stop), soundType : SoundType.normal },
+  SoundEffect.none                   : { path : "",                                   soundType : SoundType.normal },
+  SoundEffect.scroll_tick            : { path : sfxPath!(SoundEffect.scroll_tick),    soundType : SoundType.normal },
+  SoundEffect.scroll_stop            : { path : sfxPath!(SoundEffect.scroll_stop),    soundType : SoundType.normal },
+  SoundEffect.button_down            : { path : sfxPath!(SoundEffect.button_down),    soundType : SoundType.normal },
+  SoundEffect.button_off             : { path : sfxPath!(SoundEffect.button_off),     soundType : SoundType.normal },
+  SoundEffect.button_confirm         : { path : sfxPath!(SoundEffect.button_confirm), soundType : SoundType.normal },
+  SoundEffect.button_back            : { path : sfxPath!(SoundEffect.button_back),    soundType : SoundType.normal },
 ];
 
 ///sounds loaded all the time
 static immutable SoundEffect[] GLOBAL_SOUNDS = [
   SoundEffect.scroll_tick,
   SoundEffect.scroll_stop,
+  SoundEffect.button_down,
+  SoundEffect.button_off,
+  SoundEffect.button_confirm,
+  SoundEffect.button_back,
 ];
 
 
@@ -289,7 +301,7 @@ void audioUpdate() {
     auto channel = gSeData.channelSoundsPlaying[se];
     if (!channel) continue;
 
-    if (gSeData.waveBufs[se].status == NDSP_WBUF_DONE) {
+    if (gSeData.waveBufs[se][0].status == NDSP_WBUF_DONE) {
       gSeData.channelSoundsPlaying[se] = 0;
     }
   }

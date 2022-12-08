@@ -65,6 +65,8 @@ struct BookViewData {
   Button[Book.max+1] bookButtons;
 
   ScrollInfo scrollInfo;
+  int curBookButton;
+  int chosenBook;
 }
 
 enum OneFrameEvent {
@@ -81,7 +83,13 @@ struct ReadingViewData {
   int curChapter;
 }
 
+
 enum CLEAR_COLOR = 0xFFEEEEEE;
+
+struct MainData {
+
+}
+MainData mainData;
 
 ReadingViewData readingViewData;
 BookViewData    bookViewData;
@@ -156,15 +164,34 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
+    View updateResult = curView;
+
     final switch (curView) {
       case View.book:
-        updateBookView(&bookViewData, &input);
+        updateResult = updateBookView(&bookViewData, &input);
+
+        if (curView != updateResult) {
+          with (readingViewData) {
+            unloadPage(&loadedPage);
+            closeBibleBook(&book);
+            curBook = cast(Book) bookViewData.chosenBook;
+            book = openBibleBook(Translation.asv, curBook);
+            curChapter = 1;
+            loadPage(&loadedPage, book.chapters[curChapter], 0.5);
+            curView = View.reading;
+          }
+        }
         break;
 
       case View.reading:
-        updateReadingView(&readingViewData, &input);
+        updateResult = updateReadingView(&readingViewData, &input);
+
+        if (curView != updateResult) {
+          curView = updateResult;
+        }
         break;
     }
+
 
 
     audioUpdate();
@@ -245,6 +272,8 @@ void loadPage(LoadedPage* page, char[][] pageLines, float size) { with (page) {
   foreach (lineNum; 0..pageLines.length) {
     C2D_TextOptimize(&textArray[lineNum]);
   }
+
+  page.scrollInfo = ScrollInfo.init;
 }}
 
 void unloadPage(LoadedPage* page) { with (page) {
@@ -267,8 +296,8 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float li
     scrollOffset += scrollDiff.y;
   }
 
-  if (scrollOffset > limitTop) {
-    scrollOffset = limitTop;
+  if (scrollOffset > -limitTop) {
+    scrollOffset = -limitTop;
     input.scrollVel = 0;
   }
   else if (scrollOffset < -limitBottom) {
@@ -337,23 +366,31 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   );
 }}
 
-void updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
+View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
   if (input.down(Key.b)) {
-    curView = View.book;
-    return;
+    audioPlaySound(SoundSlot.button, SoundEffect.button_back, 0.5);
+    return View.book;
   }
 
   int chapterDiff, bookDiff;
   if (input.down(Key.l)) {
-    chapterDiff = -1;
-    if (curChapter == 1 && curBook != Book.min) {
-      bookDiff = -1;
+    if (curChapter == 1) {
+      if (curBook != Book.min) {
+        bookDiff = -1;
+      }
+    }
+    else {
+      chapterDiff = -1;
     }
   }
   else if (input.down(Key.r)) {
-    chapterDiff = 1;
-    if (curChapter == book.chapters.length-1 && curBook != Book.max) {
-      bookDiff = 1;
+    if (curChapter == book.chapters.length-1) {
+      if (curBook != Book.max) {
+        bookDiff = 1;
+      }
+    }
+    else {
+      chapterDiff = 1;
     }
   }
 
@@ -384,8 +421,10 @@ void updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
   // update scrolling
   ////
 
-  float scrollLimit = loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2;
+  float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0);
   handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
+
+  return View.reading;
 }}
 
 void renderReadingView(
@@ -477,13 +516,14 @@ void initBookView(BookViewData* viewData) { with (viewData) {
     btn.w = textWidth + 16;
     btn.h = textHeight + 16;
   }
+
+  curBookButton = -1;
 }}
 
-int curBookButton = -1;
+View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
+  View retVal = View.book;
 
-void updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   if (input.down(Key.touch)) {
-
     foreach (i, ref btn; bookButtons) {
       float btnRealY = btn.y + scrollInfo.scrollOffset;
 
@@ -492,31 +532,34 @@ void updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
              input.touchRaw.py >= btnRealY && input.touchRaw.py <= btnRealY + btn.h )
         {
           curBookButton = i;
+          audioPlaySound(SoundSlot.button, SoundEffect.button_down, 0.5);
           break;
         }
       }
     }
-
   }
-  else if (!input.held(Key.touch) && input.prevHeld(Key.touch)) {
+  else {
     if (curBookButton != -1) {
       Button* btn = &bookButtons[curBookButton];
       float btnRealY = btn.y + scrollInfo.scrollOffset;
 
-      if ( input.prevTouchRaw.px >= btn.x    && input.prevTouchRaw.px <= btn.x    + btn.w &&
-           input.prevTouchRaw.py >= btnRealY && input.prevTouchRaw.py <= btnRealY + btn.h )
-      {
-        with (readingViewData) {
-          unloadPage(&loadedPage);
-          closeBibleBook(&book);
-          curBook = cast(Book) curBookButton;
-          book = openBibleBook(Translation.asv, curBook);
-          curChapter = 1;
-          loadPage(&loadedPage, book.chapters[curChapter], 0.5);
-          curView = View.reading;
-        }
+      bool hoveredOverCurrentButton = input.prevTouchRaw.px >= btn.x    && input.prevTouchRaw.px <= btn.x    + btn.w &&
+                                      input.prevTouchRaw.py >= btnRealY && input.prevTouchRaw.py <= btnRealY + btn.h;
+
+      enum TOUCH_DRAG_THRESHOLD = 8;
+      auto touchDiff = input.touchDiff();
+
+      if (hoveredOverCurrentButton && !input.held(Key.touch) && input.prevHeld(Key.touch)) {
+        //signal to begin transition to reading view
+        retVal = View.reading;
+        chosenBook = curBookButton;
+        curBookButton = -1;
+        audioPlaySound(SoundSlot.button, SoundEffect.button_confirm, 0.5);
       }
-      curBookButton = -1;
+      else if (!input.held(Key.touch) || touchDiff.x^^2 + touchDiff.y^^2 >= TOUCH_DRAG_THRESHOLD^^2) {
+        curBookButton = -1;
+        audioPlaySound(SoundSlot.button, SoundEffect.button_off, 0.5);
+      }
     }
   }
 
@@ -527,6 +570,8 @@ void updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
     scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
     input.scrollVel = 0;
   }
+
+  return retVal;
 }}
 
 void renderBookView(
@@ -534,6 +579,9 @@ void renderBookView(
   bool _3DEnabled, float slider3DState
 ) { with (viewData) {
   void renderButtons(float offsetX, float offsetY) {
+    enum BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
+    enum BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
+
     foreach (i, ref btn; bookButtons) {
       float btnRealX = btn.x + offsetX, btnRealY = btn.y + offsetY;
 
@@ -543,10 +591,10 @@ void renderBookView(
         break;
       }
       else {
-        C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, 0xFFFF0000);
+        C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, i == curBookButton ? BUTTON_DOWN_COLOR : BUTTON_COLOR);
 
         C2D_DrawText(
-          &textArray[i], 0, GFXScreen.top, btnRealX+8, btn.y+8 + offsetY, 0.5f, 0.5, 0.5
+          &textArray[i], C2D_WithColor, GFXScreen.top, btnRealX+8, btn.y+8 + offsetY, 0.5f, 0.5, 0.5, C2D_Color32(255, 255, 255, 255)
         );
       }
     }

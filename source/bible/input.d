@@ -3,6 +3,7 @@ module bible.input;
 public import ctru.services.hid;
 import std.algorithm : max, min;
 import std.math;
+import bible.util;
 
 nothrow: @nogc:
 
@@ -20,7 +21,7 @@ struct Input {
   uint downRaw,     heldRaw,
        prevDownRaw, prevHeldRaw;
 
-  touchPosition touchRaw, prevTouchRaw, prevPrevTouchRaw;
+  touchPosition touchRaw, prevTouchRaw, prevPrevTouchRaw, firstTouchRaw;
   circlePosition circleRaw, prevCircleRaw;
 
   ScrollMethod scrollMethodCur;
@@ -53,6 +54,10 @@ struct Input {
   bool allNewlyHeld(Key k) {
     return allHeld(k) && !allPrevHeld(k);
   }
+
+  intpair touchDiff() {
+    return intpair(touchRaw.px - firstTouchRaw.px, touchRaw.py - firstTouchRaw.py);
+  }
 }
 
 void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, circlePosition _circle) { with (input) {
@@ -74,6 +79,10 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   heldRaw = _held;
   touchRaw = _touch;
   circleRaw = _circle;
+
+  if (down(Key.touch)) {
+    firstTouchRaw = touchRaw;
+  }
 }}
 
 ScrollDiff updateScrollDiff(Input* input) { with (input) {
