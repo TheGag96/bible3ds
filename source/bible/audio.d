@@ -27,9 +27,9 @@ enum MAX_CHANNELS      = 24;
 
 
 struct SeData {
-  ndspWaveBuf[SoundEffect.max + 1] waveBufs;
-  Bcwav[SoundEffect.max + 1]       bcwavs;
-  byte[SoundEffect.max + 1]        channelSoundsPlaying;
+  ndspWaveBuf[2][SoundEffect.max + 1] waveBufs;
+  Bcwav[SoundEffect.max + 1]          bcwavs;
+  byte[SoundEffect.max + 1]           channelSoundsPlaying;
 }
 __gshared SeData gSeData;
 
@@ -181,67 +181,82 @@ void audioFini() {
 }
 
 void audioLoadSoundEffect(SoundEffect se) {
-  auto buf    = &gSeData.waveBufs[se];
+  auto bufs   = gSeData.waveBufs[se][];
   auto bcw    = &gSeData.bcwavs[se];
   auto seInfo = &SOUND_INFO_TABLE[se];
 
-  if (buf.data_vaddr) return;
+  if (bufs[0].data_vaddr) return;
 
   auto soundData = readFile!linearAlloc(seInfo.path);
   *bcw = parseBcwav(soundData);
 
-  buf.data_vaddr = bcw.channels[0].samples;
-  buf.nsamples   = bcw.info.loopEndFrame - bcw.info.loopStartFrame;
-  buf.looping    = seInfo.soundType == SoundType.looping;
+  foreach (i, ref buf; bufs[0..bcw.numChannels]) {
+    buf.data_vaddr = bcw.channels[i].samples;
+    buf.nsamples   = bcw.info.loopEndFrame - bcw.info.loopStartFrame;
+    buf.looping    = seInfo.soundType == SoundType.looping;
+  }
 
   DSP_FlushDataCache(soundData.ptr, soundData.length);
 }
 
 void audioPlaySound(SoundSlot soundSlot, SoundEffect se, float volume = 1) {
-  auto buf = &gSeData.waveBufs[se];
-  auto bcw = &gSeData.bcwavs[se];
+  auto bufs = gSeData.waveBufs[se][];
+  auto bcw  = &gSeData.bcwavs[se];
 
-  if (!buf.data_vaddr) return;
+  if (!bufs[0].data_vaddr) return;
 
-  //@TODO: make soundslot support smarter
-  byte channelToUse = soundSlot;
+  bool isStereo = bcw.numChannels == 2;
 
-  ndspChnReset(channelToUse);
+  //for stereo sounds, each ear gets its own channel used...
+  //this kind of sucks but must be done for stereo DSP ADPCM sounds. for PCM, you kind of need to do this unless you
+  //want to manually interleve the channels yourself because bcwav stores them separately it seems...
+  foreach (ear; 0..bcw.numChannels) {
+    //@TODO: make soundslot support smarter
+    byte channelToUse = cast(byte) (soundSlot + ear * (SoundSlot.max+1));
 
-  gSeData.channelSoundsPlaying[se] = channelToUse;
+    ndspChnReset(channelToUse);
 
-  ndspChnSetInterp(channelToUse, NDSPInterpType.polyphase);
-  ndspChnSetRate(channelToUse, bcw.info.sampleRate);
+    gSeData.channelSoundsPlaying[se] = channelToUse;
 
-  ushort encoding;
-  final switch (bcw.info.encoding) {
-    case BcwavInfoBlock.Encoding.pcm8:
-      encoding = NDSP_ENCODING_PCM8;
-      break;
+    ndspChnSetInterp(channelToUse, NDSPInterpType.polyphase);
+    ndspChnSetRate(channelToUse, bcw.info.sampleRate);
 
-    case BcwavInfoBlock.Encoding.pcm16:
-      encoding = NDSP_ENCODING_PCM16;
-      break;
+    ushort encoding;
+    final switch (bcw.info.encoding) {
+      case BcwavInfoBlock.Encoding.pcm8:
+        encoding = NDSP_ENCODING_PCM8;
+        break;
 
-    case BcwavInfoBlock.Encoding.dsp_adpcm:
-      encoding = NDSP_ENCODING_ADPCM;
-      ndspChnSetAdpcmCoefs(channelToUse, bcw.channels[0].adpcmInfo.coefficients);
-      buf.adpcm_data = &bcw.channels[0].adpcmInfo.context; //todo: stereo context?
-      break;
+      case BcwavInfoBlock.Encoding.pcm16:
+        encoding = NDSP_ENCODING_PCM16;
+        break;
 
-    case BcwavInfoBlock.Encoding.ima_adpcm: assert(0, "IMA ADPCM unsupported");
+      case BcwavInfoBlock.Encoding.dsp_adpcm:
+        encoding = NDSP_ENCODING_ADPCM;
+        ndspChnSetAdpcmCoefs(channelToUse, bcw.channels[ear].adpcmInfo.coefficients);
+        bufs[ear].adpcm_data = &bcw.channels[ear].adpcmInfo.context; //todo: stereo context?
+        break;
+
+      case BcwavInfoBlock.Encoding.ima_adpcm: assert(0, "IMA ADPCM unsupported");
+    }
+
+    ndspChnSetFormat(channelToUse, cast(ushort) (NDSP_CHANNELS(1) | NDSP_ENCODING(encoding)));
+
+    float[12] mix;
+    if (isStereo) {
+      mix[0]    = volume * (ear == 0);
+      mix[1]    = volume * (ear == 1);
+    }
+    else {
+      mix[0]    = volume;
+      mix[1]    = volume;
+    }
+    mix[2..$] = 0;
+
+    //@TODO: looping
+    ndspChnSetMix(channelToUse, mix);
+    ndspChnWaveBufAdd(channelToUse, &bufs[ear]);
   }
-
-  ndspChnSetFormat(channelToUse, cast(ushort) (NDSP_CHANNELS(bcw.numChannels) | NDSP_ENCODING(encoding)));
-
-  float[12] mix;
-  mix[0]    = volume;
-  mix[1]    = volume;
-  mix[2..$] = 0;
-
-  //@TODO: looping
-  ndspChnSetMix(channelToUse, mix);
-  ndspChnWaveBufAdd(channelToUse, buf);
 }
 
 void audioStopSound(SoundEffect se) {
