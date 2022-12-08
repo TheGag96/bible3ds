@@ -131,7 +131,6 @@ struct Bcwav {
     BcwavDspAdpcmInfo* adpcmInfo;
   }
   ubyte[] bytes;
-  short[] samples;
   BcwavHeader* header;
   BcwavInfoBlock* info;
   BcwavDataBlock* data;
@@ -144,6 +143,8 @@ Bcwav parseBcwav(ubyte[] bytes) {
   Bcwav result;
   result.bytes = bytes;
 
+  auto bytesEndPtr = bytes.ptr + bytes.length;
+
   assert(bytes.length > BcwavHeader.sizeof);
 
   auto header = cast(BcwavHeader*) bytes.ptr;
@@ -151,21 +152,26 @@ Bcwav parseBcwav(ubyte[] bytes) {
   assert(header.magic == BcwavHeader.MAGIC);
 
   auto infoBlock = cast(BcwavInfoBlock*) (bytes.ptr + header.infoBlockReference.reference.offset);
+  assert(cast(ubyte*) (infoBlock+1) < bytesEndPtr);
   result.encoding = infoBlock.encoding;
 
   auto dataBlock = cast(BcwavDataBlock*) (bytes.ptr + header.dataBlockReference.reference.offset);
+  assert(cast(ubyte*) (dataBlock+1) < bytesEndPtr);
   result.info = infoBlock;
   result.data = dataBlock;
 
   result.numChannels = cast(ubyte) infoBlock.channelInfos.count;
+  assert(result.numChannels >= 1 && result.numChannels <= 2);
 
   foreach (i; 0..result.numChannels) {
     auto reference = cast(Reference*) (cast(ubyte*) (&infoBlock.channelInfos.count) + 4 + Reference.sizeof * i);
     auto channelInfo = cast(BcwavChannelInfo*) (cast(ubyte*) (&infoBlock.channelInfos.count) + reference.offset);
     result.channels[i].samples = cast(ubyte*) &dataBlock.data + channelInfo.samples.offset;
+    //assert((result.channels[i].samples+1) < bytesEndPtr);
 
     if (infoBlock.encoding == BcwavInfoBlock.Encoding.dsp_adpcm || infoBlock.encoding == BcwavInfoBlock.Encoding.ima_adpcm) {
       result.channels[i].adpcmInfo = cast(BcwavDspAdpcmInfo*) (cast(ubyte*) &channelInfo.samples + channelInfo.adpcmInfo.offset);
+      assert(cast(ubyte*) (result.channels[i].adpcmInfo+1) < bytesEndPtr);
     }
   }
 
