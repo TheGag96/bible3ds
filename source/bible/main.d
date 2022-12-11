@@ -459,7 +459,8 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
   // update scrolling
   ////
 
-  float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0);
+  float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0)
+                      + backBtn.textH + 2*BOTTOM_BUTTON_MARGIN;
   handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
 
   return View.reading;
@@ -642,7 +643,7 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   }
 
   if (curBookButton == -1) {
-    handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT);
+    handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
   }
   else {
     scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
