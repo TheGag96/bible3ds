@@ -491,16 +491,26 @@ void renderReadingView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  Tex3DS_SubTexture subtexTop    = { cast(ushort) SCREEN_BOTTOM_WIDTH, cast(ushort) SCREEN_HEIGHT, 0.0f, 1.0f, SCREEN_BOTTOM_WIDTH/SCROLL_WIDTH, 1.0f - SCREEN_HEIGHT/SCROLL_HEIGHT };
-  Tex3DS_SubTexture subtexBottom = { cast(ushort) SCREEN_BOTTOM_WIDTH, cast(ushort) SCREEN_HEIGHT, 0.0f, 1.0f, SCREEN_BOTTOM_WIDTH/SCROLL_WIDTH, 1.0f - SCREEN_HEIGHT/SCROLL_HEIGHT };
+  Tex3DS_SubTexture setUvs(float width, float height, float yOffset, float scroll) {
+    Tex3DS_SubTexture result = {
+      width  : cast(ushort) width,
+      height : cast(ushort) height,
+      left   : 0,
+      right  : width/SCROLL_WIDTH,
+      top    : 1.0f - yOffset         /SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
+      bottom : 1.0f - (yOffset+height)/SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
+    };
+    return result;
+  }
+
+  Tex3DS_SubTexture subtexTop    = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexBottom = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &loadedPage.scrollTex, &subtexTop };
   C2D_Image cacheImageBottom = { &loadedPage.scrollTex, &subtexBottom };
   C2D_Sprite sprite;
   C2D_SpriteFromImage(&sprite, cacheImageTop);
 
   C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
-  subtexTop.top    = 1.0f - 0.0f*SCREEN_HEIGHT/SCROLL_HEIGHT + loadedPage.scrollInfo.scrollOffset/SCROLL_HEIGHT;
-  subtexTop.bottom = 1.0f - 1.0f*SCREEN_HEIGHT/SCROLL_HEIGHT + loadedPage.scrollInfo.scrollOffset/SCROLL_HEIGHT;
   C2D_DrawSprite(&sprite);
 
   if (_3DEnabled) {
@@ -515,8 +525,6 @@ void renderReadingView(
 
   C2D_SpriteFromImage(&sprite, cacheImageBottom);
   C2D_SpriteSetPos(&sprite, 0, 0);
-  subtexBottom.top    = 1.0f - 1.0f*SCREEN_HEIGHT/SCROLL_HEIGHT + loadedPage.scrollInfo.scrollOffset/SCROLL_HEIGHT;
-  subtexBottom.bottom = 1.0f - 2.0f*SCREEN_HEIGHT/SCROLL_HEIGHT + loadedPage.scrollInfo.scrollOffset/SCROLL_HEIGHT;
   C2D_DrawSprite(&sprite);
 
   auto centerX = backBtn.x + backBtn.w/2 - backBtn.textW/2;
