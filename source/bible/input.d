@@ -166,3 +166,7 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
 
   return result;
 }}
+
+void resetScrollDiff(Input* input) { with (input) {
+  scrollVel = 0;
+}}
