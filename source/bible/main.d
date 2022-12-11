@@ -31,11 +31,13 @@ struct ScrollInfo {
   OneFrameEvent scrollJustStopped;
 }
 
-struct LoadedPage {
+struct ScrollCache {
   C3D_Tex scrollTex;
   C3D_RenderTarget* scrollTarget;
   bool needsRepaint;
+}
 
+struct LoadedPage {
   C2D_TextBuf textBuf;
   C2D_Text[] textArray;
 
@@ -98,7 +100,7 @@ struct ReadingViewData {
 enum CLEAR_COLOR = 0xFFEEEEEE;
 
 struct MainData {
-
+  ScrollCache scrollCache;
 }
 MainData mainData;
 
@@ -133,6 +135,12 @@ extern(C) int main(int argc, char** argv) {
   C3D_RenderTarget* bottom   = C2D_CreateScreenTarget(GFXScreen.bottom, GFX3DSide.left);
 
   osTickCounterStart(&tickCounter);
+
+  with (mainData.scrollCache) {
+    C3D_TexInitVRAM(&scrollTex, SCROLL_WIDTH, SCROLL_HEIGHT, GPUTexColor.rgba8);
+    C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
+    scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
+  }
 
   initReadingView(&readingViewData);
   initBookView(&bookViewData);
@@ -191,6 +199,7 @@ extern(C) int main(int argc, char** argv) {
             loadPage(&loadedPage, book.chapters[curChapter], 0.5);
             curView = View.reading;
             resetScrollDiff(&input);
+            mainData.scrollCache.needsRepaint = true;
           }
         }
         break;
@@ -201,6 +210,7 @@ extern(C) int main(int argc, char** argv) {
         if (curView != updateResult) {
           curView = updateResult;
           resetScrollDiff(&input);
+          mainData.scrollCache.needsRepaint = true;
         }
         break;
     }
@@ -288,13 +298,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, float size) { with (page) {
 
   page.scrollInfo = ScrollInfo.init;
 
-  if (!scrollTarget) {
-    C3D_TexInitVRAM(&scrollTex, SCROLL_WIDTH, SCROLL_HEIGHT, GPUTexColor.rgba8);
-    C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
-    scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
-  }
-
-  needsRepaint = true;
+  mainData.scrollCache.needsRepaint = true;
 }}
 
 void unloadPage(LoadedPage* page) { with (page) {
@@ -332,12 +336,12 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float li
   ////
 
   if ( scrollJustStopped == OneFrameEvent.not_triggered &&
-       ( scrollOffset == limitTop || scrollOffset == -limitBottom ) &&
+       ( scrollOffset == -limitTop || scrollOffset == -limitBottom ) &&
        scrollOffset != scrollOffsetLast )
   {
     scrollJustStopped = OneFrameEvent.triggered;
   }
-  else if (scrollOffset != limitTop && scrollOffset != -limitBottom) {
+  else if (scrollOffset != -limitTop && scrollOffset != -limitBottom) {
     scrollJustStopped = OneFrameEvent.not_triggered;
   }
 
@@ -470,10 +474,10 @@ void renderReadingView(
   ReadingViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight,
   C3D_RenderTarget* bottom, bool _3DEnabled, float slider3DState
 ) { with (viewData) {
-  if (loadedPage.needsRepaint) {
-    loadedPage.needsRepaint = false;
+  if (mainData.scrollCache.needsRepaint) {
+    mainData.scrollCache.needsRepaint = false;
     renderScrollCache(
-      &loadedPage.scrollTex, loadedPage.scrollTarget,
+      &mainData.scrollCache.scrollTex, mainData.scrollCache.scrollTarget,
       0, SCROLL_HEIGHT,
       cast(renderCallback) &renderPage, viewData,
       SCREEN_BOTTOM_WIDTH,
@@ -482,7 +486,7 @@ void renderReadingView(
   }
   else {
     renderScrollCache(
-      &loadedPage.scrollTex, loadedPage.scrollTarget,
+      &mainData.scrollCache.scrollTex, mainData.scrollCache.scrollTarget,
       -loadedPage.scrollInfo.scrollOffset, -loadedPage.scrollInfo.scrollOffsetLast,
       cast(renderCallback) &renderPage, viewData,
       SCREEN_BOTTOM_WIDTH,
@@ -492,22 +496,10 @@ void renderReadingView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  Tex3DS_SubTexture setUvs(float width, float height, float yOffset, float scroll) {
-    Tex3DS_SubTexture result = {
-      width  : cast(ushort) width,
-      height : cast(ushort) height,
-      left   : 0,
-      right  : width/SCROLL_WIDTH,
-      top    : 1.0f - yOffset         /SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
-      bottom : 1.0f - (yOffset+height)/SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
-    };
-    return result;
-  }
-
   Tex3DS_SubTexture subtexTop    = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
-  C2D_Image cacheImageTop    = { &loadedPage.scrollTex, &subtexTop };
-  C2D_Image cacheImageBottom = { &loadedPage.scrollTex, &subtexBottom };
+  C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
+  C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
   C2D_Sprite sprite;
   C2D_SpriteFromImage(&sprite, cacheImageTop);
 
@@ -584,7 +576,7 @@ void initBookView(BookViewData* viewData) { with (viewData) {
     C2D_TextParse(btn.text, textBuf, name.ptr);
     C2D_TextGetDimensions(btn.text, 0.5, 0.5, &btn.textW, &btn.textH);
     btn.x = 100;
-    btn.y = i*(btn.textH+24);
+    btn.y = i*(btn.textH+24) + SCREEN_HEIGHT;
     btn.w = btn.textW + 2*BOOK_BUTTON_MARGIN;
     btn.h = btn.textH + 2*BOOK_BUTTON_MARGIN;
   }
@@ -605,10 +597,11 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   if (input.down(Key.touch) && input.scrollMethodCur == ScrollMethod.none) {
     foreach (i, ref btn; bookButtons) {
       float btnRealY = btn.y + scrollInfo.scrollOffset;
+      float touchRealX = input.touchRaw.px, touchRealY = input.touchRaw.py + SCREEN_HEIGHT;
 
       if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
-        if ( input.touchRaw.px >= btn.x    && input.touchRaw.px <= btn.x    + btn.w &&
-             input.touchRaw.py >= btnRealY && input.touchRaw.py <= btnRealY + btn.h )
+        if ( touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
+             touchRealY >= btnRealY && touchRealY <= btnRealY + btn.h )
         {
           curBookButton = i;
           audioPlaySound(SoundSlot.button, SoundEffect.button_down, 0.25);
@@ -616,15 +609,14 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
         }
       }
     }
-
-
   }
   else if (curBookButton != -1) {
     Button* btn = &bookButtons[curBookButton];
     float btnRealY = btn.y + scrollInfo.scrollOffset;
+    float touchRealX = input.prevTouchRaw.px, touchRealY = input.prevTouchRaw.py + SCREEN_HEIGHT;
 
-    bool hoveredOverCurrentButton = input.prevTouchRaw.px >= btn.x    && input.prevTouchRaw.px <= btn.x    + btn.w &&
-                                    input.prevTouchRaw.py >= btnRealY && input.prevTouchRaw.py <= btnRealY + btn.h;
+    bool hoveredOverCurrentButton = touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
+                                    touchRealY >= btnRealY && touchRealY <= btnRealY + btn.h;
 
     enum TOUCH_DRAG_THRESHOLD = 8;
     auto touchDiff = input.touchDiff();
@@ -657,42 +649,77 @@ void renderBookView(
   BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom,
   bool _3DEnabled, float slider3DState
 ) { with (viewData) {
-  void renderBookButtons(float offsetX, float offsetY) {
+  static void renderBookButtons(
+    BookViewData* viewData, float from, float to, float offset
+  ) { with (viewData) {
     enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
     enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
 
     foreach (i, ref btn; bookButtons) {
-      float btnRealX = btn.x + offsetX, btnRealY = btn.y + offsetY;
+      float btnRealX = btn.x, btnRealY = btn.y;
 
-      if (btnRealY + btn.h < 0) {
+      if (btnRealY + btn.h < from) {
       }
-      else if (btnRealY > SCREEN_HEIGHT){
+      else if (btnRealY > to){
         break;
       }
       else {
-        C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, i == curBookButton ? BOOK_BUTTON_DOWN_COLOR : BOOK_BUTTON_COLOR);
+        C2D_DrawRectSolid(btnRealX, btnRealY + offset, 0.0, btn.w, btn.h, i == curBookButton ? BOOK_BUTTON_DOWN_COLOR : BOOK_BUTTON_COLOR);
 
         C2D_DrawText(
-          btn.text, C2D_WithColor, GFXScreen.top, btnRealX+BOOK_BUTTON_MARGIN, btnRealY+BOOK_BUTTON_MARGIN, 0.5f, 0.5, 0.5, C2D_Color32(255, 255, 255, 255)
+          btn.text, C2D_WithColor, GFXScreen.top, btnRealX+BOOK_BUTTON_MARGIN, btnRealY+BOOK_BUTTON_MARGIN + offset, 0.5f, 0.5, 0.5, C2D_Color32(255, 255, 255, 255)
         );
       }
     }
+  }}
+
+  if (mainData.scrollCache.needsRepaint) {
+    mainData.scrollCache.needsRepaint = false;
+    renderScrollCache(
+      &mainData.scrollCache.scrollTex, mainData.scrollCache.scrollTarget,
+      0, SCROLL_HEIGHT,
+      cast(renderCallback) &renderBookButtons, viewData,
+      SCREEN_BOTTOM_WIDTH,
+      true
+    );
+  }
+  else {
+    renderScrollCache(
+      &mainData.scrollCache.scrollTex, mainData.scrollCache.scrollTarget,
+      -scrollInfo.scrollOffset, -scrollInfo.scrollOffsetLast,
+      cast(renderCallback) &renderBookButtons, viewData,
+      SCREEN_BOTTOM_WIDTH,
+    );
   }
 
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
-  renderBookButtons((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2, scrollInfo.scrollOffset + SCREEN_HEIGHT);
+
+  Tex3DS_SubTexture subtexTop    = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexBottom = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
+  C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
+  C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
+  C2D_Sprite sprite;
+  C2D_SpriteFromImage(&sprite, cacheImageTop);
+
+  C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
+  C2D_DrawSprite(&sprite);
+
+  //renderBookButtons((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2, scrollInfo.scrollOffset + SCREEN_HEIGHT);
 
   if (_3DEnabled) {
     C2D_TargetClear(topRight, CLEAR_COLOR);
     C2D_SceneBegin(topRight);
 
-    renderBookButtons((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2, scrollInfo.scrollOffset + SCREEN_HEIGHT);
+    //renderBookButtons((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2, scrollInfo.scrollOffset + SCREEN_HEIGHT);
+    C2D_DrawSprite(&sprite);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
   C2D_SceneBegin(bottom);
-  renderBookButtons(0, scrollInfo.scrollOffset);
+  //renderBookButtons(0, scrollInfo.scrollOffset);
+  C2D_SpriteFromImage(&sprite, cacheImageBottom);
+  C2D_DrawSprite(&sprite);
 
   C2D_DrawRectSolid(optionsBtn.x, optionsBtn.y, 0.55f, optionsBtn.w, optionsBtn.h, /* i == curBookButton ? BOTTOM_BUTTON_DOWN_COLOR : */ BOTTOM_BUTTON_COLOR);
 
@@ -727,12 +754,18 @@ void renderScrollCache(
     if (scroll == lastScroll) return;
   }
 
+  //fmod doesn't handle negatives the way you'd expect, so we need this instead
+  float wrap(float x, float mod) {
+    import core.stdc.math : floor;
+    return x - mod * floor(x/mod);
+  }
+
   float drawStart  = (lastScroll < scroll) ? lastScroll + SCROLL_HEIGHT : scroll;
   float drawEnd    = (lastScroll < scroll) ? scroll     + SCROLL_HEIGHT : lastScroll;
-  float drawOffset = -(drawStart - fmod(drawStart, SCROLL_HEIGHT));
+  float drawOffset = -(drawStart - wrap(drawStart, SCROLL_HEIGHT));
   float drawHeight = drawEnd-drawStart;
 
-  float drawStartOnTexture = fmod(drawStart, SCROLL_HEIGHT);
+  float drawStartOnTexture = wrap(drawStart, SCROLL_HEIGHT);
   float drawEndOnTexture   = drawStartOnTexture + drawHeight;
   float drawOffTexture     = max(drawEndOnTexture - SCROLL_HEIGHT, 0);
 
@@ -761,4 +794,16 @@ void renderScrollCache(
 
   C2D_Flush();
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
+}
+
+Tex3DS_SubTexture setUvs(float width, float height, float yOffset, float scroll) {
+  Tex3DS_SubTexture result = {
+    width  : cast(ushort) width,
+    height : cast(ushort) height,
+    left   : 0,
+    right  : width/SCROLL_WIDTH,
+    top    : 1.0f - yOffset         /SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
+    bottom : 1.0f - (yOffset+height)/SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
+  };
+  return result;
 }
