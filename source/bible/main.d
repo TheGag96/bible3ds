@@ -35,6 +35,7 @@ struct ScrollCache {
   C3D_Tex scrollTex;
   C3D_RenderTarget* scrollTarget;
   bool needsRepaint;
+  int u_scrollRenderOffset; // location of uniform from scroll_cache.v.pica
 }
 
 struct LoadedPage {
@@ -140,6 +141,7 @@ extern(C) int main(int argc, char** argv) {
     C3D_TexInitVRAM(&scrollTex, SCROLL_WIDTH, SCROLL_HEIGHT, GPUTexColor.rgba8);
     C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
     scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
+    u_scrollRenderOffset = C2D_ShaderGetUniformLocation(C2DShader.scroll_cache, GPUShaderType.vertex_shader, "scrollRenderOffset");
   }
 
   initReadingView(&readingViewData);
@@ -522,7 +524,7 @@ enum BOTTOM_BUTTON_MARGIN = 6.0f;
 enum BOTTOM_BUTTON_COLOR = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
 
 void renderPage(
-  ReadingViewData* viewData, float from, float to, float offset
+  ReadingViewData* viewData, float from, float to
 ) { with (viewData) {
   float width, height;
 
@@ -544,7 +546,7 @@ void renderPage(
   int i = startLine; //max(startLine, 0);
   while (offsetY < to && i < lines.length) {
     C2D_DrawText(
-      &loadedPage.textArray[i], C2D_WordWrapPrecalc, GFXScreen.bottom, startX, offsetY + offset, 0.5f, size, size,
+      &loadedPage.textArray[i], C2D_WordWrapPrecalc, GFXScreen.bottom, startX, offsetY, 0.5f, size, size,
       &loadedPage.wrapInfos[i]
     );
     extra = height * (1 + loadedPage.wrapInfos[i].words[loadedPage.textArray[i].words-1].newLineNumber);
@@ -638,7 +640,7 @@ void renderBookView(
   bool _3DEnabled, float slider3DState
 ) { with (viewData) {
   static void renderBookButtons(
-    BookViewData* viewData, float from, float to, float offset
+    BookViewData* viewData, float from, float to
   ) { with (viewData) {
     enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
     enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
@@ -652,10 +654,10 @@ void renderBookView(
         break;
       }
       else {
-        C2D_DrawRectSolid(btnRealX, btnRealY + offset, 0.0, btn.w, btn.h, i == curBookButton ? BOOK_BUTTON_DOWN_COLOR : BOOK_BUTTON_COLOR);
+        C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, i == curBookButton ? BOOK_BUTTON_DOWN_COLOR : BOOK_BUTTON_COLOR);
 
         C2D_DrawText(
-          btn.text, C2D_WithColor, GFXScreen.top, btnRealX+BOOK_BUTTON_MARGIN, btnRealY+BOOK_BUTTON_MARGIN + offset, 0.5f, 0.5, 0.5, C2D_Color32(255, 255, 255, 255)
+          btn.text, C2D_WithColor, GFXScreen.top, btnRealX+BOOK_BUTTON_MARGIN, btnRealY+BOOK_BUTTON_MARGIN, 0.5f, 0.5, 0.5, C2D_Color32(255, 255, 255, 255)
         );
       }
     }
@@ -703,18 +705,18 @@ void renderBookView(
   );
 }}
 
-alias renderCallback(T) = void function(T* userData, float from, float to, float offset);
+alias renderCallback(T) = void function(T* userData, float from, float to);
 
 void renderScrollCache(T)(
   ScrollCache* scrollCache,
   in ScrollInfo scrollInfo,
-  void function(T* userData, float from, float to, float offset) @nogc nothrow render, T* userData,
+  void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
   float usedWidth,
 ) {
   _renderScrollCacheImpl(
     scrollCache,
     scrollInfo,
-    cast(void function(void* userData, float from, float to, float offset) @nogc nothrow) render, userData,
+    cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
     usedWidth,
   );
 }
@@ -722,12 +724,9 @@ void renderScrollCache(T)(
 private void _renderScrollCacheImpl(
   ScrollCache* scrollCache,
   in ScrollInfo scrollInfo,
-  void function(void* userData, float from, float to, float offset) @nogc nothrow render, void* userData,
+  void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
   float usedWidth,
 ) { with (scrollCache) with (scrollInfo) {
-  float numHeight;
-  C2D_TextGetDimensions(&readingViewData.textArray[1], 0.5, 0.5, null, &numHeight);
-
   //@TODO: Fix this difference in meaning of sign...
   float scroll     = floor(-scrollOffset);
   float scrollLast = floor(-scrollOffsetLast);
@@ -753,33 +752,40 @@ private void _renderScrollCacheImpl(
 
   C2D_SceneBegin(scrollTarget);
 
+  C2D_Flush();
+  C2D_Prepare(C2DShader.scroll_cache);
+
+  C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset, 0, 0);
+
   //carve out stencil and clear piece of screen simulatenously
   C3D_StencilTest(true, GPUTestFunc.always, 1, 0xFF, 0xFF);
   C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
 
-  C2D_DrawRectSolid(0, drawStart + drawOffset, 0, usedWidth, drawHeight, CLEAR_COLOR);
+  C2D_DrawRectSolid(0, drawStart, 0, usedWidth, drawHeight, CLEAR_COLOR);
   C2D_Flush();
 
   //use callback to draw newly scrolled region
   C3D_StencilTest(true, GPUTestFunc.equal, 1, 0xFF, 0xFF);
   C3D_StencilOp(GPUStencilOp.keep, GPUStencilOp.keep, GPUStencilOp.keep);
 
-  render(userData, drawStart, drawEnd - drawOffTexture, drawOffset);
+  render(userData, drawStart, drawEnd - drawOffTexture);
   C2D_Flush();
 
   //draw from top if we draw past the bottom. use a different stencil to prevent overwriting stuff we just drew
   if (drawEndOnTexture >= SCROLL_HEIGHT) {
+    C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - SCROLL_HEIGHT, 0, 0);
     C3D_StencilTest(true, GPUTestFunc.always, 2, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
-    C2D_DrawRectSolid(0, drawStart + drawOffset - SCROLL_HEIGHT, 0, usedWidth, drawHeight, CLEAR_COLOR);
+    C2D_DrawRectSolid(0, drawStart, 0, usedWidth, drawHeight, CLEAR_COLOR);
     C2D_Flush();
 
     C3D_StencilTest(true, GPUTestFunc.equal, 2, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.keep, GPUStencilOp.keep, GPUStencilOp.keep);
-    render(userData, drawEnd - drawOffTexture, drawEnd, drawOffset - SCROLL_HEIGHT);
+    render(userData, drawEnd - drawOffTexture, drawEnd);
     C2D_Flush();
   }
 
+  C2D_Prepare(C2DShader.normal);
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
 
   needsRepaint = false;

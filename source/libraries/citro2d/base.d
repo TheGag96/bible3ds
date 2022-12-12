@@ -20,6 +20,7 @@ enum C2D_DEFAULT_MAX_OBJECTS = 4096;
 enum C2DShader {
   normal,
   scanline_offset,
+  scroll_cache,
 }
 
 enum C2D_NUM_SHADERS = C2DShader.max + 1;
@@ -30,8 +31,9 @@ __gshared C2DShader __C2Di_CurrentShader;
 
 enum SHADER_GET(string name) = cast(immutable(ubyte)[]) import(name ~ ".shbin");
 
-static immutable RENDER2D_SHBIN = SHADER_GET!("render2d");
-static immutable RENDER2G_SHBIN = SHADER_GET!("render2g");
+static immutable RENDER2D_SHBIN     = SHADER_GET!("render2d");
+static immutable RENDER2G_SHBIN     = SHADER_GET!("render2g");
+static immutable SCROLL_CACHE_SHBIN = SHADER_GET!("scroll_cache");
 
 struct C2D_DrawParams
 {
@@ -425,7 +427,8 @@ bool C2D_Init(size_t maxObjects)
 {
     __C2Di_CurrentShader = C2DShader.normal;
 
-    for (int shaderId = 0; shaderId < C2D_NUM_SHADERS; shaderId++) {
+    for (int _shaderId = 0; _shaderId < C2D_NUM_SHADERS; _shaderId++) {
+        auto shaderId = cast(C2DShader) _shaderId;
         C2Di_Context* ctx = &__C2Di_Contexts[shaderId];
         if (ctx.flags & C2DiF_Active)
             return false;
@@ -437,6 +440,9 @@ bool C2D_Init(size_t maxObjects)
                 break;
             case C2DShader.scanline_offset:
                 vertsPerSprite = 2;
+                break;
+            case C2DShader.scroll_cache:
+                vertsPerSprite = 6;
                 break;
         }
 
@@ -451,6 +457,9 @@ bool C2D_Init(size_t maxObjects)
                 break;
             case C2DShader.scanline_offset:
                 ctx.shader = DVLB_ParseFile(cast(uint*)RENDER2G_SHBIN.ptr, RENDER2G_SHBIN.length);
+                break;
+            case C2DShader.scroll_cache:
+                ctx.shader = DVLB_ParseFile(cast(uint*)SCROLL_CACHE_SHBIN.ptr, SCROLL_CACHE_SHBIN.length);
                 break;
         }
 
@@ -469,6 +478,9 @@ bool C2D_Init(size_t maxObjects)
                 break;
             case C2DShader.scanline_offset:
                 shaderProgramSetGsh(&ctx.program, &ctx.shader.DVLE[1], cast(ubyte) (4*vertsPerSprite));
+                break;
+            case C2DShader.scroll_cache:
+                shaderProgramSetGsh(&ctx.program, &ctx.shader.DVLE[1], cast(ubyte) (4*vertsPerSprite/2));
                 break;
         }
 
@@ -1123,4 +1135,13 @@ void C2Di_Update()
   }
 
   ctx.flags &= ~C2DiF_DirtyAny;
+}
+
+int C2D_ShaderGetUniformLocation(C2DShader shaderId, GPUShaderType shaderType, const(char)* name) {
+    if (shaderType == GPUShaderType.vertex_shader) {
+        return shaderInstanceGetUniformLocation(__C2Di_Contexts[shaderId].program.vertexShader,   name);
+    }
+    else {
+        return shaderInstanceGetUniformLocation(__C2Di_Contexts[shaderId].program.geometryShader, name);
+    }
 }
