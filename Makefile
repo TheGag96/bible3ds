@@ -145,16 +145,15 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
-export SHBINDIR	:=	$(BUILD)/__SHBIN
-export SHBINDIR2	:=	__SHBIN
-# make is bad
+export SHBINDIR	:=	$(BUILD)
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 export DFILES := $(shell cd $(SOURCES) && find . -type f -name '*.d')
 # export DFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.d)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
+export PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
+export SHBINFILES	:=	$(PICAFILES:.v.pica=.shbin)
 SHLISTFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
 GFXFILES	:=	$(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.t3s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
@@ -190,7 +189,6 @@ export OFILES_SOURCES 	:= $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES_D_SOURCES := main.o
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
-			$(PICAFILES:.v.pica=.shbin.o) $(SHLISTFILES:.shlist=.shbin.o) \
 			$(addsuffix .o,$(T3XFILES))
 
 export OFILES   := $(OFILES_BIN) $(OFILES_SOURCES) $(OFILES_D_SOURCES)
@@ -237,7 +235,6 @@ all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 
 $(BUILD):
 	@mkdir -p $@
-	@mkdir $(SHBINDIR)
 
 ifneq ($(GFXBUILD),$(BUILD))
 $(GFXBUILD):
@@ -282,12 +279,12 @@ $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT).elf	:	$(OFILES) $(OFILES_D)
 
-main.o: $(OFILES_BIN) $(DFILES)
+main.o: $(OFILES_BIN) $(DFILES) $(SHBINFILES)
 	$(SILENTMSG) $(notdir $<)
 ifeq ($(DCOMPILER),LDC)
-	$(SILENTCMD)$(LDC) $(DFLAGS) -I=$(SHBINDIR2) -c $^ -of=$@ $(ERROR_FILTER)
+	$(SILENTCMD)$(LDC) $(DFLAGS) -J=. -c $(OFILES_BIN) $(addprefix ../$(SOURCES)/,$(DFILES)) -of=$@ $(ERROR_FILTER)
 else ifeq ($(DCOMPILER),GDC)
-	$(SILENTCMD)$(GDC) $(DFLAGS) -c $^ -o $@ $(ERROR_FILTER)
+	$(SILENTCMD)$(GDC) $(DFLAGS) -J=. -c $(OFILES_BIN) $(addprefix ../$(SOURCES)/,$(DFILES)) -o $@ $(ERROR_FILTER)
 else
 	$(SILENTMSG) ERROR: Please specify a D compiler in the Makefile or command line args!
 endif
@@ -311,46 +308,21 @@ endif
 #---------------------------------------------------------------------------------
 # rules for assembling GPU shaders
 #---------------------------------------------------------------------------------
-define shader-as
-	$(eval CURBIN := $*.shbin)
-	$(eval DEPSFILE := $(DEPSDIR)/$*.shbin.d)
-	$(eval SHADER_NAME := $(shell echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _))
-	echo "$(CURBIN).o: $< $1" > $(DEPSFILE)
-	echo "extern const u8" $(SHADER_NAME)"_end[];" > `(echo $(CURBIN) | tr . _)`.h
-	echo "extern const u8" $(SHADER_NAME)"[];" >> `(echo $(CURBIN) | tr . _)`.h
-	echo "extern const u32" $(SHADER_NAME)_size";" >> `(echo $(CURBIN) | tr . _)`.h
-	picasso -o $(CURBIN) $1
-	bin2s $(CURBIN) | $(AS) -o $*.shbin.o
-endef
-
 define shader-as-d
 	$(eval CURBIN := $*.shbin)
-	$(eval SHADER_NAME := $(shell echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _))
-	echo "module pica_$(SHADER_NAME);" > $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "nothrow: @nogc:" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "pragma(mangle, \"$(SHADER_NAME)_end\") extern (C) extern __gshared const(ubyte) $(SHADER_NAME)_end_base;" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "extern (D) __gshared const(ubyte)* $(SHADER_NAME)_end() { return &$(SHADER_NAME)_end_base; }" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "extern (C) extern __gshared const uint" $(SHADER_NAME)_size";" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "pragma(mangle, \"$(SHADER_NAME)\") extern (C) extern __gshared const(ubyte) $(SHADER_NAME)_base;" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "extern (D) __gshared const(ubyte)* $(SHADER_NAME)() { return &$(SHADER_NAME)_base; }" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
-	echo "const(ubyte)[]  $(SHADER_NAME)_wrapped() { return (&$(SHADER_NAME)_base)[0..$(SHADER_NAME)_size]; }" >> $(SHBINDIR2)/pica_`(echo $(CURBIN) | tr . _)`.d
 	picasso -o $(CURBIN) $1
-	bin2s $(CURBIN) | $(AS) -o $*.shbin.o
 endef
 
-%.shbin.o %_shbin.h %_shbin.d : %.v.pica %.g.pica
+%.shbin : %.v.pica %.g.pica
 	@echo $(notdir $^)
-	@$(call shader-as,$^)
 	@$(call shader-as-d,$^)
 
-%.shbin.o %_shbin.h %_shbin.d : %.v.pica
+%.shbin : %.v.pica
 	@echo $(notdir $<)
-	@$(call shader-as,$<)
 	@$(call shader-as-d,$<)
 
-%.shbin.o %_shbin.h %_shbin.d : %.shlist
+%.shbin : %.shlist # @TODO: does this still work? do we need this?
 	@echo $(notdir $<)
-	@$(call shader-as,$(foreach file,$(shell cat $<),$(dir $<)$(file)))
 	@$(call shader-as-d,$(foreach file,$(shell cat $<),$(dir $<)$(file)))
 
 #---------------------------------------------------------------------------------

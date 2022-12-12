@@ -12,8 +12,6 @@ import ctru.services.gspgpu;
 import ctru.types;
 import citro3d;
 import citro2d.internal;
-import pica_render2d_shbin;
-import pica_render2g_shbin;
 
 extern (C): nothrow: @nogc:
 
@@ -29,6 +27,11 @@ enum C2D_NUM_SHADERS = C2DShader.max + 1;
 __gshared C2Di_Context[C2D_NUM_SHADERS] __C2Di_Contexts;
 __gshared C3D_Mtx s_projTop, s_projBot;
 __gshared C2DShader __C2Di_CurrentShader;
+
+enum SHADER_GET(string name) = cast(immutable(ubyte)[]) import(name ~ ".shbin");
+
+static immutable RENDER2D_SHBIN = SHADER_GET!("render2d");
+static immutable RENDER2G_SHBIN = SHADER_GET!("render2g");
 
 struct C2D_DrawParams
 {
@@ -444,10 +447,10 @@ bool C2D_Init(size_t maxObjects)
 
         final switch (shaderId) {
             case C2DShader.normal:
-                ctx.shader = DVLB_ParseFile(cast(uint*)&render2d_shbin_base, render2d_shbin_size);
+                ctx.shader = DVLB_ParseFile(cast(uint*)RENDER2D_SHBIN.ptr, RENDER2D_SHBIN.length);
                 break;
             case C2DShader.scanline_offset:
-                ctx.shader = DVLB_ParseFile(cast(uint*)&render2g_shbin_base, render2g_shbin_size);
+                ctx.shader = DVLB_ParseFile(cast(uint*)RENDER2G_SHBIN.ptr, RENDER2G_SHBIN.length);
                 break;
         }
 
