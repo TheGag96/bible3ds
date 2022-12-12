@@ -729,8 +729,8 @@ private void _renderScrollCacheImpl(
   C2D_TextGetDimensions(&readingViewData.textArray[1], 0.5, 0.5, null, &numHeight);
 
   //@TODO: Fix this difference in meaning of sign...
-  float scroll     = -scrollOffset;
-  float scrollLast = -scrollOffsetLast;
+  float scroll     = floor(-scrollOffset);
+  float scrollLast = floor(-scrollOffsetLast);
 
   if (needsRepaint) {
     scroll     = scroll;
@@ -740,12 +740,6 @@ private void _renderScrollCacheImpl(
   else {
     C3D_RenderTargetClear(scrollTarget, C3DClearBits.clear_depth, 0, 0);
     if (scrollOffset == scrollOffsetLast) return;
-  }
-
-  //fmod doesn't handle negatives the way you'd expect, so we need this instead
-  float wrap(float x, float mod) {
-    import core.stdc.math : floor;
-    return x - mod * floor(x/mod);
   }
 
   float drawStart  = (scrollLast < scroll) ? scrollLast + SCROLL_HEIGHT : scroll;
@@ -797,8 +791,14 @@ Tex3DS_SubTexture setUvs(float width, float height, float yOffset, float scroll)
     height : cast(ushort) height,
     left   : 0,
     right  : width/SCROLL_WIDTH,
-    top    : 1.0f - yOffset         /SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
-    bottom : 1.0f - (yOffset+height)/SCROLL_HEIGHT + scroll/SCROLL_HEIGHT,
+    top    : 1.0f - yOffset         /SCROLL_HEIGHT + floor(wrap(scroll, SCROLL_HEIGHT))/SCROLL_HEIGHT,
+    bottom : 1.0f - (yOffset+height)/SCROLL_HEIGHT + floor(wrap(scroll, SCROLL_HEIGHT))/SCROLL_HEIGHT,
   };
   return result;
+}
+
+//fmod doesn't handle negatives the way you'd expect, so we need this instead
+float wrap(float x, float mod) {
+  import core.stdc.math : floor;
+  return x - mod * floor(x/mod);
 }
