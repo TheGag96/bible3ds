@@ -25,6 +25,10 @@ nothrow: @nogc:
 
 __gshared TickCounter tickCounter;
 
+enum SCREEN_TOP_WIDTH    = 400.0f;
+enum SCREEN_BOTTOM_WIDTH = 320.0f;
+enum SCREEN_HEIGHT       = 240.0f;
+
 struct ScrollInfo {
   float scrollOffset = 0, scrollOffsetLast = 0;
   OneFrameEvent startedScrolling;
@@ -34,6 +38,8 @@ struct ScrollInfo {
 struct ScrollCache {
   C3D_Tex scrollTex;
   C3D_RenderTarget* scrollTarget;
+  float texWidth, texHeight;
+
   bool needsRepaint;
   int u_scrollRenderOffset; // location of uniform from scroll_cache.v.pica
   ubyte curStencilVal;
@@ -138,12 +144,10 @@ extern(C) int main(int argc, char** argv) {
 
   osTickCounterStart(&tickCounter);
 
-  with (mainData.scrollCache) {
-    C3D_TexInitVRAM(&scrollTex, SCROLL_WIDTH, SCROLL_HEIGHT, GPUTexColor.rgba8);
-    C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
-    scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
-    u_scrollRenderOffset = C2D_ShaderGetUniformLocation(C2DShader.scroll_cache, GPUShaderType.vertex_shader, "scrollRenderOffset");
-  }
+  enum SCROLL_CACHE_WIDTH  = cast(ushort) SCREEN_BOTTOM_WIDTH,
+       SCROLL_CACHE_HEIGHT = cast(ushort) (2*SCREEN_HEIGHT);
+
+  mainData.scrollCache = scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   initReadingView(&readingViewData);
   initBookView(&bookViewData);
@@ -378,11 +382,6 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float li
   }
 }}
 
-enum SCREEN_TOP_WIDTH    = 400.0f;
-enum SCREEN_BOTTOM_WIDTH = 320.0f;
-enum SCREEN_HEIGHT       = 240.0f;
-enum SCROLL_WIDTH = 512, SCROLL_HEIGHT = 512;
-
 void initReadingView(ReadingViewData* viewData) { with (viewData) {
   textBuf   = C2D_TextBufNew(192);
   textArray = allocArray!C2D_Text(128);
@@ -489,8 +488,8 @@ void renderReadingView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  Tex3DS_SubTexture subtexTop    = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
-  Tex3DS_SubTexture subtexBottom = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
   C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
   C2D_Sprite sprite;
@@ -692,8 +691,8 @@ void renderBookView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  Tex3DS_SubTexture subtexTop    = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
-  Tex3DS_SubTexture subtexBottom = setUvs(SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
   C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
   C2D_Sprite sprite;
@@ -724,6 +723,27 @@ void renderBookView(
   );
 }}
 
+ScrollCache scrollCacheCreate(ushort width, ushort height) {
+  import std.math.algebraic : nextPow2;
+
+  ScrollCache result;
+
+  with (result) {
+    //round sizes to power of two if needed
+    width  = (width  & (width  - 1)) ? nextPow2(width)  : width;
+    height = (height & (height - 1)) ? nextPow2(height) : height;
+    texWidth  = width;
+    texHeight = height;
+
+    C3D_TexInitVRAM(&scrollTex, width, height, GPUTexColor.rgba8);
+    C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
+    scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
+    u_scrollRenderOffset = C2D_ShaderGetUniformLocation(C2DShader.scroll_cache, GPUShaderType.vertex_shader, "scrollRenderOffset");
+  }
+
+  return result;
+}
+
 alias renderCallback(T) = void function(T* userData, float from, float to);
 
 void scrollCacheBeginFrame(ScrollCache* scrollCache) { with (scrollCache) {
@@ -748,22 +768,20 @@ void scrollCacheRenderScrollUpdate(T)(
 ) { with (scrollCache) with (scrollInfo) {
   float drawStart, drawEnd;
 
+    //@TODO: Fix this difference in meaning of sign...
   float scroll     = floor(-scrollOffset),
         scrollLast = floor(-scrollOffsetLast);
 
   if (needsRepaint) {
     needsRepaint = false;
     drawStart = scroll;
-    drawEnd   = scroll+SCROLL_HEIGHT;
-    //C2D_TargetClear(scrollTarget, CLEAR_COLOR);
+    drawEnd   = scroll+texHeight;
   }
   else {
     if (scrollOffset == scrollOffsetLast) return;
 
-    //@TODO: Fix this difference in meaning of sign...
-
-    drawStart  = (scrollLast < scroll) ? scrollLast + SCROLL_HEIGHT : scroll;
-    drawEnd    = (scrollLast < scroll) ? scroll     + SCROLL_HEIGHT : scrollLast;
+    drawStart  = (scrollLast < scroll) ? scrollLast + texHeight : scroll;
+    drawEnd    = (scrollLast < scroll) ? scroll     + texHeight : scrollLast;
   }
 
   _scrollCacheRenderRegionImpl(
@@ -797,12 +815,12 @@ private void _scrollCacheRenderRegionImpl(
 ) { with (scrollCache) {
   float drawStart  = from;
   float drawEnd    = to;
-  float drawOffset = -(drawStart - wrap(drawStart, SCROLL_HEIGHT));
+  float drawOffset = -(drawStart - wrap(drawStart, texHeight));
   float drawHeight = drawEnd-drawStart;
 
-  float drawStartOnTexture = wrap(drawStart, SCROLL_HEIGHT);
+  float drawStartOnTexture = wrap(drawStart, texHeight);
   float drawEndOnTexture   = drawStartOnTexture + drawHeight;
-  float drawOffTexture     = max(drawEndOnTexture - SCROLL_HEIGHT, 0);
+  float drawOffTexture     = max(drawEndOnTexture - texHeight, 0);
 
   C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset, 0, 0);
 
@@ -822,8 +840,8 @@ private void _scrollCacheRenderRegionImpl(
   curStencilVal++;
 
   //draw from top if we draw past the bottom. use a different stencil to prevent overwriting stuff we just drew
-  if (drawEndOnTexture >= SCROLL_HEIGHT) {
-    C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - SCROLL_HEIGHT, 0, 0);
+  if (drawEndOnTexture >= texHeight) {
+    C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - texHeight, 0, 0);
     C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
     C2D_DrawRectSolid(0, drawStart, 0, usedWidth, drawHeight, CLEAR_COLOR);
@@ -838,17 +856,20 @@ private void _scrollCacheRenderRegionImpl(
   }
 }}
 
-Tex3DS_SubTexture setUvs(float width, float height, float yOffset, float scroll) {
+Tex3DS_SubTexture scrollCacheGetUvs(
+  in ScrollCache scrollCache,
+  float width, float height, float yOffset, float scroll
+) { with (scrollCache) {
   Tex3DS_SubTexture result = {
     width  : cast(ushort) width,
     height : cast(ushort) height,
     left   : 0,
-    right  : width/SCROLL_WIDTH,
-    top    : 1.0f - yOffset         /SCROLL_HEIGHT + floor(wrap(scroll, SCROLL_HEIGHT))/SCROLL_HEIGHT,
-    bottom : 1.0f - (yOffset+height)/SCROLL_HEIGHT + floor(wrap(scroll, SCROLL_HEIGHT))/SCROLL_HEIGHT,
+    right  : width/texWidth,
+    top    : 1.0f - yOffset         /texHeight + floor(wrap(scroll, texHeight))/texHeight,
+    bottom : 1.0f - (yOffset+height)/texHeight + floor(wrap(scroll, texHeight))/texHeight,
   };
   return result;
-}
+}}
 
 //fmod doesn't handle negatives the way you'd expect, so we need this instead
 float wrap(float x, float mod) {
