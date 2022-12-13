@@ -141,7 +141,7 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
   final switch (scrollMethodCur) {
     case ScrollMethod.none:
       if (prevHeld(Key.touch)) {
-        scrollVel = max(min(prevTouchRaw.py - prevPrevTouchRaw.py, 40), -40);
+        scrollVel = max(min(prevPrevTouchRaw.py - prevTouchRaw.py, 40), -40);
       }
       result.y = scrollVel;
       scrollVel *= 0.95;
@@ -151,16 +151,16 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
       }
       break;
     case ScrollMethod.dpad:
-      if      (held(Key.dup))    result.y =  5;
-      else if (held(Key.ddown))  result.y = -5;
+      if      (held(Key.dup))    result.y = -5;
+      else if (held(Key.ddown))  result.y =  5;
       else if (held(Key.dleft))  result.x = -5;
       else if (held(Key.dright)) result.x =  5;
       break;
     case ScrollMethod.circle:
-      result = ScrollDiff(circleRaw.dx/10, circleRaw.dy/10);
+      result = ScrollDiff(circleRaw.dx/10, -circleRaw.dy/10);
       break;
     case ScrollMethod.touch:
-      result = ScrollDiff(touchRaw.px - prevTouchRaw.px, touchRaw.py - prevTouchRaw.py);
+      result = ScrollDiff(prevTouchRaw.px - touchRaw.px, prevTouchRaw.py - touchRaw.py);
       break;
   }
 

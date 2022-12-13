@@ -328,12 +328,12 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float li
     scrollOffset += scrollDiff.y;
   }
 
-  if (scrollOffset > -limitTop) {
-    scrollOffset = -limitTop;
+  if (scrollOffset < limitTop) {
+    scrollOffset = limitTop;
     input.scrollVel = 0;
   }
-  else if (scrollOffset < -limitBottom) {
-    scrollOffset = -limitBottom;
+  else if (scrollOffset > limitBottom) {
+    scrollOffset = limitBottom;
     input.scrollVel = 0;
   }
 
@@ -343,12 +343,12 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float li
   ////
 
   if ( scrollJustStopped == OneFrameEvent.not_triggered &&
-       ( scrollOffset == -limitTop || scrollOffset == -limitBottom ) &&
+       ( scrollOffset == limitTop || scrollOffset == limitBottom ) &&
        scrollOffset != scrollOffsetLast )
   {
     scrollJustStopped = OneFrameEvent.triggered;
   }
-  else if (scrollOffset != -limitTop && scrollOffset != -limitBottom) {
+  else if (scrollOffset != limitTop && scrollOffset != limitBottom) {
     scrollJustStopped = OneFrameEvent.not_triggered;
   }
 
@@ -590,7 +590,7 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
 
   if (input.down(Key.touch) && input.scrollMethodCur == ScrollMethod.none) {
     foreach (i, ref btn; bookButtons) {
-      float btnRealY = btn.y + scrollInfo.scrollOffset;
+      float btnRealY = btn.y - scrollInfo.scrollOffset;
       float touchRealX = input.touchRaw.px, touchRealY = input.touchRaw.py + SCREEN_HEIGHT;
 
       if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
@@ -606,7 +606,7 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   }
   else if (curBookButton != -1) {
     Button* btn = &bookButtons[curBookButton];
-    float btnRealY = btn.y + scrollInfo.scrollOffset;
+    float btnRealY = btn.y - scrollInfo.scrollOffset;
     float touchRealX = input.prevTouchRaw.px, touchRealY = input.prevTouchRaw.py + SCREEN_HEIGHT;
 
     bool hoveredOverCurrentButton = touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
@@ -768,9 +768,8 @@ void scrollCacheRenderScrollUpdate(T)(
 ) { with (scrollCache) with (scrollInfo) {
   float drawStart, drawEnd;
 
-    //@TODO: Fix this difference in meaning of sign...
-  float scroll     = floor(-scrollOffset),
-        scrollLast = floor(-scrollOffsetLast);
+  float scroll     = floor(scrollOffset),
+        scrollLast = floor(scrollOffsetLast);
 
   if (needsRepaint) {
     needsRepaint = false;
@@ -865,8 +864,8 @@ Tex3DS_SubTexture scrollCacheGetUvs(
     height : cast(ushort) height,
     left   : 0,
     right  : width/texWidth,
-    top    : 1.0f - yOffset         /texHeight + floor(wrap(scroll, texHeight))/texHeight,
-    bottom : 1.0f - (yOffset+height)/texHeight + floor(wrap(scroll, texHeight))/texHeight,
+    top    : 1.0f - yOffset         /texHeight - floor(wrap(scroll, texHeight))/texHeight,
+    bottom : 1.0f - (yOffset+height)/texHeight - floor(wrap(scroll, texHeight))/texHeight,
   };
   return result;
 }}
