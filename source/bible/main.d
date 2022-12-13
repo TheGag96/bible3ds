@@ -38,7 +38,7 @@ struct ScrollInfo {
 struct ScrollCache {
   C3D_Tex scrollTex;
   C3D_RenderTarget* scrollTarget;
-  float texWidth, texHeight;
+  float desiredWidth = 0, desiredHeight = 0, texWidth = 0, texHeight = 0;
 
   bool needsRepaint;
   int u_scrollRenderOffset; // location of uniform from scroll_cache.v.pica
@@ -481,7 +481,6 @@ void renderReadingView(
     &mainData.scrollCache,
     loadedPage.scrollInfo,
     &renderPage, viewData,
-    SCREEN_BOTTOM_WIDTH,
   );
   scrollCacheEndFrame(&mainData.scrollCache);
 
@@ -673,7 +672,6 @@ void renderBookView(
     &mainData.scrollCache,
     scrollInfo,
     &renderBookButtons, viewData,
-    SCREEN_BOTTOM_WIDTH,
   );
 
   if (curBookButton != -1 || curBookButtonLast != -1) {
@@ -683,7 +681,6 @@ void renderBookView(
       &mainData.scrollCache,
       btn.y, btn.y+btn.h,
       &renderBookButtons, viewData,
-      SCREEN_BOTTOM_WIDTH,
     );
   }
   scrollCacheEndFrame(&mainData.scrollCache);
@@ -730,10 +727,12 @@ ScrollCache scrollCacheCreate(ushort width, ushort height) {
 
   with (result) {
     //round sizes to power of two if needed
-    width  = (width  & (width  - 1)) ? nextPow2(width)  : width;
-    height = (height & (height - 1)) ? nextPow2(height) : height;
-    texWidth  = width;
-    texHeight = height;
+    desiredWidth  = width;
+    desiredHeight = height;
+    width         = (width  & (width  - 1)) ? nextPow2(width)  : width;
+    height        = (height & (height - 1)) ? nextPow2(height) : height;
+    texWidth      = width;
+    texHeight     = height;
 
     C3D_TexInitVRAM(&scrollTex, width, height, GPUTexColor.rgba8);
     C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
@@ -764,7 +763,18 @@ void scrollCacheRenderScrollUpdate(T)(
   ScrollCache* scrollCache,
   in ScrollInfo scrollInfo,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
-  float usedWidth,
+) {
+  _scrollCacheRenderScrollUpdateImpl(
+    scrollCache,
+    scrollInfo,
+    cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
+  );
+}
+
+void _scrollCacheRenderScrollUpdateImpl(
+  ScrollCache* scrollCache,
+  in ScrollInfo scrollInfo,
+  void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
 ) { with (scrollCache) with (scrollInfo) {
   float drawStart, drawEnd;
 
@@ -786,8 +796,7 @@ void scrollCacheRenderScrollUpdate(T)(
   _scrollCacheRenderRegionImpl(
     scrollCache,
     drawStart, drawEnd,
-    cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
-    usedWidth,
+    render, userData,
   );
 }}
 
@@ -796,13 +805,11 @@ void scrollCacheRenderRegion(T)(
   ScrollCache* scrollCache,
   float from, float to,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
-  float usedWidth,
 ) {
   _scrollCacheRenderRegionImpl(
     scrollCache,
     from, to,
     cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
-    usedWidth,
   );
 }
 
@@ -810,7 +817,6 @@ private void _scrollCacheRenderRegionImpl(
   ScrollCache* scrollCache,
   float from, float to,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
-  float usedWidth,
 ) { with (scrollCache) {
   float drawStart  = from;
   float drawEnd    = to;
@@ -827,7 +833,7 @@ private void _scrollCacheRenderRegionImpl(
   C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
   C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
 
-  C2D_DrawRectSolid(0, drawStart, 0, usedWidth, drawHeight, CLEAR_COLOR);
+  C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, CLEAR_COLOR);
   C2D_Flush();
 
   //use callback to draw newly scrolled region
@@ -843,7 +849,7 @@ private void _scrollCacheRenderRegionImpl(
     C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - texHeight, 0, 0);
     C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
-    C2D_DrawRectSolid(0, drawStart, 0, usedWidth, drawHeight, CLEAR_COLOR);
+    C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, CLEAR_COLOR);
     C2D_Flush();
 
     C3D_StencilTest(true, GPUTestFunc.equal, curStencilVal, 0xFF, 0xFF);
