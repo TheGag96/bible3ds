@@ -31,6 +31,7 @@ enum SCREEN_HEIGHT       = 240.0f;
 
 struct ScrollInfo {
   float scrollOffset = 0, scrollOffsetLast = 0;
+  float limitTop = 0, limitBottom = 0;
   OneFrameEvent startedScrolling;
   OneFrameEvent scrollJustStopped;
 }
@@ -312,10 +313,13 @@ void unloadPage(LoadedPage* page) { with (page) {
   if (textBuf) C2D_TextBufClear(textBuf);
 }}
 
-void handleScroll(ScrollInfo* scrollInfo, Input* input, float limitTop, float limitBottom) { with (scrollInfo) {
+void handleScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom) { with (scrollInfo) {
   enum SCROLL_TICK_DISTANCE = 60;
 
   auto scrollDiff = updateScrollDiff(input);
+
+  limitTop    = newLimitTop;
+  limitBottom = newLimitBottom;
 
   scrollOffsetLast = scrollOffset;
 
@@ -496,6 +500,7 @@ void renderReadingView(
 
   C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
   C2D_DrawSprite(&sprite);
+  renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight);
 
   if (_3DEnabled) {
     C2D_TargetClear(topRight, CLEAR_COLOR);
@@ -697,6 +702,7 @@ void renderBookView(
 
   C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
   C2D_DrawSprite(&sprite);
+  renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
 
   if (_3DEnabled) {
     C2D_TargetClear(topRight, CLEAR_COLOR);
@@ -881,3 +887,12 @@ float wrap(float x, float mod) {
   import core.stdc.math : floor;
   return x - mod * floor(x/mod);
 }
+
+void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float yMax, float viewHeight, bool rightJustified = false) { with (scrollInfo) {
+  enum WIDTH = 4;
+  float scale = (yMax - yMin) / (limitBottom - limitTop + viewHeight);
+  float height = viewHeight * scale;
+
+  //@TODO: gramphics
+  C2D_DrawRectSolid(x - rightJustified*WIDTH, yMin + scrollOffset * scale, 0, WIDTH, height, C2D_Color32(0x20, 0x60, 0xDD, 0xFF));
+}}
