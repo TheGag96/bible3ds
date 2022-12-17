@@ -34,6 +34,9 @@ struct ScrollInfo {
   float limitTop = 0, limitBottom = 0;
   OneFrameEvent startedScrolling;
   OneFrameEvent scrollJustStopped;
+  bool pushingAgainstLimit;
+  int pushingAgainstTimer;
+  enum PUSHING_AGAINST_TIMER_MAX = 10;
 }
 
 struct ScrollCache {
@@ -69,21 +72,35 @@ enum View {
 __gshared View curView = View.book;
 
 struct Button {
+  int id;
   float x = 0, y = 0, w = 0, h = 0;
   C2D_Text* text;
   float textW, textH;
+}
+
+struct UiState {
+  int buttonHovered, buttonHoveredLast;
+  int buttonHeld, buttonHeldLast;
 }
 
 struct BookViewData {
   C2D_TextBuf textBuf;
   C2D_Text[] textArray;
 
+  enum BookButton {
+    none = -1,
+    genesis = Book.min,
+    revelation = Book.max,
+    options
+  }
+
   Button[Book.max+1] bookButtons;
   Button optionsBtn;
 
   ScrollInfo scrollInfo;
-  int curBookButton, curBookButtonLast;
-  int chosenBook;
+
+  UiState uiState;
+  Book chosenBook;
 }
 
 enum OneFrameEvent {
@@ -346,14 +363,27 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float
   // handle scrolling events
   ////
 
-  if ( scrollJustStopped == OneFrameEvent.not_triggered &&
-       ( scrollOffset == limitTop || scrollOffset == limitBottom ) &&
-       scrollOffset != scrollOffsetLast )
-  {
-    scrollJustStopped = OneFrameEvent.triggered;
+  pushingAgainstLimit = false;
+  if (scrollOffset == limitTop || scrollOffset == limitBottom) {
+    if ( scrollJustStopped == OneFrameEvent.not_triggered &&
+         scrollOffset != scrollOffsetLast )
+    {
+      scrollJustStopped = OneFrameEvent.triggered;
+    }
+
+    if (input.scrollMethodCur != ScrollMethod.none) {
+      pushingAgainstLimit = true;
+    }
   }
-  else if (scrollOffset != limitTop && scrollOffset != limitBottom) {
+  else {
     scrollJustStopped = OneFrameEvent.not_triggered;
+  }
+
+  if (pushingAgainstLimit) {
+    if (pushingAgainstTimer < PUSHING_AGAINST_TIMER_MAX) pushingAgainstTimer++;
+  }
+  else if (pushingAgainstTimer > 0) {
+    pushingAgainstTimer--;
   }
 
   if ( startedScrolling == OneFrameEvent.not_triggered &&
@@ -405,7 +435,7 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   C2D_TextParse(text, textBuf, "Back");
   C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
   auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  backBtn = Button(0, SCREEN_HEIGHT - buttonHeight, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
+  backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
 
   char[3] buf = 0;
   foreach (i; 1..85) {
@@ -518,13 +548,14 @@ void renderReadingView(
 
   auto centerX = backBtn.x + backBtn.w/2 - backBtn.textW/2;
   auto centerY = backBtn.y + backBtn.h/2 - backBtn.textH/2;
-  C2D_DrawRectSolid(backBtn.x, backBtn.y, 0.55f, backBtn.w, backBtn.h, /* i == curBookButton ? BOTTOM_BUTTON_DOWN_COLOR : */ BOTTOM_BUTTON_COLOR);
+  C2D_DrawRectSolid(backBtn.x, backBtn.y, 0.55f, backBtn.w, backBtn.h, /* i == buttonHeld ? BOTTOM_BUTTON_DOWN_COLOR : */ BOTTOM_BUTTON_COLOR);
   C2D_DrawText(
     backBtn.text, C2D_WithColor, GFXScreen.bottom, centerX, centerY, 0.6f, 0.5, 0.5, C2D_Color32(0x11, 0x11, 0x11, 255)
   );
 }}
 
 enum MARGIN = 8.0f;
+enum BOOK_BUTTON_WIDTH = 200.0f;
 enum BOOK_BUTTON_MARGIN = 8.0f;
 enum BOTTOM_BUTTON_MARGIN = 6.0f;
 enum BOTTOM_BUTTON_COLOR = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
@@ -568,12 +599,13 @@ void initBookView(BookViewData* viewData) { with (viewData) {
   foreach (i, name; BOOK_NAMES) {
     Button* btn = &bookButtons[i];
 
+    btn.id = i;
     btn.text = &textArray[i];
     C2D_TextParse(btn.text, textBuf, name.ptr);
     C2D_TextGetDimensions(btn.text, 0.5, 0.5, &btn.textW, &btn.textH);
-    btn.x = 100;
+    btn.x = SCREEN_BOTTOM_WIDTH/2 - BOOK_BUTTON_WIDTH/2;
     btn.y = i*(btn.textH+24) + SCREEN_HEIGHT;
-    btn.w = btn.textW + 2*BOOK_BUTTON_MARGIN;
+    btn.w = BOOK_BUTTON_WIDTH;
     btn.h = btn.textH + 2*BOOK_BUTTON_MARGIN;
   }
 
@@ -582,57 +614,91 @@ void initBookView(BookViewData* viewData) { with (viewData) {
   C2D_TextParse(text, textBuf, "Options");
   C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
   auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  optionsBtn = Button(0, SCREEN_HEIGHT - buttonHeight, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
+  optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
 
-  curBookButton = -1;
+  uiState.buttonHeld    = BookButton.none;
+  uiState.buttonHovered = BookButton.none;
 }}
 
 View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   View retVal = View.book;
 
-  curBookButtonLast = curBookButton;
+  uiState.buttonHeldLast = uiState.buttonHeld;
+  uiState.buttonHoveredLast = uiState.buttonHovered;
 
-  if (input.down(Key.touch) && input.scrollMethodCur == ScrollMethod.none) {
-    foreach (i, ref btn; bookButtons) {
-      float btnRealY = btn.y - scrollInfo.scrollOffset;
-      float touchRealX = input.touchRaw.px, touchRealY = input.touchRaw.py + SCREEN_HEIGHT;
+  static bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiState* uiState, bool withinScrollable = false) {
+    bool result = false;
+
+    if (uiState.buttonHeld == -1 && input.down(Key.touch) && input.scrollMethodCur == ScrollMethod.none) {
+      float btnRealY = btn.y - withinScrollable * scrollInfo.scrollOffset;
+      float touchRealX = input.touchRaw.px, touchRealY = input.touchRaw.py + withinScrollable * SCREEN_HEIGHT;
 
       if (btnRealY + btn.h > 0 || btnRealY < SCREEN_HEIGHT) {
         if ( touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
              touchRealY >= btnRealY && touchRealY <= btnRealY + btn.h )
         {
-          curBookButton = i;
+          uiState.buttonHeld    = btn.id;
+          uiState.buttonHovered = btn.id;
           audioPlaySound(SoundSlot.button, SoundEffect.button_down, 0.25);
-          break;
         }
       }
     }
+    else if (uiState.buttonHeld == btn.id) {
+      float btnRealY = btn.y - withinScrollable * scrollInfo.scrollOffset;
+      float touchRealX = input.prevTouchRaw.px, touchRealY = input.prevTouchRaw.py + withinScrollable * SCREEN_HEIGHT;
+
+      bool hoveredOverCurrentButton = touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
+                                      touchRealY >= btnRealY && touchRealY <= btnRealY + btn.h;
+
+      enum TOUCH_DRAG_THRESHOLD = 8;
+      auto touchDiff = input.touchDiff();
+
+      if (hoveredOverCurrentButton) {
+        uiState.buttonHovered = btn.id;
+      }
+      else {
+        uiState.buttonHovered = -1;
+      }
+
+      if (hoveredOverCurrentButton && !input.held(Key.touch) && input.prevHeld(Key.touch)) {
+        //signal to begin transition to reading view
+        result = true;
+        uiState.buttonHeld    = -1;
+        uiState.buttonHovered = -1;
+      }
+      else if (!input.held(Key.touch) || (withinScrollable && (touchDiff.y >= TOUCH_DRAG_THRESHOLD || !hoveredOverCurrentButton))) {
+        uiState.buttonHeld    = -1;
+        uiState.buttonHovered = -1;
+      }
+
+      if (uiState.buttonHoveredLast == -1 && uiState.buttonHovered == btn.id) {
+        audioPlaySound(SoundSlot.button, SoundEffect.button_down, 0.25);
+      }
+      else if (uiState.buttonHoveredLast == btn.id && uiState.buttonHovered == -1) {
+        if (result) {
+          audioPlaySound(SoundSlot.button, SoundEffect.button_confirm, 0.5);
+        }
+        else {
+          audioPlaySound(SoundSlot.button, SoundEffect.button_off, 0.25);
+        }
+      }
+    }
+
+    return result;
   }
-  else if (curBookButton != -1) {
-    Button* btn = &bookButtons[curBookButton];
-    float btnRealY = btn.y - scrollInfo.scrollOffset;
-    float touchRealX = input.prevTouchRaw.px, touchRealY = input.prevTouchRaw.py + SCREEN_HEIGHT;
 
-    bool hoveredOverCurrentButton = touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
-                                    touchRealY >= btnRealY && touchRealY <= btnRealY + btn.h;
+  if (handleButton(optionsBtn, *input, scrollInfo, &uiState, false)) {
+    //
+  }
 
-    enum TOUCH_DRAG_THRESHOLD = 8;
-    auto touchDiff = input.touchDiff();
-
-    if (hoveredOverCurrentButton && !input.held(Key.touch) && input.prevHeld(Key.touch)) {
-      //signal to begin transition to reading view
+  foreach (i, ref btn; bookButtons) {
+    if (handleButton(btn, *input, scrollInfo, &uiState, true)) {
       retVal = View.reading;
-      chosenBook = curBookButton;
-      curBookButton = -1;
-      audioPlaySound(SoundSlot.button, SoundEffect.button_confirm, 0.5);
-    }
-    else if (!input.held(Key.touch) || touchDiff.y >= TOUCH_DRAG_THRESHOLD || !hoveredOverCurrentButton) {
-      curBookButton = -1;
-      audioPlaySound(SoundSlot.button, SoundEffect.button_off, 0.25);
+      chosenBook = cast(Book) uiState.buttonHeldLast;
     }
   }
 
-  if (curBookButton == -1) {
+  if (uiState.buttonHeld == BookButton.none) {
     handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
   }
   else {
@@ -643,30 +709,81 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   return retVal;
 }}
 
+enum Justification {
+  left_justified,
+  centered,
+  right_justified
+}
+
+struct ButtonStyle {
+  uint colorText, colorBg, colorBgHeld;
+  float margin;
+  float textSize = 0;
+  Justification justification;
+}
+
 void renderBookView(
   BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom,
   bool _3DEnabled, float slider3DState
 ) { with (viewData) {
+  enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
+  enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
+  static immutable ButtonStyle BOOK_BUTTON_STYLE = {
+    colorText     : C2D_Color32(255, 255, 255, 255),
+    colorBg       : BOOK_BUTTON_COLOR,
+    colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
+    margin        : BOOK_BUTTON_MARGIN,
+    textSize      : 0.5f,
+    justification : Justification.left_justified,
+  };
+
+  static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
+    colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
+    colorBg       : BOTTOM_BUTTON_COLOR,
+    colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
+    margin        : BOTTOM_BUTTON_MARGIN,
+    textSize      : 0.5f,
+    justification : Justification.centered,
+  };
+
+  static void renderButton(in Button btn, in UiState uiState, in ButtonStyle style) {
+    bool pressed = btn.id == uiState.buttonHeld && btn.id == uiState.buttonHovered;
+    float btnRealX = btn.x, btnRealY = btn.y + pressed * 3;
+
+    C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, pressed ? style.colorBgHeld : style.colorBg);
+
+    float textX, textY;
+
+    final switch (style.justification) {
+      case Justification.left_justified:
+        textX = btnRealX+style.margin;
+        textY = btnRealY+style.margin;
+        break;
+      case Justification.centered:
+        textX = btnRealX + btn.w/2 - btn.textW/2;
+        textY = btnRealY + btn.h/2 - btn.textH/2;
+        break;
+      case Justification.right_justified:
+        break;
+    }
+
+    C2D_DrawText(
+      btn.text, C2D_WithColor, GFXScreen.top, textX, textY, 0.5f, style.textSize, style.textSize, style.colorText
+    );
+  }
+
   static void renderBookButtons(
     BookViewData* viewData, float from, float to
   ) { with (viewData) {
-    enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
-    enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
 
     foreach (i, ref btn; bookButtons) {
-      float btnRealX = btn.x, btnRealY = btn.y;
-
-      if (btnRealY + btn.h < from) {
+      if (btn.y + btn.h < from) {
       }
-      else if (btnRealY > to){
+      else if (btn.y > to){
         break;
       }
       else {
-        C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, i == curBookButton ? BOOK_BUTTON_DOWN_COLOR : BOOK_BUTTON_COLOR);
-
-        C2D_DrawText(
-          btn.text, C2D_WithColor, GFXScreen.top, btnRealX+BOOK_BUTTON_MARGIN, btnRealY+BOOK_BUTTON_MARGIN, 0.5f, 0.5, 0.5, C2D_Color32(255, 255, 255, 255)
-        );
+        renderButton(btn, uiState, BOOK_BUTTON_STYLE);
       }
     }
   }}
@@ -679,14 +796,18 @@ void renderBookView(
     &renderBookButtons, viewData,
   );
 
-  if (curBookButton != -1 || curBookButtonLast != -1) {
-    Button* btn = &bookButtons[curBookButton == -1 ? curBookButtonLast : curBookButton];
+  if (uiState.buttonHeld != -1 || uiState.buttonHeldLast != -1) {
+    auto btnId = uiState.buttonHeld == -1 ? uiState.buttonHeldLast : uiState.buttonHeld;
 
-    scrollCacheRenderRegion(
-      &mainData.scrollCache,
-      btn.y, btn.y+btn.h,
-      &renderBookButtons, viewData,
-    );
+    if (btnId >= BookButton.genesis && btnId <= BookButton.revelation) {
+      Button* btn = &bookButtons[btnId];
+
+      scrollCacheRenderRegion(
+        &mainData.scrollCache,
+        btn.y-4, btn.y+btn.h+4,
+        &renderBookButtons, viewData,
+      );
+    }
   }
   scrollCacheEndFrame(&mainData.scrollCache);
 
@@ -717,13 +838,7 @@ void renderBookView(
   C2D_SpriteFromImage(&sprite, cacheImageBottom);
   C2D_DrawSprite(&sprite);
 
-  C2D_DrawRectSolid(optionsBtn.x, optionsBtn.y, 0.55f, optionsBtn.w, optionsBtn.h, /* i == curBookButton ? BOTTOM_BUTTON_DOWN_COLOR : */ BOTTOM_BUTTON_COLOR);
-
-  auto centerX = optionsBtn.x + optionsBtn.w/2 - optionsBtn.textW/2;
-  auto centerY = optionsBtn.y + optionsBtn.h/2 - optionsBtn.textH/2;
-  C2D_DrawText(
-    optionsBtn.text, C2D_WithColor, GFXScreen.bottom, centerX, centerY, 0.6f, 0.5, 0.5, C2D_Color32(0x11, 0x11, 0x11, 255)
-  );
+  renderButton(optionsBtn, uiState, BOTTOM_BUTTON_STYLE);
 }}
 
 ScrollCache scrollCacheCreate(ushort width, ushort height) {
@@ -890,9 +1005,15 @@ float wrap(float x, float mod) {
 
 void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float yMax, float viewHeight, bool rightJustified = false) { with (scrollInfo) {
   enum WIDTH = 4;
+  enum COLOR_NORMAL  = Vec3(0x20, 0x60, 0xDD)/255;
+  enum COLOR_PUSHING = Vec3(0xDD, 0x80, 0x20)/255;
+
+  auto colorNorm = lerp(COLOR_NORMAL, COLOR_PUSHING, min(pushingAgainstTimer, PUSHING_AGAINST_TIMER_MAX)*1.0f/PUSHING_AGAINST_TIMER_MAX);
+
   float scale = (yMax - yMin) / (limitBottom - limitTop + viewHeight);
   float height = viewHeight * scale;
 
   //@TODO: gramphics
-  C2D_DrawRectSolid(x - rightJustified*WIDTH, yMin + scrollOffset * scale, 0, WIDTH, height, C2D_Color32(0x20, 0x60, 0xDD, 0xFF));
+  C2D_DrawRectSolid(x - rightJustified*WIDTH, yMin + scrollOffset * scale, 0, WIDTH, height, C2D_Color32f(colorNorm.x, colorNorm.y, colorNorm.z, 1));
 }}
+

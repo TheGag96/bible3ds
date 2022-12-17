@@ -266,7 +266,7 @@ T approach(T)(T current, T target, T rate) {
 }
 
 T lerp(T)(T a, T b, float amount) {
-  return cast(T)((1-amount)*a + amount*b);
+  return cast(T)(a*(1-amount) + b*amount);
 }
 
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D

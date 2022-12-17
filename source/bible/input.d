@@ -27,35 +27,35 @@ struct Input {
   ScrollMethod scrollMethodCur;
   float scrollVel = 0;
 
-  bool down(Key k) {
+  bool down(Key k) const {
     return cast(bool)(downRaw & k);
   }
 
-  bool held(Key k) {
+  bool held(Key k) const {
     return cast(bool)(heldRaw & k);
   }
 
-  bool prevDown(Key k) {
+  bool prevDown(Key k) const {
     return cast(bool)(prevDownRaw & k);
   }
 
-  bool prevHeld(Key k) {
+  bool prevHeld(Key k) const {
     return cast(bool)(prevHeldRaw & k);
   }
 
-  bool allHeld(Key k) {
+  bool allHeld(Key k) const {
     return (heldRaw & k) == k;
   }
 
-  bool allPrevHeld(Key k) {
+  bool allPrevHeld(Key k) const {
     return (prevHeldRaw & k) == k;
   }
 
-  bool allNewlyHeld(Key k) {
+  bool allNewlyHeld(Key k) const {
     return allHeld(k) && !allPrevHeld(k);
   }
 
-  intpair touchDiff() {
+  intpair touchDiff() const {
     return intpair(touchRaw.px - firstTouchRaw.px, touchRaw.py - firstTouchRaw.py);
   }
 }
