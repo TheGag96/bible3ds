@@ -515,6 +515,7 @@ void renderReadingView(
     &mainData.scrollCache,
     loadedPage.scrollInfo,
     &renderPage, viewData,
+    CLEAR_COLOR,
   );
   scrollCacheEndFrame(&mainData.scrollCache);
 
@@ -884,11 +885,13 @@ void scrollCacheRenderScrollUpdate(T)(
   ScrollCache* scrollCache,
   in ScrollInfo scrollInfo,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
+  uint clearColor = 0,
 ) {
   _scrollCacheRenderScrollUpdateImpl(
     scrollCache,
     scrollInfo,
     cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
+    clearColor,
   );
 }
 
@@ -896,6 +899,7 @@ void _scrollCacheRenderScrollUpdateImpl(
   ScrollCache* scrollCache,
   in ScrollInfo scrollInfo,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
+  uint clearColor = 0,
 ) { with (scrollCache) with (scrollInfo) {
   float drawStart, drawEnd;
 
@@ -918,6 +922,7 @@ void _scrollCacheRenderScrollUpdateImpl(
     scrollCache,
     drawStart, drawEnd,
     render, userData,
+    clearColor,
   );
 }}
 
@@ -926,11 +931,13 @@ void scrollCacheRenderRegion(T)(
   ScrollCache* scrollCache,
   float from, float to,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
+  uint clearColor = 0,
 ) {
   _scrollCacheRenderRegionImpl(
     scrollCache,
     from, to,
     cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
+    clearColor,
   );
 }
 
@@ -938,6 +945,7 @@ private void _scrollCacheRenderRegionImpl(
   ScrollCache* scrollCache,
   float from, float to,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
+  uint clearColor = 0,
 ) { with (scrollCache) {
   float drawStart  = from;
   float drawEnd    = to;
@@ -953,13 +961,15 @@ private void _scrollCacheRenderRegionImpl(
   //carve out stencil and clear piece of screen simulatenously
   C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
   C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
+  C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.zero, GPUBlendFactor.src_alpha, GPUBlendFactor.zero);
 
-  C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, CLEAR_COLOR);
+  C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, clearColor);
   C2D_Flush();
 
   //use callback to draw newly scrolled region
   C3D_StencilTest(true, GPUTestFunc.equal, curStencilVal, 0xFF, 0xFF);
   C3D_StencilOp(GPUStencilOp.keep, GPUStencilOp.keep, GPUStencilOp.keep);
+  C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha);
 
   render(userData, drawStart, drawEnd - drawOffTexture);
   C2D_Flush();
@@ -970,11 +980,13 @@ private void _scrollCacheRenderRegionImpl(
     C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - texHeight, 0, 0);
     C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
-    C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, CLEAR_COLOR);
+    C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.zero, GPUBlendFactor.src_alpha, GPUBlendFactor.zero);
+    C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, clearColor);
     C2D_Flush();
 
     C3D_StencilTest(true, GPUTestFunc.equal, curStencilVal, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.keep, GPUStencilOp.keep, GPUStencilOp.keep);
+    C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha);
     render(userData, drawEnd - drawOffTexture, drawEnd);
     C2D_Flush();
 
