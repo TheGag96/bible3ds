@@ -27,6 +27,9 @@ __gshared TickCounter tickCounter;
 
 enum SCREEN_TOP_WIDTH    = 400.0f;
 enum SCREEN_BOTTOM_WIDTH = 320.0f;
+
+float screenWidth(GFXScreen screen) { return screen == GFXScreen.top ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH; }
+
 enum SCREEN_HEIGHT       = 240.0f;
 
 struct ScrollInfo {
@@ -127,6 +130,7 @@ enum CLEAR_COLOR = 0xFFEEEEEE;
 
 struct MainData {
   ScrollCache scrollCache;
+  C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
 }
 MainData mainData;
 
@@ -169,6 +173,21 @@ extern(C) int main(int argc, char** argv) {
 
   initReadingView(&readingViewData);
   initBookView(&bookViewData);
+
+  with (mainData) {
+    // Load the textures and bind them to their respective texture units
+    if (!loadTextureFromFile(&vignetteTex, null, "romfs:/gfx/vignette.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&lineTex, null, "romfs:/gfx/line.t3x"))
+      svcBreak(UserBreakType.panic);
+    C3D_TexSetFilter(&vignetteTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
+    C3D_TexSetFilter(&lineTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
+    C3D_TexBind(1, &vignetteTex);
+    C3D_TexSetWrap(&vignetteTex, GPUTextureWrapParam.mirrored_repeat, GPUTextureWrapParam.mirrored_repeat);
+    C3D_TexBind(0, &lineTex);
+    C3D_TexSetWrap(&lineTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
+    C3D_TexBind(0, &lineTex);
+  }
 
   // Main loop
   while (aptMainLoop()) {
@@ -815,6 +834,12 @@ void renderBookView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
+  auto colorBg           = C2D_Color32(0xF5, 0xF5, 0xF5, 255);
+  auto colorStripesDark  = C2D_Color32(208,  208,  212,  255);
+  auto colorStripesLight = C2D_Color32(197,  197,  189,  255);
+
+  drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
+
   Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
@@ -830,11 +855,15 @@ void renderBookView(
     C2D_TargetClear(topRight, CLEAR_COLOR);
     C2D_SceneBegin(topRight);
 
+    drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
+
     C2D_DrawSprite(&sprite);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
   C2D_SceneBegin(bottom);
+
+  drawBackground(GFXScreen.bottom, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
 
   C2D_SpriteFromImage(&sprite, cacheImageBottom);
   C2D_DrawSprite(&sprite);
@@ -1029,3 +1058,98 @@ void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float 
   C2D_DrawRectSolid(x - rightJustified*WIDTH, yMin + scrollOffset * scale, 0, WIDTH, height, C2D_Color32f(colorNorm.x, colorNorm.y, colorNorm.z, 1));
 }}
 
+void drawBackground(GFXScreen screen, C3D_Tex* vignetteTex, C3D_Tex* lineTex, uint colorBg, uint colorStripesDark, uint colorStripesLight) {
+  C2Di_Context* ctx = C2Di_GetContext();
+
+  C2D_Flush();
+
+  //basically hijack a bunch of stuff C2D sets up so we can easily reuse the normal shader while still getting to
+  //define are own texenv stages
+  C2Di_SetTex(lineTex);
+  C2Di_Update();
+  C3D_TexBind(1, vignetteTex);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  auto thisScreenWidth = screenWidth(screen);
+
+  C2Di_Vertex[6] vertex_list = [
+    // First face (PZ)
+    // First triangle
+    { 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
+    { thisScreenWidth, 0.0f,          0.0f,  28.0f,  0.0f,  2.0f, -1.0f,  0xFF<<24 },
+    { thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
+    // Second triangle
+    { thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
+    { 0.0f,            SCREEN_HEIGHT, 0.0f,   0.0f, 28.0f,  0.0f,  1.0f,  0xFF<<24 },
+    { 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
+  ];
+
+  static if (true) {
+    //overlay the vignette texture on top of the stripes/lines, using the line texture and some texenv stages to
+    //interpolate between two colors
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.replace);
+    C3D_TexEnvColor(env, colorStripesDark);
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.interpolate);
+    C3D_TexEnvColor(env, colorStripesLight);
+
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.previous, GPUTevSrc.texture1);
+    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    C3D_TexEnvColor(env, colorBg);
+  }
+  else {
+    //alternate method that uses the vignette texture to affect the alpha of the stripes
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+    C3D_TexEnvColor(env, colorStripesLight);
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    C3D_TexEnvColor(env, colorStripesDark);
+
+    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.constant, GPUTevSrc.texture1);
+    C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.one_minus_src_alpha, GPUTevOpA.src_alpha);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
+  }
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+
+  ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertex_list.length] = vertex_list[];
+  ctx.vtxBufPos += vertex_list.length;
+
+  C2D_Flush();
+
+  //Cleanup, resetting things to how C2D normally expects
+  C2D_Prepare(C2DShader.normal);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+}
+
+// Helper function for loading a texture from memory
+bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
+  auto bytes = readFile(filename);
+  scope (exit) freeArray(bytes);
+
+  Tex3DS_Texture t3x = Tex3DS_TextureImport(bytes.ptr, bytes.length, tex, cube, false);
+  if (!t3x)
+    return false;
+
+  // Delete the t3x object since we don't need it
+  Tex3DS_TextureFree(t3x);
+  return true;
+}
