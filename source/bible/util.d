@@ -5,24 +5,22 @@ public import core.stdc.stdio : printf;
 public import std.algorithm   : min, max;
 public import std.math        : floor, ceil, round;
 
+import ctru, citro3d;
+
 nothrow: @nogc:
 
 ///////////////
 // Constants //
 ///////////////
 
-enum SCREEN_WIDTH  = 400;
-enum SCREEN_HEIGHT = 240;
-enum SCREEN_CENTER = Vec3(SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 0);
+enum SCREEN_TOP_WIDTH    = 400.0f;
+enum SCREEN_BOTTOM_WIDTH = 320.0f;
 
-enum VB_3DS_DIFF_X = 16;
-enum VB_3DS_DIFF_Y = 16;
+float screenWidth(GFXScreen screen) { return screen == GFXScreen.top ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH; }
 
-enum FRAMERATE_VB = 50.0;
+enum SCREEN_HEIGHT       = 240.0f;
+
 enum FRAMERATE    = 60.0;
-enum VB_3DS_FRAMERATE_RATIO = FRAMERATE_VB/FRAMERATE;
-
-enum BLOCK_SIZE = 16;
 
 ///////////////////////
 // Utility Functions //
@@ -269,6 +267,12 @@ T lerp(T)(T a, T b, float amount) {
   return cast(T)(a*(1-amount) + b*amount);
 }
 
+//fmod doesn't handle negatives the way you'd expect, so we need this instead
+float wrap(float x, float mod) {
+  import core.stdc.math : floor;
+  return x - mod * floor(x/mod);
+}
+
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;
@@ -309,4 +313,17 @@ auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   static if (!is(T == void)) {
     return ProfileResult(result, time, timeMin, timeMax, timeAvg);
   }
+}
+
+bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
+  auto bytes = readFile(filename);
+  scope (exit) freeArray(bytes);
+
+  Tex3DS_Texture t3x = Tex3DS_TextureImport(bytes.ptr, bytes.length, tex, cube, false);
+  if (!t3x)
+    return false;
+
+  // Delete the t3x object since we don't need it
+  Tex3DS_TextureFree(t3x);
+  return true;
 }
