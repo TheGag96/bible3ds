@@ -557,6 +557,7 @@ void renderReadingView(
     C2D_SceneBegin(topRight);
 
     C2D_DrawSprite(&sprite);
+    renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
@@ -858,6 +859,7 @@ void renderBookView(
     drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
 
     C2D_DrawSprite(&sprite);
+    renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
