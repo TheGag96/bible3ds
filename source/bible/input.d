@@ -18,8 +18,9 @@ enum ScrollMethod {
 struct Input {
   nothrow: @nogc:
 
-  uint downRaw,     heldRaw,
-       prevDownRaw, prevHeldRaw;
+  uint downRaw,         heldRaw,
+       prevDownRaw,     prevHeldRaw,
+       prevPrevDownRaw, prevPrevHeldRaw;
 
   touchPosition touchRaw, prevTouchRaw, prevPrevTouchRaw, firstTouchRaw;
   circlePosition circleRaw, prevCircleRaw;
@@ -41,6 +42,14 @@ struct Input {
 
   bool prevHeld(Key k) const {
     return cast(bool)(prevHeldRaw & k);
+  }
+
+  bool prevPrevDown(Key k) const {
+    return cast(bool)(prevPrevDownRaw & k);
+  }
+
+  bool prevPrevHeld(Key k) const {
+    return cast(bool)(prevPrevHeldRaw & k);
   }
 
   bool allHeld(Key k) const {
@@ -68,6 +77,8 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   if (_held & Key.left) _held = _held & ~(Key.right);
   if (_held & Key.down) _held = _held & ~(Key.up);
 
+  prevPrevDownRaw = prevDownRaw;
+  prevPrevHeldRaw = prevHeldRaw;
   prevPrevTouchRaw = prevTouchRaw;
 
   prevDownRaw = downRaw;
@@ -140,7 +151,7 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
 
   final switch (scrollMethodCur) {
     case ScrollMethod.none:
-      if (prevHeld(Key.touch)) {
+      if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
         scrollVel = max(min(prevPrevTouchRaw.py - prevTouchRaw.py, 40), -40);
       }
       result.y = scrollVel;
