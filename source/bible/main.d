@@ -338,7 +338,7 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
 
 View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
   if (input.down(Key.b)) {
-    audioPlaySound(SoundSlot.button, SoundEffect.button_back, 0.5);
+    audioPlaySound(SoundEffect.button_back, 0.5);
     return View.book;
   }
 

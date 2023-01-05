@@ -54,7 +54,7 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
       {
         uiState.buttonHeld    = btn.id;
         uiState.buttonHovered = btn.id;
-        audioPlaySound(SoundSlot.button, SoundEffect.button_down, 0.25);
+        audioPlaySound(SoundEffect.button_down, 0.25);
       }
     }
   }
@@ -87,14 +87,14 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
     }
 
     if (uiState.buttonHoveredLast == -1 && uiState.buttonHovered == btn.id) {
-      audioPlaySound(SoundSlot.button, SoundEffect.button_down, 0.25);
+      audioPlaySound(SoundEffect.button_down, 0.25);
     }
     else if (uiState.buttonHoveredLast == btn.id && uiState.buttonHovered == -1) {
       if (result) {
-        audioPlaySound(SoundSlot.button, SoundEffect.button_confirm, 0.5);
+        audioPlaySound(SoundEffect.button_confirm, 0.5);
       }
       else {
-        audioPlaySound(SoundSlot.button, SoundEffect.button_off, 0.25);
+        audioPlaySound(SoundEffect.button_off, 0.25);
       }
     }
   }
@@ -302,16 +302,16 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float
   ////
 
   if (startedScrolling == OneFrameEvent.triggered) {
-    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.1);
+    audioPlaySound(SoundEffect.scroll_tick, 0.1);
     startedScrolling = OneFrameEvent.already_processed;
   }
 
   if (floor(scrollOffset/SCROLL_TICK_DISTANCE) != floor(scrollOffsetLast/SCROLL_TICK_DISTANCE)) {
-    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_tick, 0.05);
+    audioPlaySound(SoundEffect.scroll_tick, 0.05);
   }
 
   if (scrollJustStopped == OneFrameEvent.triggered) {
-    audioPlaySound(SoundSlot.scrolling, SoundEffect.scroll_stop, 0.1);
+    audioPlaySound(SoundEffect.scroll_stop, 0.1);
     scrollJustStopped = OneFrameEvent.already_processed;
   }
 }}

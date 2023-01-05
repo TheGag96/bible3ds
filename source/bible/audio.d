@@ -98,12 +98,6 @@ enum SoundEffect : ubyte {
   button_back,
 }
 
-enum SoundSlot : ubyte {
-  none = 0,
-  scrolling,
-  button,
-}
-
 enum SoundType : ubyte {
   normal,
   looping
@@ -211,7 +205,7 @@ void audioLoadSoundEffect(SoundEffect se) {
   DSP_FlushDataCache(soundData.ptr, soundData.length);
 }
 
-void audioPlaySound(SoundSlot soundSlot, SoundEffect se, float volume = 1) {
+void audioPlaySound(SoundEffect se, float volume = 1) {
   auto bufs = gSeData.waveBufs[se][];
   auto bcw  = &gSeData.bcwavs[se];
 
@@ -223,8 +217,8 @@ void audioPlaySound(SoundSlot soundSlot, SoundEffect se, float volume = 1) {
   //this kind of sucks but must be done for stereo DSP ADPCM sounds. for PCM, you kind of need to do this unless you
   //want to manually interleve the channels yourself because bcwav stores them separately it seems...
   foreach (ear; 0..bcw.numChannels) {
-    //@TODO: make soundslot support smarter
-    byte channelToUse = cast(byte) (soundSlot + ear * (SoundSlot.max+1));
+    //@TODO: maybe make DSP channel choosing dynamic if i really need it
+    byte channelToUse = cast(byte) (se + ear * (SoundEffect.max+1));
 
     ndspChnReset(channelToUse);
 
