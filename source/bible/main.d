@@ -81,10 +81,16 @@ struct ReadingViewData {
   int curChapter;
 
   Button backBtn;
+
+  UiState uiState;
 }
 
 
 enum CLEAR_COLOR = 0xFFEEEEEE;
+
+enum BACKGROUND_COLOR_BG            = C2D_Color32(0xF5, 0xF5, 0xF5, 255);
+enum BACKGROUND_COLOR_STRIPES_DARK  = C2D_Color32(208,  208,  212,  255);
+enum BACKGROUND_COLOR_STRIPES_LIGHT = C2D_Color32(197,  197,  189,  255);
 
 struct MainData {
   ScrollCache scrollCache;
@@ -334,9 +340,15 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
     snprintf(buf.ptr, buf.length, "%d", i);
     C2D_TextParse(&textArray[i], textBuf, buf.ptr);
   }
+
+  uiState.buttonHeld    = -1;
+  uiState.buttonHovered = -1;
 }}
 
 View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
+  uiState.buttonHeldLast = uiState.buttonHeld;
+  uiState.buttonHoveredLast = uiState.buttonHovered;
+
   if (input.down(Key.b)) {
     audioPlaySound(SoundEffect.button_back, 0.5);
     return View.book;
@@ -386,14 +398,24 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
     loadPage(&loadedPage, book.chapters[curChapter], size);
   }
 
+  if (handleButton(backBtn, *input, loadedPage.scrollInfo, &uiState, false)) {
+    //
+  }
+
 
   ////
   // update scrolling
   ////
 
-  float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0)
-                      + backBtn.textH + 2*BOTTOM_BUTTON_MARGIN;
-  handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
+  if (uiState.buttonHeld == -1) {
+    float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0)
+                        + backBtn.textH + 2*BOTTOM_BUTTON_MARGIN;
+    handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
+  }
+  else {
+    loadedPage.scrollInfo.scrollOffsetLast = loadedPage.scrollInfo.scrollOffset;
+    input.scrollVel = 0;
+  }
 
   return View.reading;
 }}
@@ -413,6 +435,8 @@ void renderReadingView(
 
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
+
+  drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
   Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
@@ -440,19 +464,24 @@ void renderReadingView(
   C2D_SpriteSetPos(&sprite, 0, 0);
   C2D_DrawSprite(&sprite);
 
-  auto centerX = backBtn.x + backBtn.w/2 - backBtn.textW/2;
-  auto centerY = backBtn.y + backBtn.h/2 - backBtn.textH/2;
-  C2D_DrawRectSolid(backBtn.x, backBtn.y, 0.55f, backBtn.w, backBtn.h, /* i == buttonHeld ? BOTTOM_BUTTON_DOWN_COLOR : */ BOTTOM_BUTTON_COLOR);
-  C2D_DrawText(
-    backBtn.text, C2D_WithColor, GFXScreen.bottom, centerX, centerY, 0.6f, 0.5, 0.5, C2D_Color32(0x11, 0x11, 0x11, 255)
-  );
+  renderButton(backBtn, uiState, BOTTOM_BUTTON_STYLE);
 }}
 
 enum MARGIN = 8.0f;
 enum BOOK_BUTTON_WIDTH = 200.0f;
 enum BOOK_BUTTON_MARGIN = 8.0f;
 enum BOTTOM_BUTTON_MARGIN = 6.0f;
-enum BOTTOM_BUTTON_COLOR = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
+enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
+enum BOTTOM_BUTTON_DOWN_COLOR = C2D_Color32(0x8C, 0x8C, 0x8C, 0xFF);
+
+static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
+  colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
+  colorBg       : BOTTOM_BUTTON_COLOR,
+  colorBgHeld   : BOTTOM_BUTTON_DOWN_COLOR,
+  margin        : BOTTOM_BUTTON_MARGIN,
+  textSize      : 0.5f,
+  justification : Justification.centered,
+};
 
 void renderPage(
   ReadingViewData* viewData, float from, float to
@@ -532,6 +561,10 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   }
 
   if (uiState.buttonHeld == BookButton.none) {
+    if (input.scrollMethodCur != 0 || input.scrollVel != 0) {
+      int thing = 3;
+    }
+
     handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
   }
   else {
@@ -555,15 +588,6 @@ void renderBookView(
     margin        : BOOK_BUTTON_MARGIN,
     textSize      : 0.5f,
     justification : Justification.left_justified,
-  };
-
-  static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
-    colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
-    colorBg       : BOTTOM_BUTTON_COLOR,
-    colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
-    margin        : BOTTOM_BUTTON_MARGIN,
-    textSize      : 0.5f,
-    justification : Justification.centered,
   };
 
   static void renderBookButtons(
@@ -608,11 +632,7 @@ void renderBookView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  auto colorBg           = C2D_Color32(0xF5, 0xF5, 0xF5, 255);
-  auto colorStripesDark  = C2D_Color32(208,  208,  212,  255);
-  auto colorStripesLight = C2D_Color32(197,  197,  189,  255);
-
-  drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
+  drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
   Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
@@ -629,7 +649,7 @@ void renderBookView(
     C2D_TargetClear(topRight, CLEAR_COLOR);
     C2D_SceneBegin(topRight);
 
-    drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
+    drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
     C2D_DrawSprite(&sprite);
     renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
@@ -638,7 +658,7 @@ void renderBookView(
   C2D_TargetClear(bottom, CLEAR_COLOR);
   C2D_SceneBegin(bottom);
 
-  drawBackground(GFXScreen.bottom, &mainData.vignetteTex, &mainData.lineTex, colorBg, colorStripesDark, colorStripesLight);
+  drawBackground(GFXScreen.bottom, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
   C2D_SpriteFromImage(&sprite, cacheImageBottom);
   C2D_DrawSprite(&sprite);
