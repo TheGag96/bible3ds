@@ -99,7 +99,7 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
 ScrollDiff updateScrollDiff(Input* input) { with (input) {
   ScrollDiff result;
 
-  enum CIRCLE_DEADZONE = 15;
+  enum CIRCLE_DEADZONE = 18;
 
   final switch (scrollMethodCur) {
     case ScrollMethod.none: break;
