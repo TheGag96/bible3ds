@@ -46,8 +46,6 @@ enum View {
   reading,
 }
 
-__gshared View curView = View.book;
-
 struct BookViewData {
   C2D_TextBuf textBuf;
   C2D_Text[] textArray;
@@ -95,6 +93,7 @@ enum BACKGROUND_COLOR_STRIPES_DARK  = C2D_Color32(208,  208,  212,  255);
 enum BACKGROUND_COLOR_STRIPES_LIGHT = C2D_Color32(197,  197,  189,  255);
 
 struct MainData {
+  View curView = View.book, nextView = View.book;
   ScrollCache scrollCache;
   C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
 }
@@ -193,13 +192,22 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
-    View updateResult = curView;
-
-    final switch (curView) {
+    final switch (mainData.nextView) {
       case View.book:
-        updateResult = updateBookView(&bookViewData, &input);
+        if (mainData.curView != mainData.nextView) {
+          mainData.curView = mainData.nextView;
+          resetScrollDiff(&input);
+          mainData.scrollCache.needsRepaint = true;
+        }
 
-        if (curView != updateResult) {
+        mainData.nextView = updateBookView(&bookViewData, &input);
+
+        break;
+
+      case View.reading:
+        if (mainData.curView != mainData.nextView) {
+          mainData.curView = mainData.nextView;
+
           with (readingViewData) {
             unloadPage(&loadedPage);
             closeBibleBook(&book);
@@ -207,26 +215,16 @@ extern(C) int main(int argc, char** argv) {
             book = openBibleBook(Translation.asv, curBook);
             curChapter = 1;
             loadPage(&loadedPage, book.chapters[curChapter], 0.5);
-            curView = View.reading;
             resetScrollDiff(&input);
             mainData.scrollCache.needsRepaint = true;
             frameNeedsRender = true;
           }
         }
-        break;
 
-      case View.reading:
-        updateResult = updateReadingView(&readingViewData, &input);
+        mainData.nextView = updateReadingView(&readingViewData, &input);
 
-        if (curView != updateResult) {
-          curView = updateResult;
-          resetScrollDiff(&input);
-          mainData.scrollCache.needsRepaint = true;
-        }
         break;
     }
-
-
 
     audioUpdate();
 
@@ -237,7 +235,7 @@ extern(C) int main(int argc, char** argv) {
     // Render the scene
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     {
-      final switch (curView) {
+      final switch (mainData.curView) {
         case View.book:
           renderBookView(&bookViewData, topLeft, topRight, bottom, _3DEnabled, slider);
           break;
@@ -349,8 +347,6 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
 }}
 
 View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
-  frameNeedsRender = false;
-
   uiState.buttonHeldLast = uiState.buttonHeld;
   uiState.buttonHoveredLast = uiState.buttonHovered;
 
@@ -479,6 +475,8 @@ void renderReadingView(
   C2D_DrawSprite(&sprite);
 
   renderButton(backBtn, uiState, BOTTOM_BUTTON_STYLE);
+
+  frameNeedsRender = false;
 }}
 
 enum MARGIN = 8.0f;
