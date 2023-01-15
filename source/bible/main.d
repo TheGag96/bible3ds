@@ -83,6 +83,8 @@ struct ReadingViewData {
   Button backBtn;
 
   UiState uiState;
+
+  bool frameNeedsRender;
 }
 
 
@@ -208,6 +210,7 @@ extern(C) int main(int argc, char** argv) {
             curView = View.reading;
             resetScrollDiff(&input);
             mainData.scrollCache.needsRepaint = true;
+            frameNeedsRender = true;
           }
         }
         break;
@@ -346,11 +349,14 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
 }}
 
 View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
+  frameNeedsRender = false;
+
   uiState.buttonHeldLast = uiState.buttonHeld;
   uiState.buttonHoveredLast = uiState.buttonHovered;
 
   if (input.down(Key.b) || handleButton(backBtn, *input, loadedPage.scrollInfo, &uiState, false)) {
     audioPlaySound(SoundEffect.button_back, 0.5);
+    frameNeedsRender = true;
     return View.book;
   }
 
@@ -391,11 +397,13 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
     }
 
     loadPage(&loadedPage, book.chapters[curChapter], size);
+    frameNeedsRender = true;
   }
   else if (chapterDiff) {
     unloadPage(&loadedPage);
     curChapter += chapterDiff;
     loadPage(&loadedPage, book.chapters[curChapter], size);
+    frameNeedsRender = true;
   }
 
 
@@ -407,11 +415,16 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
     float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0)
                         + backBtn.textH + 2*BOTTOM_BUTTON_MARGIN;
     handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
+
+    frameNeedsRender = frameNeedsRender || loadedPage.scrollInfo.scrollOffset != loadedPage.scrollInfo.scrollOffsetLast;
   }
   else {
     loadedPage.scrollInfo.scrollOffsetLast = loadedPage.scrollInfo.scrollOffset;
     input.scrollVel = 0;
+    frameNeedsRender = true;
   }
+
+  frameNeedsRender = frameNeedsRender || loadedPage.scrollInfo.pushingAgainstTimer != 0;
 
   return View.reading;
 }}
@@ -420,6 +433,9 @@ void renderReadingView(
   ReadingViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight,
   C3D_RenderTarget* bottom, bool _3DEnabled, float slider3DState
 ) { with (viewData) {
+  // Save battery by only rendering if we're scrolling, pressing buttons, etc.
+  if (!viewData.frameNeedsRender) return;
+
   scrollCacheBeginFrame(&mainData.scrollCache);
   scrollCacheRenderScrollUpdate(
     &mainData.scrollCache,
