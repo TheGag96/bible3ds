@@ -349,7 +349,7 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
   uiState.buttonHeldLast = uiState.buttonHeld;
   uiState.buttonHoveredLast = uiState.buttonHovered;
 
-  if (input.down(Key.b)) {
+  if (input.down(Key.b) || handleButton(backBtn, *input, loadedPage.scrollInfo, &uiState, false)) {
     audioPlaySound(SoundEffect.button_back, 0.5);
     return View.book;
   }
@@ -396,10 +396,6 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
     unloadPage(&loadedPage);
     curChapter += chapterDiff;
     loadPage(&loadedPage, book.chapters[curChapter], size);
-  }
-
-  if (handleButton(backBtn, *input, loadedPage.scrollInfo, &uiState, false)) {
-    //
   }
 
 
