@@ -557,10 +557,6 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   }
 
   if (uiState.buttonHeld == BookButton.none) {
-    if (input.scrollMethodCur != 0 || input.scrollVel != 0) {
-      int thing = 3;
-    }
-
     handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
   }
   else {
