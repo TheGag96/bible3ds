@@ -28,6 +28,7 @@ enum C2D_NUM_SHADERS = C2DShader.max + 1;
 __gshared C2Di_Context[C2D_NUM_SHADERS] __C2Di_Contexts;
 __gshared C3D_Mtx s_projTop, s_projBot;
 __gshared C2DShader __C2Di_CurrentShader;
+__gshared bool __C2Di_FirstPrepare = true;
 
 enum SHADER_GET(string name) = cast(immutable(ubyte)[]) import(name ~ ".shbin");
 
@@ -554,8 +555,23 @@ void C2D_Fini()
 /** @brief Prepares the GPU for rendering 2D content
  *  @remarks This needs to be done only once in the program if citro2d is the sole user of the GPU.
  */
-void C2D_Prepare(C2DShader shaderId)
+void C2D_Prepare(C2DShader shaderId, bool force = false)
 {
+  //don't waste time re-initing everything if we're already on the requested shader, unless specifically asked for
+  //but, always do it the first time we ever prepare, since the first requested prepare may be for the default shader
+  //enum value
+  if (__C2Di_FirstPrepare) {
+    __C2Di_FirstPrepare = false;
+  }
+  else {
+    if (!force && __C2Di_CurrentShader == shaderId) {
+      return;
+    }
+  }
+
+  //ensure all currently-queued stuff gets submitted
+  C2D_Flush();
+
   __C2Di_CurrentShader = shaderId;
   C2Di_Context* ctx = C2Di_GetContext();
 
