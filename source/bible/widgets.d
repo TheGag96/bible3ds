@@ -231,9 +231,13 @@ struct ScrollInfo {
 }
 
 void handleScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom) { with (scrollInfo) {
-  enum SCROLL_TICK_DISTANCE = 60;
-
   auto scrollDiff = updateScrollDiff(input);
+
+  respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
+}}
+
+void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom, ScrollDiff scrollDiff) { with (scrollInfo) {
+  enum SCROLL_TICK_DISTANCE = 60;
 
   limitTop    = newLimitTop;
   limitBottom = newLimitBottom;
@@ -316,6 +320,101 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float
   }
 }}
 
+
+int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom) { with (scrollInfo) {
+  bool buttonOnBottomScreen(in Button btn) {
+    return btn.y - scrollInfo.scrollOffset >= SCREEN_HEIGHT && btn.y + btn.h - scrollInfo.scrollOffset < 2*SCREEN_HEIGHT;
+  }
+
+  if (input.scrollMethodCur == ScrollMethod.none) {
+    if (input.held(Key.up | Key.down) && input.scrollVel == 0) {
+      input.scrollMethodCur = ScrollMethod.custom;
+
+      if (input.down(Key.up | Key.down)) input.scrollVel = 0;
+    }
+  }
+  else if (input.scrollMethodCur == ScrollMethod.custom) {
+    Button* btn = &buttons[uiState.buttonSelected];
+    if (!input.held(Key.up | Key.down) && buttonOnBottomScreen(*btn)) {
+      input.scrollMethodCur = ScrollMethod.none;
+    }
+  }
+
+  ScrollDiff scrollDiff;
+
+  if (input.scrollMethodCur == ScrollMethod.custom) {
+    bool selectionJustChanged = false;
+    if (input.down(Key.down)) {
+      if (uiState.buttonSelected < buttons.length-1) {
+        audioPlaySound(SoundEffect.button_move, 0.1);
+        uiState.buttonSelectedLast = uiState.buttonSelected;
+        uiState.buttonSelected++;
+        selectionJustChanged = true;
+      }
+      else {
+        audioPlaySound(SoundEffect.scroll_stop, 0.1);
+      }
+    }
+    else if (input.down(Key.up)) {
+      if (uiState.buttonSelected > 0) {
+        audioPlaySound(SoundEffect.button_move, 0.1);
+        uiState.buttonSelectedLast = uiState.buttonSelected;
+        uiState.buttonSelected--;
+        selectionJustChanged = true;
+      }
+      else {
+        audioPlaySound(SoundEffect.scroll_stop, 0.1);
+      }
+    }
+
+    Button* btn = &buttons[uiState.buttonSelected];
+    if (!buttonOnBottomScreen(*btn)) {
+      scrollDiff.y = btn.y - scrollInfo.scrollOffset < SCREEN_HEIGHT ? -5 : 5;
+
+      if (selectionJustChanged) {
+        audioPlaySound(SoundEffect.scroll_tick, 0.1);
+      }
+    }
+  }
+  else if (input.scrollMethodCur == ScrollMethod.none && input.down(Key.a)) {
+    audioPlaySound(SoundEffect.button_confirm, 0.5);
+    return uiState.buttonSelected;
+  }
+  else {
+    scrollDiff = updateScrollDiff(input);
+
+    //select new button if the selected one went off-screen
+    //@Speed slow but maybe inconsequential
+    Button* curBtn = &buttons[uiState.buttonSelected];
+    if (!buttonOnBottomScreen(*curBtn)) {
+      if (curBtn.y - scrollInfo.scrollOffset < SCREEN_HEIGHT) {
+        foreach (ref btn; buttons) { //assuming buttons are sorted here
+          if (buttonOnBottomScreen(btn)) {
+            uiState.buttonSelected = btn.id;
+            break;
+          }
+        }
+      }
+      else {
+        foreach_reverse (ref btn; buttons) { //assuming buttons are sorted here
+          if (buttonOnBottomScreen(btn)) {
+            uiState.buttonSelected = btn.id;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
+
+  return -1;
+}}
+
+void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen) { with (scrollInfo) {
+  const(Button)* button = &bookButtons[uiState.buttonSelected];
+  C2D_DrawRectSolid(button.x-4 + (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, button.y-4 - scrollInfo.scrollOffset, 0.3, button.w+8, button.h+8, C2D_Color32(0, 0x80, 0, 0xFF));
+}}
 
 ////////
 // Scroll Indicator

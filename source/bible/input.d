@@ -12,7 +12,7 @@ struct ScrollDiff {
 }
 
 enum ScrollMethod {
-  none, dpad, circle, touch
+  none, dpad, circle, touch, custom
 }
 
 struct Input {
@@ -118,6 +118,7 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
         scrollMethodCur = ScrollMethod.none;
       }
       break;
+    case ScrollMethod.custom: break;
   }
 
   if (scrollMethodCur == ScrollMethod.none) {
@@ -143,6 +144,7 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
             break StartScrollingSwitch;
           }
           break;
+        case ScrollMethod.custom: break;
       }
     }
 
@@ -173,6 +175,7 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
     case ScrollMethod.touch:
       result = ScrollDiff(prevTouchRaw.px - touchRaw.px, prevTouchRaw.py - touchRaw.py);
       break;
+    case ScrollMethod.custom: break;
   }
 
   return result;

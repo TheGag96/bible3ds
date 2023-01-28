@@ -96,6 +96,7 @@ enum SoundEffect : ubyte {
   button_off,
   button_confirm,
   button_back,
+  button_move,
 }
 
 enum SoundType : ubyte {
@@ -123,6 +124,7 @@ static immutable SoundInfo[SoundEffect.max + 1] SOUND_INFO_TABLE = [
   SoundEffect.button_off             : { path : sfxPath!(SoundEffect.button_off),     soundType : SoundType.normal },
   SoundEffect.button_confirm         : { path : sfxPath!(SoundEffect.button_confirm), soundType : SoundType.normal },
   SoundEffect.button_back            : { path : sfxPath!(SoundEffect.button_back),    soundType : SoundType.normal },
+  SoundEffect.button_move            : { path : sfxPath!(SoundEffect.button_move),    soundType : SoundType.normal },
 ];
 
 ///sounds loaded all the time
@@ -133,6 +135,7 @@ static immutable SoundEffect[] GLOBAL_SOUNDS = [
   SoundEffect.button_off,
   SoundEffect.button_confirm,
   SoundEffect.button_back,
+  SoundEffect.button_move,
 ];
 
 

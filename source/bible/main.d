@@ -573,7 +573,11 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
   }
 
   if (uiState.buttonHeld == BookButton.none) {
-    handleScroll(&scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
+    int buttonSelected = handleButtonSelectionAndScroll(&uiState, bookButtons[], &scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
+    if (buttonSelected != -1) {
+      retVal = View.reading;
+      chosenBook = cast(Book) buttonSelected;
+    }
   }
   else {
     scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
@@ -642,6 +646,8 @@ void renderBookView(
 
   drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
+  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top);
+
   Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
@@ -659,6 +665,8 @@ void renderBookView(
 
     drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
+    renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top);
+
     C2D_DrawSprite(&sprite);
     renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
   }
@@ -667,6 +675,8 @@ void renderBookView(
   C2D_SceneBegin(bottom);
 
   drawBackground(GFXScreen.bottom, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+
+  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.bottom);
 
   C2D_SpriteFromImage(&sprite, cacheImageBottom);
   C2D_DrawSprite(&sprite);
