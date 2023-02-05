@@ -427,6 +427,13 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
   }
 
+  if (input.scrollMethodCur != ScrollMethod.none && input.scrollMethodCur != ScrollMethod.custom || input.scrollVel != 0) {
+    uiState.selectedFadeTimer = approach(uiState.selectedFadeTimer, 0, 0.1);
+  }
+  else {
+    uiState.selectedFadeTimer = approach(uiState.selectedFadeTimer, 1, 0.25);
+  }
+
   return result;
 }}
 
@@ -520,7 +527,7 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   }
 
   if (uiState.buttonSelected >= 0 && uiState.buttonSelected < buttons.length) {
-    drawIndicatorForButton(&buttons[uiState.buttonSelected], 1);
+    drawIndicatorForButton(&buttons[uiState.buttonSelected], uiState.selectedFadeTimer);
   }
 
   if (uiState.buttonSelectedLast >= 0 && uiState.buttonSelectedLast < buttons.length) {
