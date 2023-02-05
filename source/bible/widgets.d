@@ -22,6 +22,7 @@ struct Button {
   float x = 0, y = 0, z = 0, w = 0, h = 0;
   C2D_Text* text;
   float textW, textH;
+  const(ButtonStyle)* style;
 }
 
 enum Justification {
@@ -35,6 +36,8 @@ struct ButtonStyle {
   float margin;
   float textSize = 0;
   Justification justification;
+  SoundEffect pressedSound = SoundEffect.button_confirm;
+  float pressedSoundVol = 0.5;
 }
 
 enum BUTTON_DEPRESS_OFFSET = 3;
@@ -96,7 +99,7 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
     }
     else if (uiState.buttonHoveredLast == btn.id && uiState.buttonHovered == -1) {
       if (result) {
-        audioPlaySound(SoundEffect.button_confirm, 0.5);
+        audioPlaySound(btn.style.pressedSound, btn.style.pressedSoundVol);
       }
       else {
         audioPlaySound(SoundEffect.button_off, 0.25);
@@ -107,18 +110,18 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
   return result;
 }
 
-static void renderButton(in Button btn, in UiState uiState, in ButtonStyle style) {
+static void renderButton(in Button btn, in UiState uiState) {
   bool pressed = btn.id == uiState.buttonHeld && btn.id == uiState.buttonHovered;
   float btnRealX = btn.x, btnRealY = btn.y + pressed * BUTTON_DEPRESS_OFFSET;
 
-  C2D_DrawRectSolid(btnRealX, btnRealY, btn.z, btn.w, btn.h, pressed ? style.colorBgHeld : style.colorBg);
+  C2D_DrawRectSolid(btnRealX, btnRealY, btn.z, btn.w, btn.h, pressed ? btn.style.colorBgHeld : btn.style.colorBg);
 
   float textX, textY;
 
-  final switch (style.justification) {
+  final switch (btn.style.justification) {
     case Justification.left_justified:
-      textX = btnRealX+style.margin;
-      textY = btnRealY+style.margin;
+      textX = btnRealX+btn.style.margin;
+      textY = btnRealY+btn.style.margin;
       break;
     case Justification.centered:
       textX = btnRealX + btn.w/2 - btn.textW/2;
@@ -129,7 +132,7 @@ static void renderButton(in Button btn, in UiState uiState, in ButtonStyle style
   }
 
   C2D_DrawText(
-    btn.text, C2D_WithColor, GFXScreen.top, textX, textY, btn.z + 0.05, style.textSize, style.textSize, style.colorText
+    btn.text, C2D_WithColor, GFXScreen.top, textX, textY, btn.z + 0.05, btn.style.textSize, btn.style.textSize, btn.style.colorText
   );
 }
 
@@ -386,7 +389,8 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     }
   }
   else if (input.scrollMethodCur == ScrollMethod.none && input.down(Key.a)) {
-    audioPlaySound(SoundEffect.button_confirm, 0.5);
+    Button* btn = &buttons[uiState.buttonSelected];
+    audioPlaySound(btn.style.pressedSound, btn.style.pressedSound);
     result = uiState.buttonSelected;
   }
   else {

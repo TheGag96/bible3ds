@@ -338,7 +338,7 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   C2D_TextParse(text, textBuf, "Back");
   C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
   auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
+  backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight, &BACK_BUTTON_STYLE);
 
   char[3] buf = 0;
   foreach (i; 1..85) {
@@ -355,7 +355,6 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
   uiState.buttonHoveredLast = uiState.buttonHovered;
 
   if (input.down(Key.b) || handleButton(backBtn, *input, loadedPage.scrollInfo, &uiState, false)) {
-    audioPlaySound(SoundEffect.button_back, 0.5);
     frameNeedsRender = true;
     return View.book;
   }
@@ -478,7 +477,7 @@ void renderReadingView(
   C2D_SpriteSetPos(&sprite, 0, 0);
   C2D_DrawSprite(&sprite);
 
-  renderButton(backBtn, uiState, BOTTOM_BUTTON_STYLE);
+  renderButton(backBtn, uiState);
 
   frameNeedsRender = false;
 }}
@@ -498,6 +497,13 @@ static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
   textSize      : 0.5f,
   justification : Justification.centered,
 };
+
+static immutable ButtonStyle BACK_BUTTON_STYLE = () {
+  ButtonStyle result = BOTTOM_BUTTON_STYLE;
+  result.pressedSound    = SoundEffect.button_back;
+  result.pressedSoundVol = 0.5;
+  return result;
+}();
 
 void renderPage(
   ReadingViewData* viewData, float from, float to
@@ -532,6 +538,17 @@ void renderPage(
 }}
 
 void initBookView(BookViewData* viewData) { with (viewData) {
+  enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
+  enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
+  static immutable ButtonStyle BOOK_BUTTON_STYLE = {
+    colorText     : C2D_Color32(255, 255, 255, 255),
+    colorBg       : BOOK_BUTTON_COLOR,
+    colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
+    margin        : BOOK_BUTTON_MARGIN,
+    textSize      : 0.5f,
+    justification : Justification.left_justified,
+  };
+
   textBuf = C2D_TextBufNew(4096);
   textArray = allocArray!C2D_Text(128);
 
@@ -547,6 +564,7 @@ void initBookView(BookViewData* viewData) { with (viewData) {
     btn.z = 0.25;
     btn.w = BOOK_BUTTON_WIDTH;
     btn.h = btn.textH + 2*BOOK_BUTTON_MARGIN;
+    btn.style = &BOOK_BUTTON_STYLE;
   }
 
   float textWidth, textHeight;
@@ -554,7 +572,7 @@ void initBookView(BookViewData* viewData) { with (viewData) {
   C2D_TextParse(text, textBuf, "Options");
   C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
   auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
+  optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight, &BOTTOM_BUTTON_STYLE);
 
   uiState.buttonHeld    = BookButton.none;
   uiState.buttonHovered = BookButton.none;
@@ -598,17 +616,6 @@ void renderBookView(
   BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom,
   bool _3DEnabled, float slider3DState
 ) { with (viewData) {
-  enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
-  enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
-  static immutable ButtonStyle BOOK_BUTTON_STYLE = {
-    colorText     : C2D_Color32(255, 255, 255, 255),
-    colorBg       : BOOK_BUTTON_COLOR,
-    colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
-    margin        : BOOK_BUTTON_MARGIN,
-    textSize      : 0.5f,
-    justification : Justification.left_justified,
-  };
-
   static void renderBookButtons(
     BookViewData* viewData, float from, float to
   ) { with (viewData) {
@@ -620,7 +627,7 @@ void renderBookView(
         break;
       }
       else {
-        renderButton(btn, uiState, BOOK_BUTTON_STYLE);
+        renderButton(btn, uiState);
       }
     }
   }}
@@ -689,5 +696,5 @@ void renderBookView(
 
   renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.bottom, &mainData.selectorTex);
 
-  renderButton(optionsBtn, uiState, BOTTOM_BUTTON_STYLE);
+  renderButton(optionsBtn, uiState);
 }}
