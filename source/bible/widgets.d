@@ -417,6 +417,23 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   const(Button)* button = &buttons[uiState.buttonSelected];
   C2Di_Context* ctx = C2Di_GetContext();
 
+  void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
+    C2Di_Vertex[6] vertexList = [
+      // Top-left quad
+      // First triangle
+      { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+      { brX, tlY, z,   brU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+      { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+      // Second triangle
+      { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+      { tlX, brY, z,   tlU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+      { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+    ];
+
+    ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
+    ctx.vtxBufPos += vertexList.length;
+  }
+
   C2D_Flush();
 
   C2D_Prepare(C2DShader.normal);
@@ -426,105 +443,6 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
 
   C3D_ProcTexBind(1, null);
   C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
-
-  enum LINE_WIDTH = 4;
-
-  bool pressed = button.id == uiState.buttonHeld && button.id == uiState.buttonHovered;
-  float screenFactor = (screen == GFXScreen.top) * ((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2);
-  float tlX = button.x - LINE_WIDTH + screenFactor;
-  float tlY = button.y + pressed * BUTTON_DEPRESS_OFFSET - LINE_WIDTH - floor(scrollInfo.scrollOffset)
-              - (screen == GFXScreen.bottom) * SCREEN_HEIGHT;
-
-  float trX = button.x + button.w - (tex.width - LINE_WIDTH) + screenFactor;
-  float trY = tlY;
-
-  float blX = tlX;
-  float blY = tlY + button.h + LINE_WIDTH - (tex.height - LINE_WIDTH);
-
-  float brX = trX;
-  float brY = blY;
-
-  C2Di_Vertex[48] vertexList = [
-    // Top-left quad
-    // First triangle
-    { tlX,             tlY,              0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX + tex.width, tlY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX + tex.width, tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { tlX + tex.width, tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX,             tlY + tex.height, 0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX,             tlY,              0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Top-right quad
-    // First triangle
-    { trX,             trY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX + tex.width, trY,              0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX + tex.width, trY + tex.height, 0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { trX + tex.width, trY + tex.height, 0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX,             trY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX,             trY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Bottom-left quad
-    // First triangle
-    { blX,             blY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { blX + tex.width, blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { blX + tex.width, blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { blX + tex.width, blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { blX,             blY + tex.height, 0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { blX,             blY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Bottom-right quad
-    // First triangle
-    { brX,             brY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { brX + tex.width, brY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { brX + tex.width, brY + tex.height, 0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { brX + tex.width, brY + tex.height, 0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { brX,             brY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { brX,             brY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Top quad
-    // First triangle
-    { tlX + tex.width, tlY,              0.3f,   15.0f/16.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX,             tlY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX,             tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { trX,             tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX + tex.width, tlY + tex.height, 0.3f,   15.0f/16.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX + tex.width, tlY,              0.3f,   15.0f/16.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Bottom quad
-    // First triangle
-    { blX + tex.width, blY,              0.3f,   15.0f/16.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { brX,             blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { brX,             blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { brX,             blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { blX + tex.width, blY + tex.height, 0.3f,   15.0f/16.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { blX + tex.width, blY,              0.3f,   15.0f/16.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Left quad
-    // First triangle
-    { tlX,             tlY + tex.height, 0.3f,   0.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX + tex.width, tlY + tex.height, 0.3f,   1.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX + tex.width, blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { tlX + tex.width, blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX,             blY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX,             tlY + tex.height, 0.3f,   0.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
-
-    // Right quad
-    // First triangle
-    { trX,             trY + tex.height, 0.3f,   1.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX + tex.width, trY + tex.height, 0.3f,   0.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX + tex.width, brY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    // Second triangle
-    { trX + tex.width, brY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX,             brY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
-    { trX,             trY + tex.height, 0.3f,   1.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
-  ];
 
   C3D_TexEnv* env = C3D_GetTexEnv(0);
   C3D_TexEnvInit(env);
@@ -544,8 +462,36 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   env = C3D_GetTexEnv(5);
   C3D_TexEnvInit(env);
 
-  ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
-  ctx.vtxBufPos += vertexList.length;
+  enum LINE_WIDTH = 4;
+
+  bool pressed = button.id == uiState.buttonHeld && button.id == uiState.buttonHovered;
+
+  //tlX, tlY, etc. here mean "top-left quad of the selection indicator shape", top-left corner being the origin
+  float screenFactor = (screen == GFXScreen.top) * ((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2);
+  float tlX = button.x - LINE_WIDTH + screenFactor;
+  float tlY = button.y + pressed * BUTTON_DEPRESS_OFFSET - LINE_WIDTH - floor(scrollInfo.scrollOffset)
+              - (screen == GFXScreen.bottom) * SCREEN_HEIGHT;
+
+  float trX = button.x + button.w - (tex.width - LINE_WIDTH) + screenFactor;
+  float trY = tlY;
+
+  float blX = tlX;
+  float blY = tlY + button.h + LINE_WIDTH - (tex.height - LINE_WIDTH);
+
+  float brX = trX;
+  float brY = blY;
+
+  float z = 0.3;
+
+  pushQuad(tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0); // top-left
+  pushQuad(trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0); // top-right
+  pushQuad(blX, blY, blX + tex.width, blY + tex.height, z, 0, 0, 1, 1); // bottom-left
+  pushQuad(brX, brY, brX + tex.width, brY + tex.height, z, 1, 0, 0, 1); // bottom-right
+
+  pushQuad(tlX + tex.width, tlY,              trX,             tlY + tex.height, z, 15.0f/16.0f, 1,          1, 0); //top
+  pushQuad(blX + tex.width, blY,              brX,             blY + tex.height, z, 15.0f/16.0f, 0,          1, 1); //bottom
+  pushQuad(tlX,             tlY + tex.height, tlX + tex.width, blY,              z, 0,           1.0f/16.0f, 1, 0); //left
+  pushQuad(trX,             trY + tex.height, trX + tex.width, brY,              z, 1,           1.0f/16.0f, 0, 0); //right
 
   C2D_Flush();
 
