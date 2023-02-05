@@ -585,6 +585,8 @@ View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
     }
   }
   else {
+    //@TODO: Move this into widget code or something?
+    uiState.selectedLastFadeTimer = approach(uiState.selectedLastFadeTimer, 0, 0.1);
     scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
     input.scrollVel = 0;
   }

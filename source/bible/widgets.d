@@ -9,7 +9,7 @@ struct UiState {
   int buttonHovered, buttonHoveredLast;
   int buttonHeld, buttonHeldLast;
   int buttonSelected, buttonSelectedLast;
-  int selectedFadeTimer, selectedLastFadeTimer;
+  float selectedFadeTimer = 0, selectedLastFadeTimer = 0;
 }
 
 
@@ -54,8 +54,11 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
       if ( touchRealX >= btn.x    && touchRealX <= btn.x    + btn.w &&
            touchRealY >= btnRealY && touchRealY <= btnRealY + btn.h )
       {
-        uiState.buttonHeld    = btn.id;
-        uiState.buttonHovered = btn.id;
+        uiState.buttonHeld         = btn.id;
+        uiState.buttonHovered      = btn.id;
+        uiState.buttonSelectedLast = uiState.buttonSelected;
+        uiState.buttonSelected     = btn.id;
+        uiState.selectedLastFadeTimer = 1.0f;
         audioPlaySound(SoundEffect.button_down, 0.25);
       }
     }
@@ -324,6 +327,8 @@ void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, fl
 
 
 int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom) { with (scrollInfo) {
+  int result = -1;
+
   bool buttonOnBottomScreen(in Button btn) {
     return btn.y - scrollInfo.scrollOffset >= SCREEN_HEIGHT && btn.y + btn.h - scrollInfo.scrollOffset < 2*SCREEN_HEIGHT;
   }
@@ -350,6 +355,7 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
       if (uiState.buttonSelected < buttons.length-1) {
         audioPlaySound(SoundEffect.button_move, 0.1);
         uiState.buttonSelectedLast = uiState.buttonSelected;
+        uiState.selectedLastFadeTimer = 1.0f;
         uiState.buttonSelected++;
         selectionJustChanged = true;
       }
@@ -361,6 +367,7 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
       if (uiState.buttonSelected > 0) {
         audioPlaySound(SoundEffect.button_move, 0.1);
         uiState.buttonSelectedLast = uiState.buttonSelected;
+        uiState.selectedLastFadeTimer = 1.0f;
         uiState.buttonSelected--;
         selectionJustChanged = true;
       }
@@ -380,19 +387,20 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
   }
   else if (input.scrollMethodCur == ScrollMethod.none && input.down(Key.a)) {
     audioPlaySound(SoundEffect.button_confirm, 0.5);
-    return uiState.buttonSelected;
+    result = uiState.buttonSelected;
   }
   else {
     scrollDiff = updateScrollDiff(input);
 
     //select new button if the selected one went off-screen
     //@Speed slow but maybe inconsequential
-    Button* curBtn = &buttons[uiState.buttonSelected];
-    if (!buttonOnBottomScreen(*curBtn)) {
+    Button* curBtn = uiState.buttonSelected >= 0 && uiState.buttonSelected < buttons.length ? &buttons[uiState.buttonSelected] : null;
+    if (curBtn && !buttonOnBottomScreen(*curBtn)) {
       if (curBtn.y - scrollInfo.scrollOffset < SCREEN_HEIGHT) {
         foreach (ref btn; buttons) { //assuming buttons are sorted here
           if (buttonOnBottomScreen(btn)) {
-            uiState.buttonSelected = btn.id;
+            uiState.buttonSelectedLast = uiState.buttonSelected;
+            uiState.buttonSelected     = btn.id;
             break;
           }
         }
@@ -400,7 +408,8 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
       else {
         foreach_reverse (ref btn; buttons) { //assuming buttons are sorted here
           if (buttonOnBottomScreen(btn)) {
-            uiState.buttonSelected = btn.id;
+            uiState.buttonSelectedLast = uiState.buttonSelected;
+            uiState.buttonSelected     = btn.id;
             break;
           }
         }
@@ -408,13 +417,16 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     }
   }
 
-  respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
+  uiState.selectedLastFadeTimer = approach(uiState.selectedLastFadeTimer, 0, 0.1);
 
-  return -1;
+  if (result == -1) {
+    respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
+  }
+
+  return result;
 }}
 
 void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen, C3D_Tex* tex) { with (scrollInfo) {
-  const(Button)* button = &buttons[uiState.buttonSelected];
   C2Di_Context* ctx = C2Di_GetContext();
 
   void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
@@ -434,8 +446,6 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
     ctx.vtxBufPos += vertexList.length;
   }
 
-  C2D_Flush();
-
   C2D_Prepare(C2DShader.normal);
 
   C2Di_SetTex(tex);
@@ -449,8 +459,6 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0, GPUTevSrc.texture0);
   C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
   C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_r);
-  //C3D_TexEnvColor(env, C2D_Color32(0x00, 0xAA, 0x11, 0xFF));
-  //C3D_TexEnvColor(env, C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF));
 
   env = C3D_GetTexEnv(1);
   C3D_TexEnvInit(env);
@@ -459,44 +467,67 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
   C3D_TexEnvColor(env, C2D_Color32(0x00, 0xAA, 0x11, 0xFF));
 
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.previous, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
+
   env = C3D_GetTexEnv(5);
   C3D_TexEnvInit(env);
 
   enum LINE_WIDTH = 4;
 
-  bool pressed = button.id == uiState.buttonHeld && button.id == uiState.buttonHovered;
+  void drawIndicatorForButton(const(Button)* btn, float alphaFloat) {
+    bool pressed = btn.id == uiState.buttonHeld && btn.id == uiState.buttonHovered;
+    ubyte alpha  = cast(ubyte) round(0xFF*alphaFloat);
 
-  //tlX, tlY, etc. here mean "top-left quad of the selection indicator shape", top-left corner being the origin
-  float screenFactor = (screen == GFXScreen.top) * ((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2);
-  float tlX = button.x - LINE_WIDTH + screenFactor;
-  float tlY = button.y + pressed * BUTTON_DEPRESS_OFFSET - LINE_WIDTH - floor(scrollInfo.scrollOffset)
-              - (screen == GFXScreen.bottom) * SCREEN_HEIGHT;
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvColor(env, C2D_Color32(0xFF, 0xFF, 0xFF, alpha));
 
-  float trX = button.x + button.w - (tex.width - LINE_WIDTH) + screenFactor;
-  float trY = tlY;
+    //tlX, tlY, etc. here mean "top-left quad of the selection indicator shape", top-left corner being the origin
+    float screenFactor = (screen == GFXScreen.top) * ((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2);
+    float tlX = btn.x - LINE_WIDTH + screenFactor;
+    float tlY = btn.y + pressed * BUTTON_DEPRESS_OFFSET - LINE_WIDTH - floor(scrollInfo.scrollOffset)
+                - (screen == GFXScreen.bottom) * SCREEN_HEIGHT;
 
-  float blX = tlX;
-  float blY = tlY + button.h + LINE_WIDTH - (tex.height - LINE_WIDTH);
+    float trX = btn.x + btn.w - (tex.width - LINE_WIDTH) + screenFactor;
+    float trY = tlY;
 
-  float brX = trX;
-  float brY = blY;
+    float blX = tlX;
+    float blY = tlY + btn.h + LINE_WIDTH - (tex.height - LINE_WIDTH);
 
-  float z = 0.3;
+    float brX = trX;
+    float brY = blY;
 
-  pushQuad(tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0); // top-left
-  pushQuad(trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0); // top-right
-  pushQuad(blX, blY, blX + tex.width, blY + tex.height, z, 0, 0, 1, 1); // bottom-left
-  pushQuad(brX, brY, brX + tex.width, brY + tex.height, z, 1, 0, 0, 1); // bottom-right
+    float z = 0.3;
 
-  pushQuad(tlX + tex.width, tlY,              trX,             tlY + tex.height, z, 15.0f/16.0f, 1,          1, 0); //top
-  pushQuad(blX + tex.width, blY,              brX,             blY + tex.height, z, 15.0f/16.0f, 0,          1, 1); //bottom
-  pushQuad(tlX,             tlY + tex.height, tlX + tex.width, blY,              z, 0,           1.0f/16.0f, 1, 0); //left
-  pushQuad(trX,             trY + tex.height, trX + tex.width, brY,              z, 1,           1.0f/16.0f, 0, 0); //right
+    pushQuad(tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0); // top-left
+    pushQuad(trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0); // top-right
+    pushQuad(blX, blY, blX + tex.width, blY + tex.height, z, 0, 0, 1, 1); // bottom-left
+    pushQuad(brX, brY, brX + tex.width, brY + tex.height, z, 1, 0, 0, 1); // bottom-right
 
-  C2D_Flush();
+    pushQuad(tlX + tex.width, tlY,              trX,             tlY + tex.height, z, 15.0f/16.0f, 1,          1, 0); //top
+    pushQuad(blX + tex.width, blY,              brX,             blY + tex.height, z, 15.0f/16.0f, 0,          1, 1); //bottom
+    pushQuad(tlX,             tlY + tex.height, tlX + tex.width, blY,              z, 0,           1.0f/16.0f, 1, 0); //left
+    pushQuad(trX,             trY + tex.height, trX + tex.width, brY,              z, 1,           1.0f/16.0f, 0, 0); //right
+
+    C2D_Flush(); //need this if alpha value changes
+  }
+
+  if (uiState.buttonSelected >= 0 && uiState.buttonSelected < buttons.length) {
+    drawIndicatorForButton(&buttons[uiState.buttonSelected], 1);
+  }
+
+  if (uiState.buttonSelectedLast >= 0 && uiState.buttonSelectedLast < buttons.length) {
+    drawIndicatorForButton(&buttons[uiState.buttonSelectedLast], uiState.selectedLastFadeTimer);
+  }
 
   //Cleanup, resetting things to how C2D normally expects
   C2D_Prepare(C2DShader.normal, true);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
 }}
 
 ////////
