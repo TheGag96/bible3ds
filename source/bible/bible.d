@@ -84,10 +84,18 @@ void closeBibleBook(OpenBook* book) { with (book) {
 
 enum Translation {
   asv,
+  bbe,
+  kjv,
+  web,
+  ylt,
 }
 
 static immutable string[] TRANSLATION_NAMES = [
   Translation.asv : "asv",
+  Translation.bbe : "bbe",
+  Translation.kjv : "kjv",
+  Translation.web : "web",
+  Translation.ylt : "ylt",
 ];
 
 enum Book {
