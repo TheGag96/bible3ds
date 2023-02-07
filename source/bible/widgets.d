@@ -394,7 +394,8 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     result = uiState.buttonSelected;
   }
   else {
-    scrollDiff = updateScrollDiff(input);
+    //only allow touch scrolling, since we use the d-pad and circle pad
+    scrollDiff = updateScrollDiff(input, (1 << ScrollMethod.touch));
 
     //select new button if the selected one went off-screen
     //@Speed slow but maybe inconsequential

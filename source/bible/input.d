@@ -96,7 +96,7 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   }
 }}
 
-ScrollDiff updateScrollDiff(Input* input) { with (input) {
+ScrollDiff updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (input) {
   ScrollDiff result;
 
   enum CIRCLE_DEADZONE = 18;
@@ -127,19 +127,25 @@ ScrollDiff updateScrollDiff(Input* input) { with (input) {
       final switch (method) {
         case ScrollMethod.none: break;
         case ScrollMethod.dpad:
-          if (held(Key.dup | Key.ddown | Key.dleft | Key.dright)) {
+          if ( (allowedMethods & (1 << ScrollMethod.dpad)) &&
+               held(Key.dup | Key.ddown | Key.dleft | Key.dright) )
+          {
             scrollMethodCur = cast(ScrollMethod) method;
             break StartScrollingSwitch;
           }
           break;
         case ScrollMethod.circle:
-          if (circleRaw.dy * circleRaw.dy + circleRaw.dx * circleRaw.dx > CIRCLE_DEADZONE * CIRCLE_DEADZONE) {
+          if ( (allowedMethods & (1 << ScrollMethod.circle)) &&
+               circleRaw.dy * circleRaw.dy + circleRaw.dx * circleRaw.dx > CIRCLE_DEADZONE * CIRCLE_DEADZONE )
+          {
             scrollMethodCur = cast(ScrollMethod) method;
             break StartScrollingSwitch;
           }
           break;
         case ScrollMethod.touch:
-          if (held(Key.touch)) {
+          if ( (allowedMethods & (1 << ScrollMethod.touch)) &&
+               held(Key.touch) )
+          {
             scrollMethodCur = cast(ScrollMethod) method;
             break StartScrollingSwitch;
           }
