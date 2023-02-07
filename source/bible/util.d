@@ -248,6 +248,41 @@ char[] readTextFile(alias allocFunc = malloc)(scope const(char)[] filename) {
   return buf;
 }
 
+@trusted
+char[] readCompressedTextFile(alias allocFunc = malloc)(scope const(char)[] filename) {
+  import ctru.util.decompress;
+
+  auto compressed = readFile(filename);
+  scope (exit) freeArray(compressed);
+
+  DecompressType decompType;
+  size_t decompSize;
+
+  ssize_t bytesForHeader = decompressHeader(
+    &decompType,
+    &decompSize,
+    null,
+    compressed.ptr,
+    compressed.length
+  );
+
+  assert(bytesForHeader != -1);
+
+  char[] buf = allocArray!(char, false, allocFunc)(decompSize);
+
+  bool success = decompress(
+    buf.ptr,
+    buf.length,
+    null,
+    compressed.ptr,
+    compressed.length
+  );
+
+  assert(success);
+
+  return buf;
+}
+
 T approach(T)(T current, T target, T rate) {
   T result = current;
 
