@@ -336,6 +336,7 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     return btn.y - scrollInfo.scrollOffset >= SCREEN_HEIGHT && btn.y + btn.h - scrollInfo.scrollOffset < 2*SCREEN_HEIGHT;
   }
 
+  //get in or out of our custom scroll handler (d-pad / circle pad scrolls by selecting buttons)
   if (input.scrollMethodCur == ScrollMethod.none) {
     if (input.held(Key.up | Key.down) && input.scrollVel == 0) {
       input.scrollMethodCur = ScrollMethod.custom;
@@ -422,12 +423,14 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     }
   }
 
+  //fade out previously selected button
   uiState.selectedLastFadeTimer = approach(uiState.selectedLastFadeTimer, 0, 0.1);
 
   if (result == -1) {
     respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
   }
 
+  //fade out current selection when touch scrolling, fade faster when done
   if (input.scrollMethodCur != ScrollMethod.none && input.scrollMethodCur != ScrollMethod.custom || input.scrollVel != 0) {
     uiState.selectedFadeTimer = approach(uiState.selectedFadeTimer, 0, 0.1);
   }
@@ -466,12 +469,14 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   C3D_ProcTexBind(1, null);
   C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
 
+  //consider texture's value to count as alpha as well as the texture's actual alpha
   C3D_TexEnv* env = C3D_GetTexEnv(0);
   C3D_TexEnvInit(env);
   C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0, GPUTevSrc.texture0);
   C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
   C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_r);
 
+  //used to apply dynamic color
   env = C3D_GetTexEnv(1);
   C3D_TexEnvInit(env);
   C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.texture0);
@@ -479,6 +484,7 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
   C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
   C3D_TexEnvColor(env, C2D_Color32(0x00, 0xAA, 0x11, 0xFF));
 
+  //used to apply dynamic fade alpha
   env = C3D_GetTexEnv(2);
   C3D_TexEnvInit(env);
   C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.previous, GPUTevSrc.constant);
@@ -494,7 +500,7 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
     bool pressed = btn.id == uiState.buttonHeld && btn.id == uiState.buttonHovered;
     ubyte alpha  = cast(ubyte) round(0xFF*alphaFloat);
 
-    env = C3D_GetTexEnv(2);
+    env = C3D_GetTexEnv(2); //must be done to mark the texenv as dirty! without this, each indicator will have one alpha
     C3D_TexEnvColor(env, C2D_Color32(0xFF, 0xFF, 0xFF, alpha));
 
     //tlX, tlY, etc. here mean "top-left quad of the selection indicator shape", top-left corner being the origin
