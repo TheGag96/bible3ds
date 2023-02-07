@@ -19,7 +19,7 @@ struct UiState {
 
 struct Button {
   int id;
-  float x = 0, y = 0, w = 0, h = 0;
+  float x = 0, y = 0, z = 0, w = 0, h = 0;
   C2D_Text* text;
   float textW, textH;
 }
@@ -36,6 +36,8 @@ struct ButtonStyle {
   float textSize = 0;
   Justification justification;
 }
+
+enum BUTTON_DEPRESS_OFFSET = 3;
 
 enum OneFrameEvent {
   not_triggered, triggered, already_processed,
@@ -104,9 +106,9 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
 
 static void renderButton(in Button btn, in UiState uiState, in ButtonStyle style) {
   bool pressed = btn.id == uiState.buttonHeld && btn.id == uiState.buttonHovered;
-  float btnRealX = btn.x, btnRealY = btn.y + pressed * 3;
+  float btnRealX = btn.x, btnRealY = btn.y + pressed * BUTTON_DEPRESS_OFFSET;
 
-  C2D_DrawRectSolid(btnRealX, btnRealY, 0.0, btn.w, btn.h, pressed ? style.colorBgHeld : style.colorBg);
+  C2D_DrawRectSolid(btnRealX, btnRealY, btn.z, btn.w, btn.h, pressed ? style.colorBgHeld : style.colorBg);
 
   float textX, textY;
 
@@ -124,7 +126,7 @@ static void renderButton(in Button btn, in UiState uiState, in ButtonStyle style
   }
 
   C2D_DrawText(
-    btn.text, C2D_WithColor, GFXScreen.top, textX, textY, 0.5f, style.textSize, style.textSize, style.colorText
+    btn.text, C2D_WithColor, GFXScreen.top, textX, textY, btn.z + 0.05, style.textSize, style.textSize, style.colorText
   );
 }
 
@@ -209,7 +211,7 @@ void drawBackground(GFXScreen screen, C3D_Tex* vignetteTex, C3D_Tex* lineTex, ui
   C2D_Flush();
 
   //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal);
+  C2D_Prepare(C2DShader.normal, true);
 
   env = C3D_GetTexEnv(2);
   C3D_TexEnvInit(env);
@@ -411,9 +413,144 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
   return -1;
 }}
 
-void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen) { with (scrollInfo) {
-  const(Button)* button = &bookButtons[uiState.buttonSelected];
-  C2D_DrawRectSolid(button.x-4 + (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, button.y-4 - scrollInfo.scrollOffset, 0.3, button.w+8, button.h+8, C2D_Color32(0, 0x80, 0, 0xFF));
+void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen, C3D_Tex* tex) { with (scrollInfo) {
+  const(Button)* button = &buttons[uiState.buttonSelected];
+  C2Di_Context* ctx = C2Di_GetContext();
+
+  C2D_Flush();
+
+  C2D_Prepare(C2DShader.normal);
+
+  C2Di_SetTex(tex);
+  C2Di_Update();
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  enum LINE_WIDTH = 4;
+
+  bool pressed = button.id == uiState.buttonHeld && button.id == uiState.buttonHovered;
+  float screenFactor = (screen == GFXScreen.top) * ((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2);
+  float tlX = button.x - LINE_WIDTH + screenFactor;
+  float tlY = button.y + pressed * BUTTON_DEPRESS_OFFSET - LINE_WIDTH - floor(scrollInfo.scrollOffset)
+              - (screen == GFXScreen.bottom) * SCREEN_HEIGHT;
+
+  float trX = button.x + button.w - (tex.width - LINE_WIDTH) + screenFactor;
+  float trY = tlY;
+
+  float blX = tlX;
+  float blY = tlY + button.h + LINE_WIDTH - (tex.height - LINE_WIDTH);
+
+  float brX = trX;
+  float brY = blY;
+
+  C2Di_Vertex[48] vertexList = [
+    // Top-left quad
+    // First triangle
+    { tlX,             tlY,              0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX + tex.width, tlY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX + tex.width, tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { tlX + tex.width, tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX,             tlY + tex.height, 0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX,             tlY,              0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Top-right quad
+    // First triangle
+    { trX,             trY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX + tex.width, trY,              0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX + tex.width, trY + tex.height, 0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { trX + tex.width, trY + tex.height, 0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX,             trY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX,             trY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Bottom-left quad
+    // First triangle
+    { blX,             blY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { blX + tex.width, blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { blX + tex.width, blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { blX + tex.width, blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { blX,             blY + tex.height, 0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { blX,             blY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Bottom-right quad
+    // First triangle
+    { brX,             brY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { brX + tex.width, brY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { brX + tex.width, brY + tex.height, 0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { brX + tex.width, brY + tex.height, 0.3f,   0.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { brX,             brY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { brX,             brY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Top quad
+    // First triangle
+    { tlX + tex.width, tlY,              0.3f,   15.0f/16.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX,             tlY,              0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX,             tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { trX,             tlY + tex.height, 0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX + tex.width, tlY + tex.height, 0.3f,   15.0f/16.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX + tex.width, tlY,              0.3f,   15.0f/16.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Bottom quad
+    // First triangle
+    { blX + tex.width, blY,              0.3f,   15.0f/16.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { brX,             blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { brX,             blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { brX,             blY + tex.height, 0.3f,   1.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { blX + tex.width, blY + tex.height, 0.3f,   15.0f/16.0f,  1.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { blX + tex.width, blY,              0.3f,   15.0f/16.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Left quad
+    // First triangle
+    { tlX,             tlY + tex.height, 0.3f,   0.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX + tex.width, tlY + tex.height, 0.3f,   1.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX + tex.width, blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { tlX + tex.width, blY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX,             blY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX,             tlY + tex.height, 0.3f,   0.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
+
+    // Right quad
+    // First triangle
+    { trX,             trY + tex.height, 0.3f,   1.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX + tex.width, trY + tex.height, 0.3f,   0.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX + tex.width, brY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { trX + tex.width, brY,              0.3f,   0.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX,             brY,              0.3f,   1.0f,  0.0f,  0.0f,  0.0f,  0xFF<<24 },
+    { trX,             trY + tex.height, 0.3f,   1.0f,  1.0f/16.0f,  0.0f,  0.0f,  0xFF<<24 },
+  ];
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_r);
+  //C3D_TexEnvColor(env, C2D_Color32(0x00, 0xAA, 0x11, 0xFF));
+  //C3D_TexEnvColor(env, C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF));
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.modulate);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  C3D_TexEnvColor(env, C2D_Color32(0x00, 0xAA, 0x11, 0xFF));
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+
+  ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
+  ctx.vtxBufPos += vertexList.length;
+
+  C2D_Flush();
+
+  //Cleanup, resetting things to how C2D normally expects
+  C2D_Prepare(C2DShader.normal, true);
 }}
 
 ////////

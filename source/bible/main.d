@@ -96,6 +96,7 @@ struct MainData {
   View curView = View.book, nextView = View.book;
   ScrollCache scrollCache;
   C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
+  C3D_Tex selectorTex;
 }
 MainData mainData;
 
@@ -111,6 +112,7 @@ extern(C) int main(int argc, char** argv) {
   C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
   C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
   C2D_Prepare(C2DShader.normal);
+  //C3D_AlphaTest(true, GPUTestFunc.notequal, 0); //make empty space in sprites properly transparent, even despite using the depth buffer
   //consoleInit(GFXScreen.bottom, null);
 
   Input input;
@@ -144,6 +146,8 @@ extern(C) int main(int argc, char** argv) {
     if (!loadTextureFromFile(&vignetteTex, null, "romfs:/gfx/vignette.t3x"))
       svcBreak(UserBreakType.panic);
     if (!loadTextureFromFile(&lineTex, null, "romfs:/gfx/line.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&selectorTex, null, "romfs:/gfx/selector.t3x"))
       svcBreak(UserBreakType.panic);
     C3D_TexSetFilter(&vignetteTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
     C3D_TexSetFilter(&lineTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
@@ -334,7 +338,7 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   C2D_TextParse(text, textBuf, "Back");
   C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
   auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
+  backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
 
   char[3] buf = 0;
   foreach (i; 1..85) {
@@ -540,6 +544,7 @@ void initBookView(BookViewData* viewData) { with (viewData) {
     C2D_TextGetDimensions(btn.text, 0.5, 0.5, &btn.textW, &btn.textH);
     btn.x = SCREEN_BOTTOM_WIDTH/2 - BOOK_BUTTON_WIDTH/2;
     btn.y = i*(btn.textH+24) + SCREEN_HEIGHT;
+    btn.z = 0.25;
     btn.w = BOOK_BUTTON_WIDTH;
     btn.h = btn.textH + 2*BOOK_BUTTON_MARGIN;
   }
@@ -549,7 +554,7 @@ void initBookView(BookViewData* viewData) { with (viewData) {
   C2D_TextParse(text, textBuf, "Options");
   C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
   auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
+  optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight);
 
   uiState.buttonHeld    = BookButton.none;
   uiState.buttonHovered = BookButton.none;
@@ -646,8 +651,6 @@ void renderBookView(
 
   drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
-  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top);
-
   Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
@@ -657,6 +660,9 @@ void renderBookView(
 
   C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
   C2D_DrawSprite(&sprite);
+
+  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top, &mainData.selectorTex);
+
   renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
 
   if (_3DEnabled) {
@@ -665,9 +671,9 @@ void renderBookView(
 
     drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
-    renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top);
-
     C2D_DrawSprite(&sprite);
+    renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top, &mainData.selectorTex);
+
     renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
   }
 
@@ -676,10 +682,10 @@ void renderBookView(
 
   drawBackground(GFXScreen.bottom, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
-  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.bottom);
-
   C2D_SpriteFromImage(&sprite, cacheImageBottom);
   C2D_DrawSprite(&sprite);
+
+  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.bottom, &mainData.selectorTex);
 
   renderButton(optionsBtn, uiState, BOTTOM_BUTTON_STYLE);
 }}
