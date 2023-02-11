@@ -12,6 +12,40 @@ struct UiState {
   float selectedFadeTimer = 0, selectedLastFadeTimer = 0;
 }
 
+////////
+// Internal state
+////////
+
+struct UiAssets {
+  C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
+  C3D_Tex selectorTex;
+  C3D_Tex buttonTex, bottomButtonTex;
+  C3D_Tex indicatorTex;
+}
+
+UiAssets gUiAssets;
+
+void loadUiAssets() {
+  with (gUiAssets) {
+    if (!loadTextureFromFile(&vignetteTex, null, "romfs:/gfx/vignette.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&lineTex, null, "romfs:/gfx/line.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&selectorTex, null, "romfs:/gfx/selector.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&indicatorTex, null, "romfs:/gfx/scroll_indicator.t3x"))
+      svcBreak(UserBreakType.panic);
+
+    //set some special properties of background textures
+    C3D_TexSetFilter(&vignetteTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
+    C3D_TexSetFilter(&lineTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
+    C3D_TexBind(1, &vignetteTex);
+    C3D_TexSetWrap(&vignetteTex, GPUTextureWrapParam.mirrored_repeat, GPUTextureWrapParam.mirrored_repeat);
+    C3D_TexBind(0, &lineTex);
+    C3D_TexSetWrap(&lineTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
+    C3D_TexBind(0, &lineTex);
+  }
+}
 
 ////////
 // Buttons
@@ -141,16 +175,16 @@ static void renderButton(in Button btn, in UiState uiState) {
 // 3DS-Styled Striped Background
 ////////
 
-void drawBackground(GFXScreen screen, C3D_Tex* vignetteTex, C3D_Tex* lineTex, uint colorBg, uint colorStripesDark, uint colorStripesLight) {
+void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint colorStripesLight) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   C2D_Flush();
 
   //basically hijack a bunch of stuff C2D sets up so we can easily reuse the normal shader while still getting to
   //define are own texenv stages
-  C2Di_SetTex(lineTex);
+  C2Di_SetTex(&gUiAssets.lineTex);
   C2Di_Update();
-  C3D_TexBind(1, vignetteTex);
+  C3D_TexBind(1, &gUiAssets.vignetteTex);
 
   C3D_ProcTexBind(1, null);
   C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
@@ -441,10 +475,12 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
   return result;
 }}
 
-void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen, C3D_Tex* tex) { with (scrollInfo) {
+void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen) { with (scrollInfo) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   C2D_Prepare(C2DShader.normal);
+
+  auto tex = &gUiAssets.selectorTex;
 
   C2Di_SetTex(tex);
   C2Di_Update();
@@ -535,7 +571,7 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
 // Scroll Indicator
 ////////
 
-void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float yMax, float viewHeight, C3D_Tex* indicatorTex, bool rightJustified = false) { with (scrollInfo) {
+void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float yMax, float viewHeight, bool rightJustified = false) { with (scrollInfo) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
@@ -571,6 +607,8 @@ void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float 
   float height = viewHeight * scale;
 
   C2D_Prepare(C2DShader.normal);
+
+  auto indicatorTex = &gUiAssets.indicatorTex;
 
   C2Di_SetTex(indicatorTex);
   C2Di_Update();
