@@ -391,7 +391,7 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
   }
   else if (input.scrollMethodCur == ScrollMethod.none && input.down(Key.a)) {
     Button* btn = &buttons[uiState.buttonSelected];
-    audioPlaySound(btn.style.pressedSound, btn.style.pressedSound);
+    audioPlaySound(btn.style.pressedSound, btn.style.pressedSoundVol);
     result = uiState.buttonSelected;
   }
   else {
