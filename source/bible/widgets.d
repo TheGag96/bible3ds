@@ -552,18 +552,77 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
 // Scroll Indicator
 ////////
 
-void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float yMax, float viewHeight, bool rightJustified = false) { with (scrollInfo) {
-  enum WIDTH = 4;
-  enum COLOR_NORMAL  = Vec3(0x20, 0x60, 0xDD)/255;
-  enum COLOR_PUSHING = Vec3(0xDD, 0x80, 0x20)/255;
+void renderScrollIndicator(in ScrollInfo scrollInfo, float x, float yMin, float yMax, float viewHeight, C3D_Tex* indicatorTex, bool rightJustified = false) { with (scrollInfo) {
+  C2Di_Context* ctx = C2Di_GetContext();
 
-  auto colorNorm = lerp(COLOR_NORMAL, COLOR_PUSHING, min(pushingAgainstTimer, PUSHING_AGAINST_TIMER_MAX)*1.0f/PUSHING_AGAINST_TIMER_MAX);
+  void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
+    C2Di_Vertex[6] vertexList = [
+      // Top-left quad
+      // First triangle
+      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+      { brX, tlY, z,   tlV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      // Second triangle
+      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      { tlX, brY, z,   brV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+    ];
+
+    ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
+    ctx.vtxBufPos += vertexList.length;
+  }
+
+  enum COLOR_NORMAL          = Vec3(0x66, 0xAD, 0xC1)/255;
+  enum COLOR_NORMAL_OUTLINE  = Vec3(0xE1, 0xED, 0xF1)/255;
+  enum COLOR_PUSHING         = Vec3(0xDD, 0x80, 0x20)/255;
+  enum COLOR_PUSHING_OUTLINE = Vec3(0xE3, 0xAE, 0x78)/255;
+
+  auto interpAmount     = min(pushingAgainstTimer, PUSHING_AGAINST_TIMER_MAX)*1.0f/PUSHING_AGAINST_TIMER_MAX;
+  auto colorLerp        = lerp(COLOR_NORMAL,         COLOR_PUSHING,         interpAmount);
+  auto colorOutlineLerp = lerp(COLOR_NORMAL_OUTLINE, COLOR_PUSHING_OUTLINE, interpAmount);
+
+  auto colorC2d        = C2D_Color32f(colorLerp.x,        colorLerp.y,        colorLerp.z,        0);
+  auto colorOutlineC2d = C2D_Color32f(colorOutlineLerp.x, colorOutlineLerp.y, colorOutlineLerp.z, 1);
 
   float scale = (yMax - yMin) / (limitBottom - limitTop + viewHeight);
   float height = viewHeight * scale;
 
-  //@TODO: gramphics
-  C2D_DrawRectSolid(x - rightJustified*WIDTH, yMin + scrollOffset * scale, 0, WIDTH, height, C2D_Color32f(colorNorm.x, colorNorm.y, colorNorm.z, 1));
+  C2D_Prepare(C2DShader.normal);
+
+  C2Di_SetTex(indicatorTex);
+  C2Di_Update();
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  //dynamically color the indicator. pure white on the indicator texture is the outline, while pure black is the filling
+  //use two texenvs to set up two colors and then use the texture values to interpolate between the two
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.replace);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha);
+  C3D_TexEnvColor(env, colorOutlineC2d);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.interpolate);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
+  C3D_TexEnvColor(env, colorC2d);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+
+  float realX = round(x - rightJustified*indicatorTex.width), realY = round(yMin + scrollOffset * scale);
+  pushQuadUvSwap(realX, realY,                                realX + indicatorTex.width, realY + indicatorTex.width,           0,  0, 0,   1, 1);
+  pushQuadUvSwap(realX, realY + indicatorTex.height,          realX + indicatorTex.width, realY + height - indicatorTex.height, 0,  0, 0.5, 1, 1);
+  pushQuadUvSwap(realX, realY + height - indicatorTex.height, realX + indicatorTex.width, realY + height,                       0,  1, 1,   0, 0);
+
+  //Cleanup, resetting things to how C2D normally expects
+  C2D_Prepare(C2DShader.normal, true);
 }}
 
 

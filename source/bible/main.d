@@ -149,6 +149,8 @@ extern(C) int main(int argc, char** argv) {
       svcBreak(UserBreakType.panic);
     if (!loadTextureFromFile(&selectorTex, null, "romfs:/gfx/selector.t3x"))
       svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&mainData.indicatorTex, null, "romfs:/gfx/scroll_indicator.t3x"))
+      svcBreak(UserBreakType.panic);
     C3D_TexSetFilter(&vignetteTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
     C3D_TexSetFilter(&lineTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
     C3D_TexBind(1, &vignetteTex);
@@ -458,7 +460,7 @@ void renderReadingView(
 
   C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
   C2D_DrawSprite(&sprite);
-  renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight);
+  renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, &mainData.indicatorTex);
 
   if (_3DEnabled) {
     C2D_TargetClear(topRight, CLEAR_COLOR);
@@ -467,7 +469,7 @@ void renderReadingView(
     drawBackground(GFXScreen.top, &mainData.vignetteTex, &mainData.lineTex, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
 
     C2D_DrawSprite(&sprite);
-    renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight);
+    renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, &mainData.indicatorTex);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
@@ -672,7 +674,7 @@ void renderBookView(
 
   renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top, &mainData.selectorTex);
 
-  renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
+  renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, &mainData.indicatorTex, true);
 
   if (_3DEnabled) {
     C2D_TargetClear(topRight, CLEAR_COLOR);
@@ -683,7 +685,7 @@ void renderBookView(
     C2D_DrawSprite(&sprite);
     renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top, &mainData.selectorTex);
 
-    renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
+    renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, &mainData.indicatorTex, true);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
