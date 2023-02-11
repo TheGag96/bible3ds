@@ -444,23 +444,6 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
 void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in ScrollInfo scrollInfo, GFXScreen screen, C3D_Tex* tex) { with (scrollInfo) {
   C2Di_Context* ctx = C2Di_GetContext();
 
-  void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
-    C2Di_Vertex[6] vertexList = [
-      // Top-left quad
-      // First triangle
-      { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
-      { brX, tlY, z,   brU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
-      { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
-      // Second triangle
-      { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
-      { tlX, brY, z,   tlU,  brV,  0.0f,  0.0f,  0xFF<<24 },
-      { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
-    ];
-
-    ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
-    ctx.vtxBufPos += vertexList.length;
-  }
-
   C2D_Prepare(C2DShader.normal);
 
   C2Di_SetTex(tex);
@@ -806,3 +789,23 @@ Tex3DS_SubTexture scrollCacheGetUvs(
   };
   return result;
 }}
+
+
+void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
+  C2Di_Context* ctx = C2Di_GetContext();
+
+  C2Di_Vertex[6] vertexList = [
+    // Top-left quad
+    // First triangle
+    { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+    { brX, tlY, z,   brU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+    { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+    // Second triangle
+    { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX, brY, z,   tlU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+    { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+  ];
+
+  ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
+  ctx.vtxBufPos += vertexList.length;
+}
