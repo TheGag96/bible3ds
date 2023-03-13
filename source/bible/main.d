@@ -473,6 +473,7 @@ enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
 enum BOTTOM_BUTTON_DOWN_COLOR = C2D_Color32(0x8C, 0x8C, 0x8C, 0xFF);
 
 static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
+  type          : ButtonType.bottom,
   colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
   colorBg       : BOTTOM_BUTTON_COLOR,
   colorBgHeld   : BOTTOM_BUTTON_DOWN_COLOR,
@@ -524,7 +525,8 @@ void initBookView(BookViewData* viewData) { with (viewData) {
   enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
   enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
   static immutable ButtonStyle BOOK_BUTTON_STYLE = {
-    colorText     : C2D_Color32(255, 255, 255, 255),
+    type          : ButtonType.normal,
+    colorText     : C2D_Color32(0, 0, 0, 255),
     colorBg       : BOOK_BUTTON_COLOR,
     colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
     margin        : BOOK_BUTTON_MARGIN,

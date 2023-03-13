@@ -19,7 +19,7 @@ struct UiState {
 struct UiAssets {
   C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
   C3D_Tex selectorTex;
-  C3D_Tex buttonTex, bottomButtonTex;
+  C3D_Tex buttonTex, bottomButtonTex, bottomButtonAboveFadeTex;
   C3D_Tex indicatorTex;
 }
 
@@ -33,17 +33,21 @@ void loadUiAssets() {
       svcBreak(UserBreakType.panic);
     if (!loadTextureFromFile(&selectorTex, null, "romfs:/gfx/selector.t3x"))
       svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&buttonTex, null, "romfs:/gfx/button.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&bottomButtonTex, null, "romfs:/gfx/bottom_button.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&bottomButtonAboveFadeTex, null, "romfs:/gfx/bottom_button_above_fade.t3x"))
+      svcBreak(UserBreakType.panic);
     if (!loadTextureFromFile(&indicatorTex, null, "romfs:/gfx/scroll_indicator.t3x"))
       svcBreak(UserBreakType.panic);
 
     //set some special properties of background textures
     C3D_TexSetFilter(&vignetteTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
     C3D_TexSetFilter(&lineTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
-    C3D_TexBind(1, &vignetteTex);
     C3D_TexSetWrap(&vignetteTex, GPUTextureWrapParam.mirrored_repeat, GPUTextureWrapParam.mirrored_repeat);
-    C3D_TexBind(0, &lineTex);
     C3D_TexSetWrap(&lineTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
-    C3D_TexBind(0, &lineTex);
+    C3D_TexSetFilter(&bottomButtonTex, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
   }
 }
 
@@ -65,7 +69,10 @@ enum Justification {
   right_justified
 }
 
+enum ButtonType { normal, bottom }
+
 struct ButtonStyle {
+  ButtonType type;
   uint colorText, colorBg, colorBgHeld;
   float margin;
   float textSize = 0;
@@ -74,7 +81,10 @@ struct ButtonStyle {
   float pressedSoundVol = 0.5;
 }
 
-enum BUTTON_DEPRESS_OFFSET = 3;
+static immutable int[ButtonType.max+1] BUTTON_DEPRESS_OFFSETS = [
+  ButtonType.normal : 3,
+  ButtonType.bottom : 1,
+];
 
 enum OneFrameEvent {
   not_triggered, triggered, already_processed,
@@ -144,12 +154,9 @@ bool handleButton(in Button btn, in Input input, in ScrollInfo scrollInfo, UiSta
   return result;
 }
 
-static void renderButton(in Button btn, in UiState uiState) {
+void renderButton(in Button btn, in UiState uiState) {
   bool pressed = btn.id == uiState.buttonHeld && btn.id == uiState.buttonHovered;
-  float btnRealX = btn.x, btnRealY = btn.y + pressed * BUTTON_DEPRESS_OFFSET;
-
-  C2D_DrawRectSolid(btnRealX, btnRealY, btn.z, btn.w, btn.h, pressed ? btn.style.colorBgHeld : btn.style.colorBg);
-
+  float btnRealX = btn.x, btnRealY = btn.y + pressed * BUTTON_DEPRESS_OFFSETS[btn.style.type];
   float textX, textY;
 
   final switch (btn.style.justification) {
@@ -165,8 +172,163 @@ static void renderButton(in Button btn, in UiState uiState) {
       break;
   }
 
+  final switch (btn.style.type) {
+    case ButtonType.normal:
+      renderNormalButton(btn, uiState, btnRealX, btnRealY, textX, textY, pressed);
+      break;
+    case ButtonType.bottom:
+      renderBottomButton(btn, uiState, btnRealX, btnRealY, textX, textY, pressed);
+      break;
+  }
+}
+
+private void renderNormalButton(in Button btn, in UiState uiState, float btnRealX, float btnRealY, float textX, float textY, bool pressed) {
+  C2Di_Context* ctx = C2Di_GetContext();
+
+  auto tex = &gUiAssets.buttonTex;
+
+  C2Di_SetTex(tex);
+  C2Di_Update();
+
+  enum CORNER_WIDTH = 6.0f, CORNER_HEIGHT = 4.0f;
+
+  float tlX = btnRealX;
+  float tlY = btnRealY;
+
+  float trX = btnRealX + btn.w - CORNER_WIDTH;
+  float trY = tlY;
+
+  float blX = tlX;
+  float blY = tlY + btn.h - CORNER_HEIGHT;
+
+  float brX = trX;
+  float brY = blY;
+
+  pushQuad(tlX, tlY, tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, btn.z, 0, 1, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height); // top-left
+  pushQuad(trX, tlY, trX + CORNER_WIDTH, tlY + CORNER_HEIGHT, btn.z, (CORNER_WIDTH/tex.width), 1, 0, 1-CORNER_HEIGHT/tex.height); // top-right
+  pushQuad(blX, blY, blX + CORNER_WIDTH, blY + CORNER_HEIGHT, btn.z, 0, (16.0f+CORNER_HEIGHT)/tex.height, (CORNER_WIDTH/tex.width), 16.0f/tex.height); // bottom-left
+  pushQuad(brX, brY, brX + CORNER_WIDTH, brY + CORNER_HEIGHT, btn.z, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height, 0, 16.0f/tex.height); // bottom-right
+
+  pushQuad(tlX + CORNER_WIDTH, tlY,                 trX,                tlY + CORNER_HEIGHT, btn.z, (CORNER_WIDTH/tex.width), 1,          1, 1-CORNER_HEIGHT/tex.height); //top
+  pushQuad(blX + CORNER_WIDTH, blY,                 brX,                blY + CORNER_HEIGHT, btn.z, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height,          1, 16.0f/tex.height); //bottom
+  pushQuad(tlX,                tlY + CORNER_HEIGHT, tlX + CORNER_WIDTH, blY,                 btn.z, 0,           1-CORNER_HEIGHT/tex.height, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height); //left
+  pushQuad(trX,                trY + CORNER_HEIGHT, trX + CORNER_WIDTH, brY,                 btn.z, (CORNER_WIDTH/tex.width),           1-CORNER_HEIGHT/tex.height, 0, (16.0f+CORNER_HEIGHT)/tex.height); //right
+
+  pushQuad(tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, brX,                brY,                 btn.z, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height,          1, (16.0f+CORNER_HEIGHT)/tex.height); //center
+  C2D_Flush();
+
   C2D_DrawText(
     btn.text, C2D_WithColor, GFXScreen.top, textX, textY, btn.z + 0.05, btn.style.textSize, btn.style.textSize, btn.style.colorText
+  );
+}
+
+private void renderBottomButton(in Button btn, in UiState uiState, float btnRealX, float btnRealY, float textX, float textY, bool pressed) {
+  uint topColor, bottomColor, baseColor, textColor, bevelTexColor, lineColor;
+  textColor     = btn.style.colorText;
+  bevelTexColor = 0xFFFFFFFF;
+
+  if (pressed) {
+    topColor      = C2D_Color32(0x6a, 0x6a, 0x6e, 255);
+    bottomColor   = C2D_Color32(0xbe, 0xbe, 0xc2, 255);
+    baseColor     = C2D_Color32(0x8d, 0x8d, 0x96, 255);
+    lineColor     = C2D_Color32(0x81, 0x81, 0x82, 255);
+    uint tmp = textColor;
+    textColor = bevelTexColor;
+    bevelTexColor = tmp;
+  }
+  else {
+    topColor      = C2D_Color32(244, 244, 240, 255);
+    bottomColor   = C2D_Color32(199, 199, 195, 255);
+    baseColor     = C2D_Color32(228, 228, 220, 255);
+    lineColor     = C2D_Color32(158, 158, 157, 255);
+  }
+
+  // light fade above bottom button
+  {
+    auto tex = &gUiAssets.bottomButtonAboveFadeTex;
+
+    C2Di_SetTex(tex);
+    C2Di_Update();
+
+    // multiply the alpha of the texture with a constant color
+
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+    C3D_TexEnvColor(env, C2D_Color32(0xf2, 0xf2, 0xf7, 128));
+
+    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+
+    env = C3D_GetTexEnv(5);
+    C3D_TexEnvInit(env);
+
+    pushQuad(btnRealX, btn.y - tex.height + 1, btnRealX+btn.w, btn.y + 1, btn.z, 0, 1, 1, 0);
+
+    C2D_Flush();
+
+    //Cleanup, resetting things to how C2D normally expects
+    C2D_Prepare(C2DShader.normal, true);
+
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvInit(env);
+  }
+
+  // main button area
+  {
+    auto tex = &gUiAssets.bottomButtonTex;
+
+    C2Di_SetTex(tex);
+    C2Di_Update();
+
+    // use the value of the texture to interpolate between a top and bottom color.
+    // then, use the alpha of the texture to interpolate between THAT calculated color and the button's middle/base color.
+
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+    C3D_TexEnvColor(env, topColor);
+
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    C3D_TexEnvColor(env, bottomColor);
+
+    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    C3D_TexEnvColor(env, baseColor);
+    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
+
+    env = C3D_GetTexEnv(5);
+    C3D_TexEnvInit(env);
+
+    pushQuad(btnRealX, btnRealY, btnRealX+btn.w, btnRealY+btn.h, btn.z, 0, 1, 1, 0);
+
+    C2D_Flush();
+
+    //Cleanup, resetting things to how C2D normally expects
+    C2D_Prepare(C2DShader.normal, true);
+
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvInit(env);
+  }
+
+  C2D_DrawRectSolid(btnRealX, btnRealY, btn.z + 0.05, btn.w, 1, lineColor);
+
+  C2D_DrawText(
+    btn.text, C2D_WithColor, GFXScreen.top, textX, textY+2, btn.z + 0.05, btn.style.textSize, btn.style.textSize, bevelTexColor
+  );
+
+  C2D_DrawText(
+    btn.text, C2D_WithColor, GFXScreen.top, textX, textY, btn.z + 0.05, btn.style.textSize, btn.style.textSize, textColor
   );
 }
 
@@ -525,7 +687,7 @@ void renderButtonSelectionIndicator(in UiState uiState, in Button[] buttons, in 
     //tlX, tlY, etc. here mean "top-left quad of the selection indicator shape", top-left corner being the origin
     float screenFactor = (screen == GFXScreen.top) * ((SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH) / 2);
     float tlX = btn.x - LINE_WIDTH + screenFactor;
-    float tlY = btn.y + pressed * BUTTON_DEPRESS_OFFSET - LINE_WIDTH - floor(scrollInfo.scrollOffset)
+    float tlY = btn.y + pressed * BUTTON_DEPRESS_OFFSETS[btn.style.type] - LINE_WIDTH - floor(scrollInfo.scrollOffset)
                 - (screen == GFXScreen.bottom) * SCREEN_HEIGHT;
 
     float trX = btn.x + btn.w - (tex.width - LINE_WIDTH) + screenFactor;
