@@ -471,7 +471,7 @@ void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, fl
   // handle scrolling events
   ////
 
-  pushingAgainstLimit = false;
+  if (input.scrollMethodCur != ScrollMethod.custom) pushingAgainstLimit = false;
   if (scrollOffset == limitTop || scrollOffset == limitBottom) {
     if ( scrollJustStopped == OneFrameEvent.not_triggered &&
          scrollOffset != scrollOffsetLast )
@@ -479,7 +479,9 @@ void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, fl
       scrollJustStopped = OneFrameEvent.triggered;
     }
 
-    if (input.scrollMethodCur != ScrollMethod.none) {
+    if ( input.scrollMethodCur != ScrollMethod.none &&
+         input.scrollMethodCur != ScrollMethod.custom )
+    {
       pushingAgainstLimit = true;
     }
   }
@@ -623,6 +625,11 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
   uiState.selectedLastFadeTimer = approach(uiState.selectedLastFadeTimer, 0, 0.1);
 
   if (result == -1) {
+    // handle holding up/down when at the start/end of the list
+    scrollInfo.pushingAgainstLimit = input.scrollMethodCur == ScrollMethod.custom &&
+                                     (input.held(Key.up)   && uiState.buttonSelected == 0 ||
+                                      input.held(Key.down) && uiState.buttonSelected == buttons.length-1);
+
     respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
   }
 
