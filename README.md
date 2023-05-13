@@ -1,6 +1,6 @@
 # Bible for 3DS
 
-![Screenshot](screenshot.png)
+<img src="screenshot.png" width="400" alt="Screenshot">
 
 ## Compiling
 
