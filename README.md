@@ -2,6 +2,22 @@
 
 <img src="screenshot.png" width="400" alt="Screenshot">
 
+This started as both a devotional project and an attempt at faithfully recreating the 3DS's UI style. When done, this app should look and feel close to an official 3DS one.
+
+## Translations supported
+
+Basically just all the versions from @scrollmapper's [`bible_databases`](https://github.com/scrollmapper/bible_databases) repo:
+
+* ASV
+* BBE
+* KJV
+* WEB
+* YLT
+
+Unfortunately, we can't just add any translation due to copyright concerns.
+
+**Note**: Need to actually add an options menu to change the translation...!
+
 ## Compiling
 
 LDC has made this process simpler!
@@ -15,21 +31,6 @@ git clone https://github.com/TheGag96/bible3ds
 ```
 
 Go download/install the latest version of [LDC](https://github.com/ldc-developers/ldc). Make sure to add the `bin` folder to your path.
-
-~~Copy the `base_rules` and `3ds_rules` files into `/opt/devkitpro/devkitARM`:~~
-
-```sh
-(DON'T DO THIS) sudo cp -r /path/to/repo/makescripts/* /opt/devkitpro/devkitARM
-```
-
-EDIT: Don't do this anymore! If you did this previously, revert those two files to their original versions.
-
-Compile my extra build scripts:
-
-```sh
-cd /path/to/repo
-./build_scripts.sh  # or build_scripts.bat on Windows
-```
 
 I've forked tex3ds, so go ahead and fetch its submodule:
 
@@ -51,20 +52,15 @@ cd ../../             # go back to root folder
 Then, finally (and for every subsequent time building)...
 
 ```sh
-make -j8  # or however many logical processors you have
-```
-
-If you need to recompile from scratch, or running `make` doesn't seem like it's doing what it should, just run:
-
-```sh
-make clean
-make
+make BUILD_TYPE=RELEASE -j8  # or DEBUG_FAST or DEBUG_SLOW
 ```
 
 ## Thanks to...
 
+* @scrollmapper's [`bible_databases`](https://github.com/scrollmapper/bible_databases) for the plaintext Bibles
 * Wild for his minimal object.d from [PowerNex](https://github.com/PowerNex/PowerNex)
 * [DevkitPro](https://devkitpro.org/)
 * The devs of [libctru](https://github.com/smealum/ctrulib)
 * The devs of [citro3d](https://github.com/fincs/citro3d)
+* The devs of [citro2d](https://github.com/fincs/citro2d)
 * [dstep](https://github.com/jacob-carlborg/dstep) for C header file conversion
