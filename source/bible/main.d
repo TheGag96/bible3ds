@@ -319,8 +319,9 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   float textWidth, textHeight;
   auto text = &textArray[0];
   C2D_TextParse(text, textBuf, "Back");
-  C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
-  auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
+  C2D_TextGetDimensions(text, BOTTOM_BUTTON_STYLE.textSize, BOTTOM_BUTTON_STYLE.textSize, &textWidth, &textHeight);
+  //auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
+  auto buttonHeight = 28;
   backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight, &BACK_BUTTON_STYLE);
 
   char[3] buf = 0;
@@ -478,7 +479,7 @@ static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
   colorBg       : BOTTOM_BUTTON_COLOR,
   colorBgHeld   : BOTTOM_BUTTON_DOWN_COLOR,
   margin        : BOTTOM_BUTTON_MARGIN,
-  textSize      : 0.5f,
+  textSize      : 0.6f,
   justification : Justification.centered,
 };
 
@@ -555,8 +556,9 @@ void initBookView(BookViewData* viewData) { with (viewData) {
   float textWidth, textHeight;
   auto text = &textArray[BOOK_NAMES.length+1];
   C2D_TextParse(text, textBuf, "Options");
-  C2D_TextGetDimensions(text, 0.5, 0.5, &textWidth, &textHeight);
-  auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
+  C2D_TextGetDimensions(text, BOTTOM_BUTTON_STYLE.textSize, BOTTOM_BUTTON_STYLE.textSize, &textWidth, &textHeight);
+  //auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
+  auto buttonHeight = 28;
   optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight, &BOTTOM_BUTTON_STYLE);
 
   uiState.buttonHeld    = BookButton.none;

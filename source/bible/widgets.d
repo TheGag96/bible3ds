@@ -224,9 +224,12 @@ private void renderNormalButton(in Button btn, in UiState uiState, float btnReal
 
 private void renderBottomButton(in Button btn, in UiState uiState, float btnRealX, float btnRealY, float textX, float textY, bool pressed) {
   uint topColor, bottomColor, baseColor, textColor, bevelTexColor, lineColor;
-  textColor     = btn.style.colorText;
-  bevelTexColor = 0xFFFFFFFF;
+  //textColor     = btn.style.colorText;
+  //bevelTexColor = 0xFFFFFFFF;
+  bevelTexColor = btn.style.colorText;
+  textColor     = 0xFFFFFFFF;
 
+  /* //health and safety colors
   if (pressed) {
     topColor      = C2D_Color32(0x6a, 0x6a, 0x6e, 255);
     bottomColor   = C2D_Color32(0xbe, 0xbe, 0xc2, 255);
@@ -241,6 +244,22 @@ private void renderBottomButton(in Button btn, in UiState uiState, float btnReal
     bottomColor   = C2D_Color32(199, 199, 195, 255);
     baseColor     = C2D_Color32(228, 228, 220, 255);
     lineColor     = C2D_Color32(158, 158, 157, 255);
+  }*/
+
+  if (pressed) {
+    topColor      = C2D_Color32(0x6e, 0x6e, 0x6a, 255);
+    bottomColor   = C2D_Color32(0xc0, 0xc0, 0xbc, 255);
+    baseColor     = C2D_Color32(0xa5, 0xa5, 0x9e, 255);
+    lineColor     = C2D_Color32(0x7b, 0x7b, 0x7b, 255);
+    uint tmp = textColor;
+    textColor = bevelTexColor;
+    bevelTexColor = tmp;
+  }
+  else {
+    topColor      = C2D_Color32(0xb6, 0xb6, 0xba, 255);
+    bottomColor   = C2D_Color32(0x48, 0x48, 0x4c, 255);
+    baseColor     = C2D_Color32(0x66, 0x66, 0x6e, 255);
+    lineColor     = C2D_Color32(0x8b, 0x8b, 0x8c, 255);
   }
 
   // light fade above bottom button
@@ -267,12 +286,6 @@ private void renderBottomButton(in Button btn, in UiState uiState, float btnReal
     pushQuad(btnRealX, btn.y - tex.height + 1, btnRealX+btn.w, btn.y + 1, btn.z, 0, 1, 1, 0);
 
     C2D_Flush();
-
-    //Cleanup, resetting things to how C2D normally expects
-    C2D_Prepare(C2DShader.normal, true);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
   }
 
   // main button area
@@ -323,8 +336,10 @@ private void renderBottomButton(in Button btn, in UiState uiState, float btnReal
 
   C2D_DrawRectSolid(btnRealX, btnRealY, btn.z + 0.05, btn.w, 1, lineColor);
 
+  int textBevelOffset = pressed ? 1 : -1;
+
   C2D_DrawText(
-    btn.text, C2D_WithColor, GFXScreen.top, textX, textY+2, btn.z + 0.05, btn.style.textSize, btn.style.textSize, bevelTexColor
+    btn.text, C2D_WithColor, GFXScreen.top, textX, textY + textBevelOffset, btn.z + 0.05, btn.style.textSize, btn.style.textSize, bevelTexColor
   );
 
   C2D_DrawText(
