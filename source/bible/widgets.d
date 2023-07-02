@@ -455,7 +455,7 @@ void handleScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float
   respondToScroll(scrollInfo, input, newLimitTop, newLimitBottom, scrollDiff);
 }}
 
-void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom, ScrollDiff scrollDiff) { with (scrollInfo) {
+void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, float newLimitBottom, Vec2 scrollDiff) { with (scrollInfo) {
   enum SCROLL_TICK_DISTANCE = 60;
 
   limitTop    = newLimitTop;
@@ -564,7 +564,7 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
     }
   }
 
-  ScrollDiff scrollDiff;
+  Vec2 scrollDiff;
 
   if (input.scrollMethodCur == ScrollMethod.custom) {
     bool selectionJustChanged = false;

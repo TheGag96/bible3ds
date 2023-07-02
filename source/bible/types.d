@@ -9,64 +9,114 @@ alias box     = Tuple!(float, "left", float, "right", float, "top", float, "bott
 alias pair    = Tuple!(float, "x", float, "y");
 alias intpair = Tuple!(int, "x", int, "y");
 
-struct Vec3 {
+alias Vec2 = Vec!2;
+alias Vec3 = Vec!3;
+
+struct Vec(size_t n) {
   @nogc: nothrow: @safe:
 
-  float x, y, z;
-
-  pure
-  Vec3 opBinary(string op)(const Vec3 other) const
-  if (op == "+" || op == "-") {
-    mixin("return Vec3(x" ~ op ~ "other.x, y" ~ op ~ "other.y, z" ~ op ~ "other.z );");
+  union {
+    float[n] vals = 0;
+    struct {
+      float x, y;
+      static if (n >= 3) float z;
+      static if (n >= 4) float w;
+    }
   }
 
+  alias vals this;
+
+  pragma(inline, true)
   pure
-  Vec3 opBinary(string op)(float v) const
+  this(float[n] vals...) {
+    this.vals = vals;
+  }
+
+  pragma(inline, true)
+  pure
+  Vec!n opBinary(string op)(const Vec!n other) const
+  if (op == "+" || op == "-") {
+    Vec!n result = void;
+
+    static foreach (i; 0..n) {
+      mixin("result.vals[i] = vals[i] " ~ op ~ " other.vals[i];");
+    }
+
+    return result;
+  }
+
+  pragma(inline, true)
+  pure
+  Vec!n opBinary(string op)(float v) const
   if (op == "*" || op == "/") {
-    mixin("return Vec3(x" ~ op ~ "v, y" ~ op ~ "v, z" ~ op ~ "v );");
+    Vec!n result = void;
+
+    static foreach (i; 0..n) {
+      mixin("result.vals[i] = vals[i] " ~ op ~ " v;");
+    }
+
+    return result;
   }
 
+  pragma(inline, true)
   pure
-  ref Vec3 opOpAssign(string op)(const Vec3 other) return
+  ref Vec!n opOpAssign(string op)(const Vec!n other) return
   if (op == "+" || op == "-") {
-    mixin("x " ~ op ~ "= other.x;");
-    mixin("y " ~ op ~ "= other.y;");
-    mixin("z " ~ op ~ "= other.z;");
-    return this;
-  }
+    static foreach (i; 0..n) {
+      mixin("vals[i] " ~ op ~ "= other.vals[i];");
+    }
 
-  pure
-  ref Vec3 opOpAssign(string op)(float v) return
-  if (op == "*" || op == "/")  {
-    mixin("x " ~ op ~ "= v;");
-    mixin("y " ~ op ~ "= v;");
-    mixin("z " ~ op ~ "= v;");
     return this;
   }
 
   pragma(inline, true)
   pure
-  float dot(const Vec3 other) const {
-    return x*other.x + y*other.y + z*other.z;
+  ref Vec!n opOpAssign(string op)(float v) return
+  if (op == "*" || op == "/")  {
+    static foreach (i; 0..n) {
+      mixin("vals[i] " ~ op ~ "= v;");
+    }
+
+    return this;
+  }
+
+  pragma(inline, true)
+  pure
+  float dot(const Vec!n other) const {
+    float result = 0;
+
+    static foreach (i; 0..n) {
+      result += vals[i]*other.vals[i];
+    }
+
+    return result;
   }
 
   pragma(inline, true)
   pure
   float length() const {
     import std.math : sqrt;
-    return sqrt(x^^2 + y^^2 + z^^2);
+    float sum = 0;
+
+    static foreach (i; 0..n) {
+      sum += vals[i]^^2;
+    }
+
+    return sqrt(sum);
   }
 
   pragma(inline, true)
   pure
-  Vec3 unit() const {
+  Vec!n unit() const {
     return this / length();
   }
 
-  pragma(inline, true)
-  pure
-  Vec3 cross(const Vec3 other) const {
-    return Vec3( (y*other.z - z*other.y), -(x*other.z - z*other.x), (x*other.y - y*other.x) );
+  static if (n == 3) {
+    pragma(inline, true)
+    pure
+    Vec!n cross(const Vec!n other) const {
+      return Vec!n( (y*other.z - z*other.y), -(x*other.z - z*other.x), (x*other.y - y*other.x) );
+    }
   }
 }
 

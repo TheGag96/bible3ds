@@ -7,10 +7,6 @@ import bible.util;
 
 nothrow: @nogc:
 
-struct ScrollDiff {
-  float x = 0, y = 0;
-}
-
 enum ScrollMethod {
   none, dpad, circle, touch, custom
 }
@@ -96,8 +92,8 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   }
 }}
 
-ScrollDiff updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (input) {
-  ScrollDiff result;
+Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (input) {
+  Vec2 result;
 
   enum CIRCLE_DEADZONE = 18;
 
@@ -176,10 +172,10 @@ ScrollDiff updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { wi
       else if (held(Key.dright)) result.x =  5;
       break;
     case ScrollMethod.circle:
-      result = ScrollDiff(circleRaw.dx/10, -circleRaw.dy/10);
+      result = Vec2(circleRaw.dx/10, -circleRaw.dy/10);
       break;
     case ScrollMethod.touch:
-      result = ScrollDiff(prevTouchRaw.px - touchRaw.px, prevTouchRaw.py - touchRaw.py);
+      result = Vec2(prevTouchRaw.px - touchRaw.px, prevTouchRaw.py - touchRaw.py);
       break;
     case ScrollMethod.custom: break;
   }
