@@ -124,17 +124,22 @@ float depthFactor(LayerIndex layerIndex) {
 }
 
 struct Rectangle {
-  float left, right, top, bottom;
+  float left = 0, right = 0, top = 0, bottom = 0;
+}
 
-  pure nothrow @nogc @safe
-  bool intersects(const scope ref Rectangle other) {
-    if (left < other.right && right > other.left) {
-      if (top < other.bottom && bottom > other.top) {
-        return true;
-      }
+pure nothrow @nogc @safe
+bool insideOrOn(Rectangle rect, Vec2 point) {
+  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+}
+
+pure nothrow @nogc @safe
+bool intersects(const scope ref Rectangle rect, const scope ref Rectangle other) {
+  if (rect.left < other.right && rect.right > other.left) {
+    if (rect.top < other.bottom && rect.bottom > other.top) {
+      return true;
     }
-    return false;
   }
+  return false;
 }
 
 struct DimSlice(T, size_t n = 1) {
