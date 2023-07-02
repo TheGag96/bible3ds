@@ -81,6 +81,10 @@ auto dup(T, size_t n)(DimSlice!(T, n) other) {
   return result;
 }
 
+T[n] s(T, size_t n)(auto ref T[n] array) pure nothrow @nogc @safe {
+  return array;
+}
+
 struct TemporaryStorage(size_t maxSize) {
   nothrow: @nogc:
 
