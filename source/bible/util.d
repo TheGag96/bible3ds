@@ -312,6 +312,26 @@ float wrap(float x, float mod) {
   return x - mod * floor(x/mod);
 }
 
+struct EnumRange(T) if (is(T == enum)) {
+  T first, last;
+
+  T    front()    { return first; }
+  bool empty()    { return first > last; }
+  void popFront() { first = cast(T) (first+1); }
+
+  bool opBinaryRight(string op : "in")(T val) { return val >= first && val <= last; }
+}
+
+pragma(inline, true)
+auto enumRange(T)() if (is(T == enum)) {
+  return EnumRange!T(T.min, T.max);
+}
+
+pragma(inline, true)
+auto enumRange(T)(T first, T last) if (is(T == enum)) {
+  return EnumRange!T(first, last);
+}
+
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;
