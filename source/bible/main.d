@@ -11,6 +11,7 @@ import citro2d;
 
 import bible.bible, bible.audio, bible.input, bible.util, bible.save;
 import bible.widgets;
+import bible.imgui;
 import std.algorithm;
 import std.string : representation;
 import std.range;
@@ -179,7 +180,7 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
-    final switch (mainData.nextView) {
+    /*final switch (mainData.nextView) {
       case View.book:
         if (mainData.curView != mainData.nextView) {
           mainData.curView = mainData.nextView;
@@ -211,7 +212,9 @@ extern(C) int main(int argc, char** argv) {
         mainData.nextView = updateReadingView(&readingViewData, &input);
 
         break;
-    }
+    }*/
+
+    imgui.usage();
 
     audioUpdate();
 
@@ -222,7 +225,7 @@ extern(C) int main(int argc, char** argv) {
     // Render the scene
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     {
-      final switch (mainData.curView) {
+      /*final switch (mainData.curView) {
         case View.book:
           renderBookView(&bookViewData, topLeft, topRight, bottom, _3DEnabled, slider);
           break;
@@ -230,7 +233,20 @@ extern(C) int main(int argc, char** argv) {
         case View.reading:
           renderReadingView(&readingViewData, topLeft, topRight, bottom, _3DEnabled, slider);
           break;
-      }
+      }*/
+
+        C2D_TargetClear(topLeft, CLEAR_COLOR);
+        C2D_SceneBegin(topLeft);
+
+        if (_3DEnabled) {
+          C2D_TargetClear(topRight, CLEAR_COLOR);
+          C2D_SceneBegin(topRight);
+        }
+
+        C2D_TargetClear(bottom, CLEAR_COLOR);
+        C2D_SceneBegin(bottom);
+        imgui.render();
+
     }
     C3D_FrameEnd(0);
   }
