@@ -290,8 +290,212 @@ void handleInput(Input* newInput) { with (gUiData) {
 }}
 
 void uiFrameEnd() { with (gUiData) {
+  // Ryan Fleury's offline layout algorithm (from https://www.rfleury.com/p/ui-part-2-build-it-every-frame-immediate):
+  //
+  // 1. (Any order) Calculate “standalone” sizes. These are sizes that do not depend on other widgets and can be
+  //    calculated purely with the information that comes from the single widget that is having its size calculated.
+  // 2. (Pre-order) Calculate “upwards-dependent” sizes. These are sizes that strictly depend on an ancestor’s size,
+  //    other than ancestors that have “downwards-dependent” sizes on the given axis.
+  // 3. (Post-order) Calculate “2downwards-dependent” sizes. These are sizes that depend on sizes of descendants.
+  // 4. (Pre-order) Solve violations. For each level in the hierarchy, this will verify that the children do not extend
+  //    past the boundaries of a given parent (unless explicitly allowed to do so; for example, in the case of a parent
+  //    that is scrollable on the given axis), to the best of the algorithm’s ability. If there is a violation, it will
+  //    take a proportion of each child widget’s size (on the given axis) proportional to both the size of the
+  //    violation, and (1-strictness), where strictness is that specified in the semantic size on the child widget for
+  //    the given axis.
+  // 5. (Pre-order) Finally, given the calculated sizes of each widget, compute the relative positions of each widget
+  //    (by laying out on an axis which can be specified on any parent node). This stage can also compute the final
+  //    screen-coordinates rectangle.
 
+  // Step 1 (standalone sizes)
+  preOrderApply(root, (box) {
+    foreach (axis; enumRange!Axis2) {
+      final switch (box.semanticSize[axis].kind) {
+        case UiSizeKind.none:
+          box.computedSize[axis] = 0;
+          break;
+        case UiSizeKind.pixels:
+          box.computedSize[axis] = box.semanticSize[axis].value;
+          break;
+        case UiSizeKind.text_content:
+          if (axis == Axis2.x) {
+            box.computedSize[axis] = box.text.length * 10; // @TODO
+          }
+          else {
+            box.computedSize[axis] = 10; // @TODO
+          }
+          break;
+        case UiSizeKind.percent_of_parent:
+        case UiSizeKind.children_sum:
+          break;
+      }
+    }
+  });
+
+  // Step 2 (upwards-dependent sizes)
+  preOrderApply(root, (box) {
+    foreach (axis; enumRange!Axis2) {
+      final switch (box.semanticSize[axis].kind) {
+        case UiSizeKind.percent_of_parent:
+          float parentSize;
+          if (box.parent) {
+            parentSize = box.parent.computedSize[axis];
+          }
+          else {
+            parentSize = axis == Axis2.x ? SCREEN_BOTTOM_WIDTH : SCREEN_HEIGHT; // @TODO
+          }
+
+          box.computedSize[axis] = parentSize * box.semanticSize[axis].value;
+          break;
+
+        case UiSizeKind.none:
+        case UiSizeKind.pixels:
+        case UiSizeKind.text_content:
+        case UiSizeKind.children_sum:
+          break;
+      }
+    }
+  });
+
+
+  // Step 3 (downwards-dependent sizes)
+  postOrderApply(root, (box) {
+    foreach (axis; enumRange!Axis2) {
+      final switch (box.semanticSize[axis].kind) {
+        case UiSizeKind.children_sum:
+          float sum = 0;
+
+          foreach (child; eachChild(box)) {
+            sum += child.computedSize[axis];
+          }
+
+          box.computedSize[axis] = sum;
+          break;
+
+        case UiSizeKind.none:
+        case UiSizeKind.pixels:
+        case UiSizeKind.text_content:
+        case UiSizeKind.percent_of_parent:
+          break;
+      }
+    }
+  });
+
+  // Step 4 (solve violations)
+  preOrderApply(root, (box) {
+    foreach (axis; enumRange!Axis2) {
+      if (axis == Axis2.y && (box.flags & UiFlags.view_scroll)) continue;  // Assume there really are no violations if you can scroll
+
+      float sum = 0;
+      foreach (child; eachChild(box)) {
+        sum += child.computedSize[axis];
+      }
+
+      float difference = sum - box.computedSize[axis];
+      if (difference > 0) {
+        foreach (child; eachChild(box)) {
+          float partToRemove        = difference * (1-child.strictness);
+          child.computedSize[axis] -= partToRemove;
+          difference               -= partToRemove;
+        }
+      }
+    }
+  });
+
+  // Step 5 (compute positions)
+  preOrderApply(root, (box) {
+    foreach (axis; enumRange!Axis2) {
+      box.computedRelPosition[axis] = 0;
+
+      if (box.parent) {
+        if (!!(box.parent.flags & UiFlags.horizontal_children) == (axis == Axis2.x)) {
+          if (box.prev) {
+            // @TODO: Padding
+            box.computedRelPosition[axis] += box.prev.computedRelPosition[axis] + box.prev.computedSize[axis];
+          }
+        }
+      }
+    }
+
+    box.rect = Rectangle(box.computedRelPosition[Axis2.x], box.computedRelPosition[Axis2.y],
+                         box.computedSize[Axis2.x],        box.computedSize[Axis2.y]);
+
+    if (box.parent) {
+      box.rect.left   += box.parent.rect.left;
+      box.rect.top    += box.parent.rect.top;
+      box.rect.right  += box.rect.left;
+      box.rect.bottom += box.rect.bottom;
+
+      if (box.parent.flags & UiFlags.view_scroll) {
+        box.computedRelPosition[Axis2.y] -= box.scrollOffset;
+      }
+    }
+  });
+
+  frameIndex++;
 }}
+
+void preOrderApply(UiBox* box, scope void delegate(UiBox* box) @nogc nothrow func) {
+  auto runner = box;
+  while (runner != null) {
+    func(runner);
+    if (runner.first) {
+      runner = runner.first;
+    }
+    else if (runner.next) {
+      runner = runner.next;
+    }
+    else {
+      while (true) {
+        runner = runner.parent;
+        if (!runner) return;
+        if (runner.next) {
+          runner = runner.next;
+          break;
+        }
+      }
+    }
+  }
+}
+
+void postOrderApply(UiBox* box, scope void delegate(UiBox* box) @nogc nothrow func) {
+  auto runner = box;
+  while (runner != null) {
+    if (runner.first) {
+      runner = runner.first;
+    }
+    else if (runner.next) {
+      func(runner);
+      runner = runner.next;
+    }
+    else {
+      func(runner);
+      while (true) {
+        runner = runner.parent;
+        if (!runner) return;
+        func(runner);
+        if (runner.next) {
+          runner = runner.next;
+          break;
+        }
+      }
+    }
+  }
+}
+
+auto eachChild(UiBox* box) {
+  static struct Range {
+    @nogc: nothrow:
+
+    UiBox* runner;
+
+    UiBox* front()    { return runner; }
+    bool   empty()    { return runner == null; }
+    void   popFront() { runner = runner.next; }
+  }
+
+  return Range(box.first);
+}
 
 UiComm commFromBox(UiBox* box) { with (gUiData) {
   UiComm result;
@@ -481,6 +685,6 @@ void sendCommand(uint code, uint value) { with (gUiData) {
   numCommands++;
 }}
 
-void render() {
+void render() { with (gUiData) {
 
-}
+}}
