@@ -6,6 +6,22 @@ import bible.input, bible.util, bible.audio, bible.bible;
 
 @nogc: nothrow:
 
+// @TODO: Replace this with hashing system
+enum UiId : ushort {
+  book_main_layout,
+  book_scroll_layout,
+  book_scroll_indicator,
+  book_options_btn,
+  book_bible_btn_first,
+  book_bible_btn_last = book_bible_btn_first + BOOK_NAMES.length - 1,
+  reading_main_layout,
+  reading_scroll_read_view,
+  reading_scroll_indicator,
+  reading_back_btn,
+  options_main_layout,
+  options_back_btn,
+}
+
 void usage() {
   enum View {
     book,
@@ -43,42 +59,42 @@ void usage() {
       static int lastSelection = 0;
       static int selection     = 0;
 
-      imgui.pushVerticalLayout();
+      imgui.pushVerticalLayout(UiId.book_main_layout);
       scope (exit) imgui.popParent();
 
       {
-        auto layoutComm = imgui.pushSelectScrollLayout();
+        auto layoutComm = imgui.pushSelectScrollLayout(UiId.book_scroll_layout);
         scope (exit) imgui.popParent();
 
         foreach (i, book; BOOK_NAMES) {
-          if (imgui.button("book").clicked) {
+          if (imgui.button(cast(UiId) (UiId.book_bible_btn_first + i), "book").clicked) {
             imgui.sendCommand(CommandCode.open_book, i);
           }
         }
       }
 
-      if (imgui.bottomButton("Options").clicked) {
+      if (imgui.bottomButton(UiId.book_options_btn, "Options").clicked) {
         imgui.sendCommand(CommandCode.switch_view, View.options);
       }
 
       break;
 
     case View.reading:
-      imgui.pushVerticalLayout();
+      imgui.pushVerticalLayout(UiId.reading_main_layout);
       scope (exit) imgui.popParent();
 
-      imgui.scrollableReadPane();
-      if (imgui.bottomButton("Back").clicked) {
+      imgui.scrollableReadPane(UiId.book_scroll_layout);
+      if (imgui.bottomButton(UiId.reading_back_btn, "Back").clicked) {
         imgui.sendCommand(CommandCode.switch_view, View.book);
       }
 
       break;
 
     case View.options:
-      imgui.pushVerticalLayout();
+      imgui.pushVerticalLayout(UiId.options_main_layout);
       scope (exit) imgui.popParent();
 
-      if (imgui.bottomButton("Back").clicked) {
+      if (imgui.bottomButton(UiId.options_back_btn, "Back").clicked) {
         imgui.sendCommand(CommandCode.switch_view, View.book);
       }
       break;
@@ -126,6 +142,7 @@ enum OneFrameEvent {
 
 struct UiBox {
   UiBox* first, last, next, prev, parent;
+  UiId id;
   int childId;
 
   string text;
@@ -146,6 +163,8 @@ struct UiBox {
   Vec2 computedSize;
   Rectangle rect;
 
+  uint lastFrameTouchedIndex;
+
   float hotT = 0, activeT = 0;
 }
 
@@ -159,35 +178,35 @@ struct UiComm {
 
 
 
-UiComm button(string text) {
-  UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text, UiGraphic.button, text);
+UiComm button(UiId id, string text) {
+  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, UiGraphic.button, text);
 
   box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
 
   return commFromBox(box);
 }
 
-UiComm bottomButton(string text) {
-  UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text, UiGraphic.bottom_button, text);
+UiComm bottomButton(UiId id, string text) {
+  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, UiGraphic.bottom_button, text);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
   return commFromBox(box);
 }
 
-UiComm pushSelectScrollLayout() {
-  UiBox* box = makeBox(UiFlags.select_children | UiFlags.view_scroll, UiGraphic.none, null);
+UiComm pushSelectScrollLayout(UiId id) {
+  UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll, UiGraphic.none, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   pushParent(box);
   return commFromBox(box);
 }
 
-void pushVerticalLayout() {
-  UiBox* box = makeBox(cast(UiFlags) 0, UiGraphic.none, null);
+void pushVerticalLayout(UiId id) {
+  UiBox* box = makeBox(id, cast(UiFlags) 0, UiGraphic.none, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   pushParent(box);
 }
 
-void scrollableReadPane() {
-  UiBox* box = makeBox(UiFlags.view_scroll, UiGraphic.bible_text, null);
+void scrollableReadPane(UiId id) {
+  UiBox* box = makeBox(id, UiFlags.view_scroll, UiGraphic.bible_text, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
 }
 
@@ -200,8 +219,8 @@ struct UiData {
   Input* input;
 
   UiBox[100] boxes;
-  size_t boxIndex;
-  UiBox* curBox;
+  UiBox* root, curBox;
+  uint frameIndex;
 
   UiCommand[100] commands;
   size_t numCommands;
@@ -211,9 +230,12 @@ struct UiData {
 
 UiData gUiData;
 
-UiBox* makeBox(UiFlags flags, UiGraphic graphic, string text) { with (gUiData) {
-  UiBox* result = &boxes[boxIndex];
-  boxIndex++;
+UiBox* makeBox(UiId id, UiFlags flags, UiGraphic graphic, string text) { with (gUiData) {
+  UiBox* result = &boxes[id];
+  if (frameIndex != result.lastFrameTouchedIndex) {
+    *result = UiBox.init;
+  }
+  result.lastFrameTouchedIndex = frameIndex;
 
   result.first = null;
   result.last  = null;
@@ -234,9 +256,13 @@ UiBox* makeBox(UiFlags flags, UiGraphic graphic, string text) { with (gUiData) {
     result.parent = curBox;
   }
   else {
+    assert(!root, "Somehow, a second root is trying to be added to the UI tree. Don't do that!");
+    root   = result;
     curBox = result;
   }
 
+  result.id      = id;
+  result.childId = result.prev == null ? 0 : result.prev.childId + 1;
   result.flags   = flags;
   result.graphic = graphic;
   result.text    = text;
@@ -256,7 +282,6 @@ void popParent() { with (gUiData) {
 }}
 
 void uiFrameStart() { with (gUiData) {
-  boxIndex = 0;
   curBox   = null;
 }}
 
