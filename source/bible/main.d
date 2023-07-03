@@ -11,7 +11,7 @@ import citro2d;
 
 import bible.bible, bible.audio, bible.input, bible.util, bible.save;
 import bible.widgets;
-import bible.imgui;
+import imgui = bible.imgui;
 import std.algorithm;
 import std.string : representation;
 import std.range;

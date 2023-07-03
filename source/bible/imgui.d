@@ -1,6 +1,10 @@
-module imgui;
+module bible.imgui;
+
+alias imgui = bible.imgui;
 
 import bible.input, bible.util, bible.audio, bible.bible;
+
+@nogc: nothrow:
 
 void usage() {
   enum View {
