@@ -22,7 +22,7 @@ enum UiId : ushort {
   options_back_btn,
 }
 
-void usage() {
+void usage(Input* input) {
   enum View {
     book,
     reading,
@@ -34,7 +34,6 @@ void usage() {
     open_book,
   }
 
-  static Input input;
   static View currentView = View.book;
   static Book currentBook;
 
@@ -52,7 +51,7 @@ void usage() {
   }
 
   imgui.uiFrameStart();
-  imgui.handleInput(&input);
+  imgui.handleInput(input);
 
   final switch (currentView) {
     case View.book:
@@ -64,7 +63,7 @@ void usage() {
 
       {
         auto layoutComm = imgui.pushSelectScrollLayout(UiId.book_scroll_layout);
-        scope (exit) imgui.popParent();
+        scope (exit) imgui.popParentAndComm();
 
         foreach (i, book; BOOK_NAMES) {
           if (imgui.button(cast(UiId) (UiId.book_bible_btn_first + i), "book").clicked) {
@@ -136,6 +135,8 @@ struct UiSize {
 
 enum Axis2 : ubyte { x, y }
 
+enum Justification : ubyte { min, center, max }
+
 enum OneFrameEvent {
   not_triggered, triggered, already_processed,
 }
@@ -156,6 +157,7 @@ struct UiBox {
 
   UiFlags flags;
   UiGraphic graphic;
+  Justification justification;
 
   UiSize[Axis2.max+1] semanticSize;
 
@@ -192,16 +194,18 @@ UiComm bottomButton(UiId id, string text) {
   return commFromBox(box);
 }
 
-UiComm pushSelectScrollLayout(UiId id) {
+UiBox* pushSelectScrollLayout(UiId id) {
   UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll, UiGraphic.none, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+  box.justification  = Justification.center;
   pushParent(box);
-  return commFromBox(box);
+  return box;
 }
 
 void pushVerticalLayout(UiId id) {
   UiBox* box = makeBox(id, cast(UiFlags) 0, UiGraphic.none, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+  box.justification  = Justification.center;
   pushParent(box);
 }
 
@@ -232,7 +236,7 @@ UiData gUiData;
 
 UiBox* makeBox(UiId id, UiFlags flags, UiGraphic graphic, string text) { with (gUiData) {
   UiBox* result = &boxes[id];
-  if (frameIndex != result.lastFrameTouchedIndex) {
+  if (frameIndex-1 != result.lastFrameTouchedIndex) {
     *result = UiBox.init;
   }
   result.lastFrameTouchedIndex = frameIndex;
@@ -276,13 +280,20 @@ void pushParent(UiBox* box) { with (gUiData) {
   curBox = box;
 }}
 
-void popParent() { with (gUiData) {
+UiBox* popParent() { with (gUiData) {
   assert(curBox, "Trying to pop to the current UI node's parent, but it's null!");
+  auto result = curBox;
   curBox = curBox.parent;
+  return result;
 }}
 
+UiComm popParentAndComm() {
+  return commFromBox(popParent());
+}
+
 void uiFrameStart() { with (gUiData) {
-  curBox   = null;
+  curBox = null;
+  root   = null;
 }}
 
 void handleInput(Input* newInput) { with (gUiData) {
@@ -319,10 +330,10 @@ void uiFrameEnd() { with (gUiData) {
           break;
         case UiSizeKind.text_content:
           if (axis == Axis2.x) {
-            box.computedSize[axis] = box.text.length * 10; // @TODO
+            box.computedSize[axis] = box.text.length * 15; // @TODO
           }
           else {
-            box.computedSize[axis] = 10; // @TODO
+            box.computedSize[axis] = 15; // @TODO
           }
           break;
         case UiSizeKind.percent_of_parent:
@@ -383,21 +394,20 @@ void uiFrameEnd() { with (gUiData) {
 
   // Step 4 (solve violations)
   preOrderApply(root, (box) {
-    foreach (axis; enumRange!Axis2) {
-      if (axis == Axis2.y && (box.flags & UiFlags.view_scroll)) continue;  // Assume there really are no violations if you can scroll
+    Axis2 axis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+    if (box.flags & UiFlags.view_scroll) return;  // Assume there really are no violations if you can scroll
 
-      float sum = 0;
+    float sum = 0;
+    foreach (child; eachChild(box)) {
+      sum += child.computedSize[axis];
+    }
+
+    float difference = sum - box.computedSize[axis];
+    if (difference > 0) {
       foreach (child; eachChild(box)) {
-        sum += child.computedSize[axis];
-      }
-
-      float difference = sum - box.computedSize[axis];
-      if (difference > 0) {
-        foreach (child; eachChild(box)) {
-          float partToRemove        = difference * (1-child.strictness);
-          child.computedSize[axis] -= partToRemove;
-          difference               -= partToRemove;
-        }
+        float partToRemove        = difference * (1-child.semanticSize[axis].strictness);
+        child.computedSize[axis] -= partToRemove;
+        difference               -= partToRemove;
       }
     }
   });
@@ -409,26 +419,47 @@ void uiFrameEnd() { with (gUiData) {
 
       if (box.parent) {
         if (!!(box.parent.flags & UiFlags.horizontal_children) == (axis == Axis2.x)) {
+          // Order children one after the other in the axis towards the flow of child nodes
           if (box.prev) {
             // @TODO: Padding
             box.computedRelPosition[axis] += box.prev.computedRelPosition[axis] + box.prev.computedSize[axis];
           }
         }
+        else {
+          // Justify within the parent in the axis against flow of child nodes
+          float factor;
+          final switch (box.parent.justification) {
+            case Justification.min:
+              factor = 0;
+              break;
+            case Justification.center:
+              factor = 0.5;
+              break;
+            case Justification.max:
+              factor = 1;
+              break;
+          }
+          box.computedRelPosition[axis] = factor * (box.parent.computedSize[axis] - box.computedSize[axis]);
+        }
       }
     }
 
-    box.rect = Rectangle(box.computedRelPosition[Axis2.x], box.computedRelPosition[Axis2.y],
-                         box.computedSize[Axis2.x],        box.computedSize[Axis2.y]);
+    box.rect = Rectangle(box.computedRelPosition[Axis2.x], box.computedRelPosition[Axis2.x],
+                         box.computedRelPosition[Axis2.y], box.computedRelPosition[Axis2.y]);
+
+    box.rect.right  += box.computedSize[Axis2.x];
+    box.rect.bottom += box.computedSize[Axis2.y];
 
     if (box.parent) {
+      if (box.parent.flags & UiFlags.view_scroll) {
+        box.rect.top    -= box.parent.scrollOffset;
+        box.rect.bottom -= box.parent.scrollOffset;
+      }
+
       box.rect.left   += box.parent.rect.left;
       box.rect.top    += box.parent.rect.top;
-      box.rect.right  += box.rect.left;
-      box.rect.bottom += box.rect.bottom;
-
-      if (box.parent.flags & UiFlags.view_scroll) {
-        box.computedRelPosition[Axis2.y] -= box.scrollOffset;
-      }
+      box.rect.right  += box.parent.rect.left;
+      box.rect.bottom += box.parent.rect.top;
     }
   });
 
@@ -500,24 +531,31 @@ auto eachChild(UiBox* box) {
 UiComm commFromBox(UiBox* box) { with (gUiData) {
   UiComm result;
 
+  //UiBox* active = active;
+
   if (box.flags & (UiFlags.clickable | UiFlags.view_scroll)) {
-    if (input.down(Key.touch)) {
+    if (active == null && input.down(Key.touch)) {
       if (insideOrOn(box.rect, Vec2(input.touchRaw.px, input.touchRaw.py))) {
-        box.hotT    = 1;
-        box.activeT = 1;
+        box.hotT        = 1;
+        box.activeT     = 1;
         result.held     = true;
         result.pressed  = true;
         result.hovering = true;
-        active = box;
+        hot             = box;
+        active          = box;
 
         if (box.parent && box.parent.flags & UiFlags.select_children) {
           box.parent.hoveredChild  = box.childId;
           box.parent.selectedChild = box.childId;
-          result.selected = true;
+          result.selected          = true;
         }
       }
     }
     else if (active == box && input.held(Key.touch)) {
+      box.hotT    = 1;
+      box.activeT = 1;
+      hot         = box;
+      active      = box;
       result.held = true;
       if (insideOrOn(box.rect, Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
@@ -527,16 +565,18 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       }
     }
     else if (active == box && input.prevHeld(Key.touch)) {
+      active          = null;
+      result.released = true;
       if (insideOrOn(box.rect, Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py))) {
-        active          = null;
         result.clicked  = true;
-        result.released = true;
       }
     }
   }
 
   if ((box.flags & UiFlags.view_scroll) && result.held) {
     auto scrollDiff = updateScrollDiff(input);
+    box.scrollLimitTop    = 0;
+    box.scrollLimitBottom = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
     respondToScroll(box, &result, scrollDiff);
   }
 
@@ -686,5 +726,41 @@ void sendCommand(uint code, uint value) { with (gUiData) {
 }}
 
 void render() { with (gUiData) {
+  import ctru, citro3d, citro2d;
 
+  static immutable uint[] COLORS = [
+    C2D_Color32(0xFF, 0x00, 0x00, 0xFF),
+    C2D_Color32(0x00, 0xFF, 0x00, 0xFF),
+    C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
+    C2D_Color32(0x88, 0x00, 0xAA, 0xFF),
+  ];
+
+  preOrderApply(root, (box) {
+    if (box.parent && !intersects(box.rect, box.parent.rect)) {
+      return;
+    }
+
+    auto color = COLORS[box.id % COLORS.length];
+
+    if (box.flags & UiFlags.clickable) {
+      C2D_DrawRectSolid(box.rect.left, box.rect.top, 0, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
+    }
+    else {
+      C2D_DrawRectSolid(box.rect.left,  box.rect.top,    0, box.rect.right - box.rect.left, 1, color);
+      C2D_DrawRectSolid(box.rect.left,  box.rect.bottom, 0, box.rect.right - box.rect.left, 1, color);
+      C2D_DrawRectSolid(box.rect.left,  box.rect.top,    0, 1, box.rect.bottom - box.rect.top, color);
+      C2D_DrawRectSolid(box.rect.right, box.rect.top,    0, 1, box.rect.bottom - box.rect.top, color);
+    }
+
+    if (box.parent && (box.parent.flags & UiFlags.select_children) && box.hotT > 0) {
+      auto indicColor = C2D_Color32f(0x00, 0xAA/255.0, 0x11/255.0, box.hotT);
+      C2D_DrawRectSolid(box.rect.left-2,  box.rect.top-2,    0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
+      C2D_DrawRectSolid(box.rect.left-2,  box.rect.bottom,   0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
+      C2D_DrawRectSolid(box.rect.left-2,  box.rect.top-2,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
+      C2D_DrawRectSolid(box.rect.right,   box.rect.top-2,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
+    }
+
+    box.hotT    = approach(box.hotT,    0, 0.1);
+    box.activeT = approach(box.activeT, 0, 0.1);
+  });
 }}

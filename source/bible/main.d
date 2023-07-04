@@ -214,7 +214,7 @@ extern(C) int main(int argc, char** argv) {
         break;
     }*/
 
-    imgui.usage();
+    imgui.usage(&input);
 
     audioUpdate();
 
