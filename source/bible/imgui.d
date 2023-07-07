@@ -55,9 +55,6 @@ void usage(Input* input) {
 
   final switch (currentView) {
     case View.book:
-      static int lastSelection = 0;
-      static int selection     = 0;
-
       imgui.pushVerticalLayout(UiId.book_main_layout);
       scope (exit) imgui.popParent();
 
@@ -111,14 +108,6 @@ enum UiFlags : uint {
   horizontal_children = 1 << 5,
 }
 
-enum UiGraphic : ubyte {
-  none,
-  button,
-  bottom_button,
-  bible_text,
-  scroll_indicator,
-}
-
 enum UiSizeKind : ubyte {
   none,
   pixels,
@@ -141,6 +130,8 @@ enum OneFrameEvent {
   not_triggered, triggered, already_processed,
 }
 
+alias RenderCallback = void function(UiBox*) @nogc nothrow;
+
 struct UiBox {
   UiBox* first, last, next, prev, parent;
   UiId id;
@@ -156,8 +147,8 @@ struct UiBox {
   OneFrameEvent scrollJustStopped;
 
   UiFlags flags;
-  UiGraphic graphic;
   Justification justification;
+  RenderCallback render;
 
   UiSize[Axis2.max+1] semanticSize;
 
@@ -181,7 +172,7 @@ struct UiComm {
 
 
 UiComm button(UiId id, string text) {
-  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, UiGraphic.button, text);
+  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, text);
 
   box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
 
@@ -189,13 +180,13 @@ UiComm button(UiId id, string text) {
 }
 
 UiComm bottomButton(UiId id, string text) {
-  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, UiGraphic.bottom_button, text);
+  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, text);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
   return commFromBox(box);
 }
 
 UiBox* pushSelectScrollLayout(UiId id) {
-  UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll, UiGraphic.none, null);
+  UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.justification  = Justification.center;
   pushParent(box);
@@ -203,14 +194,14 @@ UiBox* pushSelectScrollLayout(UiId id) {
 }
 
 void pushVerticalLayout(UiId id) {
-  UiBox* box = makeBox(id, cast(UiFlags) 0, UiGraphic.none, null);
+  UiBox* box = makeBox(id, cast(UiFlags) 0, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.justification  = Justification.center;
   pushParent(box);
 }
 
 void scrollableReadPane(UiId id) {
-  UiBox* box = makeBox(id, UiFlags.view_scroll, UiGraphic.bible_text, null);
+  UiBox* box = makeBox(id, UiFlags.view_scroll, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
 }
 
@@ -234,7 +225,7 @@ struct UiData {
 
 UiData gUiData;
 
-UiBox* makeBox(UiId id, UiFlags flags, UiGraphic graphic, string text) { with (gUiData) {
+UiBox* makeBox(UiId id, UiFlags flags, string text) { with (gUiData) {
   UiBox* result = &boxes[id];
   if (frameIndex-1 != result.lastFrameTouchedIndex) {
     *result = UiBox.init;
@@ -268,7 +259,6 @@ UiBox* makeBox(UiId id, UiFlags flags, UiGraphic graphic, string text) { with (g
   result.id      = id;
   result.childId = result.prev == null ? 0 : result.prev.childId + 1;
   result.flags   = flags;
-  result.graphic = graphic;
   result.text    = text;
 
   return result;
@@ -573,7 +563,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
-  if ((box.flags & UiFlags.view_scroll) && result.held) {
+  if ((box.flags & UiFlags.view_scroll)) {
     auto scrollDiff = updateScrollDiff(input);
     box.scrollLimitTop    = 0;
     box.scrollLimitBottom = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
@@ -741,6 +731,10 @@ void render() { with (gUiData) {
     }
 
     auto color = COLORS[box.id % COLORS.length];
+
+    if (box.render) {
+      box.render(box);
+    }
 
     if (box.flags & UiFlags.clickable) {
       C2D_DrawRectSolid(box.rect.left, box.rect.top, 0, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
