@@ -6,6 +6,8 @@ import bible.input, bible.util, bible.audio, bible.bible;
 
 @nogc: nothrow:
 
+enum float ANIM_T_RATE = 0.1;
+
 // @TODO: Replace this with hashing system
 enum UiId : ushort {
   book_main_layout,
@@ -80,7 +82,7 @@ void usage(Input* input) {
       scope (exit) imgui.popParent();
 
       imgui.scrollableReadPane(UiId.book_scroll_layout);
-      if (imgui.bottomButton(UiId.reading_back_btn, "Back").clicked) {
+      if (imgui.bottomButton(UiId.reading_back_btn, "Back").clicked || input.down(Key.b)) {
         imgui.sendCommand(CommandCode.switch_view, View.book);
       }
 
@@ -90,7 +92,7 @@ void usage(Input* input) {
       imgui.pushVerticalLayout(UiId.options_main_layout);
       scope (exit) imgui.popParent();
 
-      if (imgui.bottomButton(UiId.options_back_btn, "Back").clicked) {
+      if (imgui.bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
         imgui.sendCommand(CommandCode.switch_view, View.book);
       }
       break;
@@ -172,7 +174,7 @@ struct UiComm {
 
 
 UiComm button(UiId id, string text) {
-  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, text);
+  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
 
   box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
 
@@ -220,7 +222,7 @@ struct UiData {
   UiCommand[100] commands;
   size_t numCommands;
 
-  UiBox* hot, active;
+  UiBox* hot, active, selected;
 }
 
 UiData gUiData;
@@ -291,6 +293,10 @@ void handleInput(Input* newInput) { with (gUiData) {
 }}
 
 void uiFrameEnd() { with (gUiData) {
+  if (hot      && hot.lastFrameTouchedIndex      != frameIndex) hot      = null;
+  if (active   && active.lastFrameTouchedIndex   != frameIndex) active   = null;
+  if (selected && selected.lastFrameTouchedIndex != frameIndex) selected = null;
+
   // Ryan Fleury's offline layout algorithm (from https://www.rfleury.com/p/ui-part-2-build-it-every-frame-immediate):
   //
   // 1. (Any order) Calculate “standalone” sizes. These are sizes that do not depend on other widgets and can be
@@ -533,6 +539,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
         result.hovering = true;
         hot             = box;
         active          = box;
+        selected        = box;
 
         if (box.parent && box.parent.flags & UiFlags.select_children) {
           box.parent.hoveredChild  = box.childId;
@@ -546,6 +553,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       box.activeT = 1;
       hot         = box;
       active      = box;
+      selected    = box;
       result.held = true;
       if (insideOrOn(box.rect, Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
@@ -563,52 +571,108 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
-  if ((box.flags & UiFlags.view_scroll)) {
-    auto scrollDiff = updateScrollDiff(input);
+  bool needToScrollTowardsChild = false;
+  UiBox* cursored = null;
+  if ((box.flags & UiFlags.select_children) && box.first != null) {
+    cursored = box.first;
+
+    // @TODO: Better figure out how to handle widgets going away
+    while (cursored != null && cursored.childId != box.hoveredChild) cursored = cursored.next;
+    assert(cursored != null, "The currently selected child doesn't exist exist anymore?");
+
+    Key forwardKey  = (box.flags & UiFlags.horizontal_children) ? Key.right : Key.down;
+    Key backwardKey = (box.flags & UiFlags.horizontal_children) ? Key.left  : Key.up;
+
+    UiBox* moveToSelectable(UiBox* box, int dir, scope bool delegate(UiBox*) @nogc nothrow check) {
+      auto runner = box;
+
+      if (dir == 1) {
+        do {
+          runner = runner.next;
+        } while (runner != null && !(runner.flags & UiFlags.selectable) && !check(runner));
+      }
+      else {
+        do {
+          runner = runner.prev;
+        } while (runner != null && !(runner.flags & UiFlags.selectable) && !check(runner));
+      }
+
+      return runner == null ? box : runner;
+    }
+
+    bool scrollOccurring = (box.flags & UiFlags.view_scroll) &&
+                           ( input.scrollMethodCur == ScrollMethod.touch ||
+                             ( input.scrollMethodCur == ScrollMethod.none &&
+                               input.scrollVel != 0 ) );
+
+    if (scrollOccurring)
+    {
+      // Mimicking how the 3DS UI works, select nearest on-screen child while scrolling
+      if (cursored.rect.bottom > box.rect.bottom) {
+        cursored = moveToSelectable(cursored, -1, a => a.rect.bottom <= box.rect.bottom);
+      }
+      else if (cursored.rect.top < box.rect.top) {
+        cursored = moveToSelectable(cursored, 1, a => a.rect.top >= box.rect.top);
+      }
+    }
+    else if (input.down(backwardKey)) {
+      cursored = moveToSelectable(cursored, -1, a => true);
+      selected = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+    }
+    else if (input.down(forwardKey)) {
+      cursored = moveToSelectable(cursored, 1, a => true);
+      selected = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+    }
+
+    box.hoveredChild = cursored.childId;
+    if (!scrollOccurring) cursored.hotT = 1;
+    hot = cursored; // @Note: There can only be one select_children box on screen, or else they conflict...
+
+    // If we can scroll, flag that we need to scroll towards our off-screen cursored child
+    if (box.flags & UiFlags.view_scroll) {
+      needToScrollTowardsChild = cursored.rect.top    < box.rect.top ||
+                                 cursored.rect.bottom > box.rect.bottom;
+    }
+  }
+
+  if ((box.flags & UiFlags.view_scroll) && selected == box) {
+    uint allowedMethods = 1 << ScrollMethod.touch;
+
+    // Don't allow scrolling with D-pad/circle-pad if we can select children with either of those
+    // @TODO allow holding direction for some time to override this
+    if (!(box.flags & UiFlags.select_children)) {
+      allowedMethods = allowedMethods | (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
+    }
+
+    // Scrolling towards off-screen children will happen if it's needed and we're not scrolling some other way.
+    if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
+      input.scrollMethodCur = ScrollMethod.custom;
+      input.scrollVel = 0;
+    }
+    else if (input.scrollMethodCur == ScrollMethod.custom && !needToScrollTowardsChild) {
+      input.scrollMethodCur = ScrollMethod.none;
+    }
+    else if (!cursored) {
+      input.scrollMethodCur = ScrollMethod.none;
+    }
+
+    Vec2 scrollDiff;
+    if (input.scrollMethodCur == ScrollMethod.custom) {
+      scrollDiff.y = cursored.rect.top < box.rect.top ? -5 : 5;
+    }
+    else {
+      scrollDiff = updateScrollDiff(input, allowedMethods);
+    }
+
     box.scrollLimitTop    = 0;
     box.scrollLimitBottom = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
     respondToScroll(box, &result, scrollDiff);
   }
 
-  if ((box.flags & UiFlags.select_children) && box.first != null) {
-    UiBox* selection = box.first;
-    while (selection != null && selection.childId != box.hoveredChild) selection = selection.next;
-    assert(selection != null, "The currently selected child doesn't exist exist anymore?");
-
-    Key forwardKey  = (box.flags & UiFlags.horizontal_children) ? Key.right : Key.down;
-    Key backwardKey = (box.flags & UiFlags.horizontal_children) ? Key.left  : Key.up;
-
-    if (input.down(backwardKey)) {
-      UiBox* runner = selection.prev;
-
-      while (runner != null && !(runner.flags & UiFlags.selectable)) {
-        runner = runner.prev;
-      }
-
-      if (runner != null) {
-        selection = runner;
-      }
-    }
-    else if (input.down(forwardKey)) {
-      UiBox* runner = selection.next;
-
-      while (runner != null && !(runner.flags & UiFlags.selectable)) {
-        runner = runner.next;
-      }
-
-      if (runner != null) {
-        selection = runner;
-      }
-    }
-
-    box.hoveredChild = selection.childId;
-    selection.hotT = 1;
-    hot = selection; // @Note: There can only be one select_children box on screen, or else they conflict...
-  }
-
   if ((box.flags & UiFlags.selectable) && hot == box) {
     if (input.down(Key.a)) {
-      active = box;
+      active   = box;
+      selected = box;
       box.activeT = 1;
       result.clicked  = true;
       result.pressed  = true;
@@ -746,7 +810,7 @@ void render() { with (gUiData) {
       C2D_DrawRectSolid(box.rect.right, box.rect.top,    0, 1, box.rect.bottom - box.rect.top, color);
     }
 
-    if (box.parent && (box.parent.flags & UiFlags.select_children) && box.hotT > 0) {
+    if (box.parent && (box.parent.flags & UiFlags.select_children) && (box.flags & UiFlags.selectable) && box.hotT > 0) {
       auto indicColor = C2D_Color32f(0x00, 0xAA/255.0, 0x11/255.0, box.hotT);
       C2D_DrawRectSolid(box.rect.left-2,  box.rect.top-2,    0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
       C2D_DrawRectSolid(box.rect.left-2,  box.rect.bottom,   0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
@@ -754,7 +818,7 @@ void render() { with (gUiData) {
       C2D_DrawRectSolid(box.rect.right,   box.rect.top-2,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
     }
 
-    box.hotT    = approach(box.hotT,    0, 0.1);
-    box.activeT = approach(box.activeT, 0, 0.1);
+    box.hotT    = approach(box.hotT,    0, ANIM_T_RATE);
+    box.activeT = approach(box.activeT, 0, ANIM_T_RATE);
   });
 }}
