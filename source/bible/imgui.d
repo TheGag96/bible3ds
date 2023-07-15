@@ -3,10 +3,12 @@ module bible.imgui;
 alias imgui = bible.imgui;
 
 import bible.input, bible.util, bible.audio, bible.bible;
+import std.math;
 
 @nogc: nothrow:
 
-enum float ANIM_T_RATE = 0.1;
+enum float ANIM_T_RATE          = 0.1;
+enum       TOUCH_DRAG_THRESHOLD = 8;
 
 // @TODO: Replace this with hashing system
 enum UiId : ushort {
@@ -222,7 +224,7 @@ struct UiData {
   UiCommand[100] commands;
   size_t numCommands;
 
-  UiBox* hot, active, selected;
+  UiBox* hot, active, focused;
 }
 
 UiData gUiData;
@@ -293,9 +295,9 @@ void handleInput(Input* newInput) { with (gUiData) {
 }}
 
 void uiFrameEnd() { with (gUiData) {
-  if (hot      && hot.lastFrameTouchedIndex      != frameIndex) hot      = null;
-  if (active   && active.lastFrameTouchedIndex   != frameIndex) active   = null;
-  if (selected && selected.lastFrameTouchedIndex != frameIndex) selected = null;
+  if (hot     && hot.lastFrameTouchedIndex      != frameIndex) hot     = null;
+  if (active  && active.lastFrameTouchedIndex   != frameIndex) active  = null;
+  if (focused && focused .lastFrameTouchedIndex != frameIndex) focused = null;
 
   // Ryan Fleury's offline layout algorithm (from https://www.rfleury.com/p/ui-part-2-build-it-every-frame-immediate):
   //
@@ -539,7 +541,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
         result.hovering = true;
         hot             = box;
         active          = box;
-        selected        = box;
+        focused         = box;
 
         if (box.parent && box.parent.flags & UiFlags.select_children) {
           box.parent.hoveredChild  = box.childId;
@@ -553,9 +555,20 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       box.activeT = 1;
       hot         = box;
       active      = box;
-      selected    = box;
+      focused     = box;
       result.held = true;
-      if (insideOrOn(box.rect, Vec2(input.touchRaw.px, input.touchRaw.py))) {
+
+      // Allow scrolling the parent to kick in if we drag too far away
+      if (box.parent && (box.parent.flags & UiFlags.view_scroll) && abs(input.touchDiff().y) >= TOUCH_DRAG_THRESHOLD) {
+        result.held        = false;
+        result.released    = true;
+        box.parent.hotT    = 1;
+        box.parent.activeT = 1;
+        active             = box.parent;
+        hot                = box.parent;
+        focused            = box.parent;
+      }
+      else if (insideOrOn(box.rect, Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
       }
       else {
@@ -617,11 +630,11 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
     else if (input.down(backwardKey)) {
       cursored = moveToSelectable(cursored, -1, a => true);
-      selected = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+      focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
     }
     else if (input.down(forwardKey)) {
       cursored = moveToSelectable(cursored, 1, a => true);
-      selected = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+      focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
     }
 
     box.hoveredChild = cursored.childId;
@@ -635,7 +648,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
-  if ((box.flags & UiFlags.view_scroll) && selected == box) {
+  if ((box.flags & UiFlags.view_scroll) && focused == box) {
     uint allowedMethods = 1 << ScrollMethod.touch;
 
     // Don't allow scrolling with D-pad/circle-pad if we can select children with either of those
@@ -672,7 +685,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
   if ((box.flags & UiFlags.selectable) && hot == box) {
     if (input.down(Key.a)) {
       active   = box;
-      selected = box;
+      focused  = box;
       box.activeT = 1;
       result.clicked  = true;
       result.pressed  = true;
