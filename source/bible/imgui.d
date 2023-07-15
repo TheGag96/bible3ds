@@ -631,21 +631,21 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     else if (input.down(backwardKey)) {
       cursored = moveToSelectable(cursored, -1, a => true);
       focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+      needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
+                                 ( cursored.rect.top    < box.rect.top ||
+                                   cursored.rect.bottom > box.rect.bottom );
     }
     else if (input.down(forwardKey)) {
       cursored = moveToSelectable(cursored, 1, a => true);
       focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+      needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
+                                 ( cursored.rect.top    < box.rect.top ||
+                                   cursored.rect.bottom > box.rect.bottom );
     }
 
     box.hoveredChild = cursored.childId;
     if (!scrollOccurring) cursored.hotT = 1;
     hot = cursored; // @Note: There can only be one select_children box on screen, or else they conflict...
-
-    // If we can scroll, flag that we need to scroll towards our off-screen cursored child
-    if (box.flags & UiFlags.view_scroll) {
-      needToScrollTowardsChild = cursored.rect.top    < box.rect.top ||
-                                 cursored.rect.bottom > box.rect.bottom;
-    }
   }
 
   if ((box.flags & UiFlags.view_scroll) && focused == box) {
@@ -657,15 +657,16 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       allowedMethods = allowedMethods | (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
     }
 
-    // Scrolling towards off-screen children will happen if it's needed and we're not scrolling some other way.
+    // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
     if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
       input.scrollMethodCur = ScrollMethod.custom;
       input.scrollVel = 0;
     }
-    else if (input.scrollMethodCur == ScrollMethod.custom && !needToScrollTowardsChild) {
-      input.scrollMethodCur = ScrollMethod.none;
-    }
-    else if (!cursored) {
+    else if ( input.scrollMethodCur == ScrollMethod.custom &&
+              ( !cursored ||
+                ( cursored.rect.top    >= box.rect.top &&      // @Bug: Child that's bigger than parent will scroll forever!
+                  cursored.rect.bottom <= box.rect.bottom ) ) )
+    {
       input.scrollMethodCur = ScrollMethod.none;
     }
 
