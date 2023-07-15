@@ -126,8 +126,6 @@ struct UiSize {
   float strictness = 0;
 }
 
-enum Axis2 : ubyte { x, y }
-
 enum Justification : ubyte { min, center, max }
 
 enum OneFrameEvent {
@@ -145,8 +143,8 @@ struct UiBox {
   //LoadedPage* loadedPage;
   int hoveredChild, selectedChild;
 
-  float scrollOffset   = 0, scrollOffsetLast  = 0;
-  float scrollLimitTop = 0, scrollLimitBottom = 0;
+  float scrollOffset   = 0, scrollOffsetLast = 0;
+  float scrollLimitMin = 0, scrollLimitMax   = 0;
   OneFrameEvent startedScrolling;  // @TODO: Remove these?
   OneFrameEvent scrollJustStopped;
 
@@ -529,8 +527,6 @@ auto eachChild(UiBox* box) {
 UiComm commFromBox(UiBox* box) { with (gUiData) {
   UiComm result;
 
-  //UiBox* active = active;
-
   if (box.flags & (UiFlags.clickable | UiFlags.view_scroll)) {
     if (active == null && input.down(Key.touch)) {
       if (insideOrOn(box.rect, Vec2(input.touchRaw.px, input.touchRaw.py))) {
@@ -559,7 +555,8 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       result.held = true;
 
       // Allow scrolling the parent to kick in if we drag too far away
-      if (box.parent && (box.parent.flags & UiFlags.view_scroll) && abs(input.touchDiff().y) >= TOUCH_DRAG_THRESHOLD) {
+      auto parentFlowAxis = box.parent && (box.parent.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+      if (box.parent && (box.parent.flags & UiFlags.view_scroll) && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
         result.held        = false;
         result.released    = true;
         box.parent.hotT    = 1;
@@ -584,6 +581,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
+  auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
   bool needToScrollTowardsChild = false;
   UiBox* cursored = null;
   if ((box.flags & UiFlags.select_children) && box.first != null) {
@@ -593,8 +591,8 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     while (cursored != null && cursored.childId != box.hoveredChild) cursored = cursored.next;
     assert(cursored != null, "The currently selected child doesn't exist exist anymore?");
 
-    Key forwardKey  = (box.flags & UiFlags.horizontal_children) ? Key.right : Key.down;
-    Key backwardKey = (box.flags & UiFlags.horizontal_children) ? Key.left  : Key.up;
+    Key forwardKey  = flowAxis == Axis2.x ? Key.right : Key.down;
+    Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
 
     UiBox* moveToSelectable(UiBox* box, int dir, scope bool delegate(UiBox*) @nogc nothrow check) {
       auto runner = box;
@@ -616,31 +614,30 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     bool scrollOccurring = (box.flags & UiFlags.view_scroll) &&
                            ( input.scrollMethodCur == ScrollMethod.touch ||
                              ( input.scrollMethodCur == ScrollMethod.none &&
-                               input.scrollVel != 0 ) );
-
+                               input.scrollVel[flowAxis] != 0 ) );
     if (scrollOccurring)
     {
       // Mimicking how the 3DS UI works, select nearest on-screen child while scrolling
-      if (cursored.rect.bottom > box.rect.bottom) {
-        cursored = moveToSelectable(cursored, -1, a => a.rect.bottom <= box.rect.bottom);
+      if (cursored.rect.max[flowAxis] > box.rect.max[flowAxis]) {
+        cursored = moveToSelectable(cursored, -1, a => a.rect.max[flowAxis] <= box.rect.max[flowAxis]);
       }
-      else if (cursored.rect.top < box.rect.top) {
-        cursored = moveToSelectable(cursored, 1, a => a.rect.top >= box.rect.top);
+      else if (cursored.rect.min[flowAxis] < box.rect.min[flowAxis]) {
+        cursored = moveToSelectable(cursored, 1, a => a.rect.min[flowAxis] >= box.rect.min[flowAxis]);
       }
     }
     else if (input.down(backwardKey)) {
       cursored = moveToSelectable(cursored, -1, a => true);
       focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
       needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
-                                 ( cursored.rect.top    < box.rect.top ||
-                                   cursored.rect.bottom > box.rect.bottom );
+                                 ( cursored.rect.min[flowAxis] < box.rect.min[flowAxis] ||
+                                   cursored.rect.max[flowAxis] > box.rect.max[flowAxis] );
     }
     else if (input.down(forwardKey)) {
       cursored = moveToSelectable(cursored, 1, a => true);
       focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
       needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
-                                 ( cursored.rect.top    < box.rect.top ||
-                                   cursored.rect.bottom > box.rect.bottom );
+                                 ( cursored.rect.min[flowAxis] < box.rect.min[flowAxis] ||
+                                   cursored.rect.max[flowAxis] > box.rect.max[flowAxis] );
     }
 
     box.hoveredChild = cursored.childId;
@@ -664,22 +661,22 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
     else if ( input.scrollMethodCur == ScrollMethod.custom &&
               ( !cursored ||
-                ( cursored.rect.top    >= box.rect.top &&      // @Bug: Child that's bigger than parent will scroll forever!
-                  cursored.rect.bottom <= box.rect.bottom ) ) )
+                ( cursored.rect.min[flowAxis] >= box.rect.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
+                  cursored.rect.max[flowAxis] <= box.rect.max[flowAxis] ) ) )
     {
       input.scrollMethodCur = ScrollMethod.none;
     }
 
     Vec2 scrollDiff;
     if (input.scrollMethodCur == ScrollMethod.custom) {
-      scrollDiff.y = cursored.rect.top < box.rect.top ? -5 : 5;
+      scrollDiff[flowAxis] = cursored.rect.min[flowAxis] < box.rect.min[flowAxis] ? -5 : 5;
     }
     else {
       scrollDiff = updateScrollDiff(input, allowedMethods);
     }
 
-    box.scrollLimitTop    = 0;
-    box.scrollLimitBottom = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
+    box.scrollLimitMin    = 0;
+    box.scrollLimitMax = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
     respondToScroll(box, &result, scrollDiff);
   }
 
@@ -711,23 +708,25 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
 void respondToScroll(UiBox* box, UiComm* result, Vec2 scrollDiff) { with (gUiData) { with (box) {
   enum SCROLL_TICK_DISTANCE = 60;
 
+  auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+
   scrollOffsetLast = scrollOffset;
 
   if (input.scrollMethodCur == ScrollMethod.touch) {
     if (!input.down(Key.touch)) {
-      scrollOffset += scrollDiff.y;
+      scrollOffset += scrollDiff[flowAxis];
     }
   }
   else {
-    scrollOffset += scrollDiff.y;
+    scrollOffset += scrollDiff[flowAxis];
   }
 
-  if (scrollOffset < scrollLimitTop) {
-    scrollOffset = scrollLimitTop;
+  if (scrollOffset < scrollLimitMin) {
+    scrollOffset = scrollLimitMin;
     input.scrollVel = 0;
   }
-  else if (scrollOffset > scrollLimitBottom) {
-    scrollOffset = scrollLimitBottom;
+  else if (scrollOffset > scrollLimitMax) {
+    scrollOffset = scrollLimitMax;
     input.scrollVel = 0;
   }
 
@@ -736,7 +735,7 @@ void respondToScroll(UiBox* box, UiComm* result, Vec2 scrollDiff) { with (gUiDat
   // handle scrolling events
   ////
 
-  if (scrollOffset == scrollLimitTop || scrollOffset == scrollLimitBottom) {
+  if (scrollOffset == scrollLimitMin || scrollOffset == scrollLimitMax) {
     if ( scrollJustStopped == OneFrameEvent.not_triggered &&
          scrollOffset != scrollOffsetLast )
     {

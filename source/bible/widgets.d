@@ -474,11 +474,11 @@ void respondToScroll(ScrollInfo* scrollInfo, Input* input, float newLimitTop, fl
 
   if (scrollOffset < limitTop) {
     scrollOffset = limitTop;
-    input.scrollVel = 0;
+    input.scrollVel.y = 0;
   }
   else if (scrollOffset > limitBottom) {
     scrollOffset = limitBottom;
-    input.scrollVel = 0;
+    input.scrollVel.y = 0;
   }
 
 
@@ -551,10 +551,10 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
 
   //get in or out of our custom scroll handler (d-pad / circle pad scrolls by selecting buttons)
   if (input.scrollMethodCur == ScrollMethod.none) {
-    if (input.held(Key.up | Key.down) && input.scrollVel == 0) {
+    if (input.held(Key.up | Key.down) && input.scrollVel.y == 0) {
       input.scrollMethodCur = ScrollMethod.custom;
 
-      if (input.down(Key.up | Key.down)) input.scrollVel = 0;
+      if (input.down(Key.up | Key.down)) input.scrollVel.y = 0;
     }
   }
   else if (input.scrollMethodCur == ScrollMethod.custom) {
@@ -649,7 +649,7 @@ int handleButtonSelectionAndScroll(UiState* uiState, Button[] buttons, ScrollInf
   }
 
   //fade out current selection when touch scrolling, fade faster when done
-  if (input.scrollMethodCur != ScrollMethod.none && input.scrollMethodCur != ScrollMethod.custom || input.scrollVel != 0) {
+  if (input.scrollMethodCur != ScrollMethod.none && input.scrollMethodCur != ScrollMethod.custom || input.scrollVel.y != 0) {
     uiState.selectedFadeTimer = approach(uiState.selectedFadeTimer, 0, 0.1);
   }
   else {

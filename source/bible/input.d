@@ -22,7 +22,7 @@ struct Input {
   circlePosition circleRaw, prevCircleRaw;
 
   ScrollMethod scrollMethodCur;
-  float scrollVel = 0;
+  Vec2 scrollVel;
 
   bool down(Key k) const {
     return cast(bool)(downRaw & k);
@@ -60,8 +60,8 @@ struct Input {
     return allHeld(k) && !allPrevHeld(k);
   }
 
-  intpair touchDiff() const {
-    return intpair(touchRaw.px - firstTouchRaw.px, touchRaw.py - firstTouchRaw.py);
+  Vec2 touchDiff() const {
+    return Vec2(touchRaw.px - firstTouchRaw.px, touchRaw.py - firstTouchRaw.py);
   }
 }
 
@@ -155,14 +155,22 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
 
   final switch (scrollMethodCur) {
     case ScrollMethod.none:
-      if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
-        scrollVel = max(min(prevPrevTouchRaw.py - prevTouchRaw.py, 40), -40);
-      }
-      result.y = scrollVel;
-      scrollVel *= 0.95;
+      foreach (axis; enumRange!Axis2) {
+        if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
+          if (axis == Axis2.x) {
+            scrollVel[axis] = max(min(prevPrevTouchRaw.px - prevTouchRaw.px, 40), -40);
+          }
+          else {
+            scrollVel[axis] = max(min(prevPrevTouchRaw.py - prevTouchRaw.py, 40), -40);
+          }
+        }
 
-      if (fabs(scrollVel) < 3) {
-        scrollVel = 0;
+        result[axis] = scrollVel[axis];
+        scrollVel[axis] *= 0.95;
+
+        if (fabs(scrollVel[axis]) < 3) {
+          scrollVel[axis] = 0;
+        }
       }
       break;
     case ScrollMethod.dpad:

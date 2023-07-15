@@ -9,6 +9,8 @@ alias box     = Tuple!(float, "left", float, "right", float, "top", float, "bott
 alias pair    = Tuple!(float, "x", float, "y");
 alias intpair = Tuple!(int, "x", int, "y");
 
+enum Axis2 : ubyte { x, y }
+
 alias Vec2 = Vec!2;
 alias Vec3 = Vec!3;
 
@@ -174,7 +176,21 @@ float depthFactor(LayerIndex layerIndex) {
 }
 
 struct Rectangle {
-  float left = 0, right = 0, top = 0, bottom = 0;
+  @nogc: nothrow: @safe:
+
+  union {
+    struct {
+      float[2] min = 0, max = 0;
+    }
+    struct {
+      float left, top, right, bottom;
+    }
+  }
+
+  pragma(inline, true)
+  this(float left, float right, float top, float bottom) {
+    this.left = left; this.right = right; this.top = top; this.bottom = bottom;
+  }
 }
 
 pure nothrow @nogc @safe
