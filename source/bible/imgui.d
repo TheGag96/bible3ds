@@ -702,18 +702,16 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       return runner == null ? box : runner;
     }
 
+    // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
+    auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
+
     bool scrollOccurring = (box.flags & UiFlags.view_scroll) &&
                            ( input.scrollMethodCur == ScrollMethod.touch ||
                              ( input.scrollMethodCur == ScrollMethod.none &&
                                input.scrollVel[flowAxis] != 0 ) );
     if (scrollOccurring)
     {
-      // Mimicking how the 3DS UI works, select nearest on-bottom-screen child while scrolling
-      auto cursorBounds = box.rect;
-      cursorBounds.left   = max(cursorBounds.left,   SCREEN_RECT[GFXScreen.bottom].left);
-      cursorBounds.top    = max(cursorBounds.top,    SCREEN_RECT[GFXScreen.bottom].top);
-      cursorBounds.right  = min(cursorBounds.right,  SCREEN_RECT[GFXScreen.bottom].right);
-      cursorBounds.bottom = min(cursorBounds.bottom, SCREEN_RECT[GFXScreen.bottom].bottom);
+      // Mimicking how the 3DS UI works, select nearest in-vew child while scrolling
 
       if (cursored.rect.max[flowAxis] > cursorBounds.max[flowAxis]) {
         cursored = moveToSelectable(cursored, -1, a => a.rect.max[flowAxis] <= cursorBounds.max[flowAxis]);
@@ -722,19 +720,29 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
         cursored = moveToSelectable(cursored, 1, a => a.rect.min[flowAxis] >= cursorBounds.min[flowAxis]);
       }
     }
-    else if (input.down(backwardKey)) {
-      cursored = moveToSelectable(cursored, -1, a => true);
+    else if (input.down(backwardKey | forwardKey)) {
+      int dir = input.down(backwardKey) ? -1 : 1;
+
+      auto newCursored = moveToSelectable(cursored, dir, a => true);
+      if (newCursored == cursored) {
+        audioPlaySound(SoundEffect.scroll_stop, 0.1);
+      }
+      else {
+        audioPlaySound(SoundEffect.button_move, 0.1);
+      }
+      cursored = newCursored;
+
       focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
+
       needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
-                                 ( cursored.rect.min[flowAxis] < box.rect.min[flowAxis] ||
-                                   cursored.rect.max[flowAxis] > box.rect.max[flowAxis] );
-    }
-    else if (input.down(forwardKey)) {
-      cursored = moveToSelectable(cursored, 1, a => true);
-      focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
-      needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
-                                 ( cursored.rect.min[flowAxis] < box.rect.min[flowAxis] ||
-                                   cursored.rect.max[flowAxis] > box.rect.max[flowAxis] );
+                                 // @Hack: Deal with the fact that only part of the clickable area CAN be scrolled to.
+                                 //        This kind of sucks.
+                                 ( flowAxis != Axis2.y ||
+                                   !(cursored.flags & UiFlags.clickable) ||
+                                   box.scrollLimitMin + SCREEN_POS[GFXScreen.bottom].y <
+                                     box.rect.top + cursored.computedRelPosition[Axis2.y] ) &&
+                                 ( cursored.rect.min[flowAxis] < cursorBounds.min[flowAxis] ||
+                                   cursored.rect.max[flowAxis] > cursorBounds.max[flowAxis] );
     }
 
     box.hoveredChild = cursored.childId;
@@ -751,22 +759,26 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       allowedMethods = allowedMethods | (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
     }
 
+    // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
+    auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
+
     // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
     if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
       input.scrollMethodCur = ScrollMethod.custom;
       input.scrollVel = 0;
     }
-    else if ( input.scrollMethodCur == ScrollMethod.custom &&
-              ( !cursored ||
-                ( cursored.rect.min[flowAxis] >= box.rect.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
-                  cursored.rect.max[flowAxis] <= box.rect.max[flowAxis] ) ) )
-    {
-      input.scrollMethodCur = ScrollMethod.none;
+    else if ( input.scrollMethodCur == ScrollMethod.custom ) {
+      if ( !cursored ||
+           ( cursored.rect.min[flowAxis] >= cursorBounds.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
+             cursored.rect.max[flowAxis] <= cursorBounds.max[flowAxis] ) )
+      {
+        input.scrollMethodCur = ScrollMethod.none;
+      }
     }
 
     Vec2 scrollDiff;
     if (input.scrollMethodCur == ScrollMethod.custom) {
-      scrollDiff[flowAxis] = cursored.rect.min[flowAxis] < box.rect.min[flowAxis] ? -5 : 5;
+      scrollDiff[flowAxis] = cursored.rect.min[flowAxis] < cursorBounds.min[flowAxis] ? -5 : 5;
     }
     else {
       scrollDiff = updateScrollDiff(input, allowedMethods);
@@ -940,3 +952,12 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
     return false;
   });
 }}
+
+Rectangle clipWithinBottomScreen(in Rectangle rect) {
+  Rectangle result = void;
+  result.left   = max(rect.left,   SCREEN_RECT[GFXScreen.bottom].left);
+  result.top    = max(rect.top,    SCREEN_RECT[GFXScreen.bottom].top);
+  result.right  = min(rect.right,  SCREEN_RECT[GFXScreen.bottom].right);
+  result.bottom = min(rect.bottom, SCREEN_RECT[GFXScreen.bottom].bottom);
+  return result;
+}
