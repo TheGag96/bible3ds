@@ -120,6 +120,7 @@ void usage(Input* input) {
         auto style = imgui.ScopedStyle(&BACK_BUTTON_STYLE);
         if (imgui.bottomButton(UiId.reading_back_btn, "Back").clicked || input.down(Key.b)) {
           imgui.sendCommand(CommandCode.switch_view, View.book);
+          audioPlaySound(SoundEffect.button_back, 0.5);
         }
       }
 
@@ -130,6 +131,7 @@ void usage(Input* input) {
         auto style = imgui.ScopedStyle(&BACK_BUTTON_STYLE);
         if (imgui.bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
           imgui.sendCommand(CommandCode.switch_view, View.book);
+          audioPlaySound(SoundEffect.button_back, 0.5);
         }
       }
       break;
@@ -231,8 +233,9 @@ static immutable BoxStyle BOTTOM_BUTTON_STYLE = {
 
 static immutable BoxStyle BACK_BUTTON_STYLE = () {
   BoxStyle result = BOTTOM_BUTTON_STYLE;
-  result.pressedSound    = SoundEffect.button_back;
-  result.pressedSoundVol = 0.5;
+  // @Hack: Gets played manually by builder code so that it plays on pressing B. Consider revising...
+  result.pressedSound    = SoundEffect.none;
+  result.pressedSoundVol = 0.0;
   return result;
 }();
 
