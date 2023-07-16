@@ -3,7 +3,7 @@ module bible.imgui;
 alias imgui = bible.imgui;
 
 import bible.input, bible.util, bible.audio, bible.bible;
-import ctru;
+import ctru, citro2d;
 import std.math;
 
 @nogc: nothrow:
@@ -44,6 +44,19 @@ enum UiId : ushort {
   options_back_btn,
 }
 
+enum MARGIN = 8.0f;
+enum BOOK_BUTTON_WIDTH      = 200.0f;
+enum BOOK_BUTTON_MARGIN     = 8.0f;
+enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
+enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
+static immutable BoxStyle BOOK_BUTTON_STYLE = {
+  colorText     : C2D_Color32(0, 0, 0, 255),
+  colorBg       : BOOK_BUTTON_COLOR,
+  colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
+  margin        : BOOK_BUTTON_MARGIN,
+  textSize      : 0.5f,
+};
+
 void usage(Input* input) {
   enum View {
     book,
@@ -82,6 +95,7 @@ void usage(Input* input) {
     case View.book:
       {
         auto scrollLayout = imgui.ScopedSelectScrollLayout(UiId.book_scroll_layout);
+        auto style        = imgui.ScopedStyle(&BOOK_BUTTON_STYLE);
 
         foreach (i, book; BOOK_NAMES) {
           if (imgui.button(cast(UiId) (UiId.book_bible_btn_first + i), "book").clicked) {
@@ -90,23 +104,33 @@ void usage(Input* input) {
         }
       }
 
-      if (imgui.bottomButton(UiId.book_options_btn, "Options").clicked) {
-        imgui.sendCommand(CommandCode.switch_view, View.options);
+      {
+        auto style = imgui.ScopedStyle(&BOTTOM_BUTTON_STYLE);
+        if (imgui.bottomButton(UiId.book_options_btn, "Options").clicked) {
+          imgui.sendCommand(CommandCode.switch_view, View.options);
+        }
       }
 
       break;
 
     case View.reading:
       imgui.scrollableReadPane(UiId.book_scroll_layout);
-      if (imgui.bottomButton(UiId.reading_back_btn, "Back").clicked || input.down(Key.b)) {
-        imgui.sendCommand(CommandCode.switch_view, View.book);
+
+      {
+        auto style = imgui.ScopedStyle(&BACK_BUTTON_STYLE);
+        if (imgui.bottomButton(UiId.reading_back_btn, "Back").clicked || input.down(Key.b)) {
+          imgui.sendCommand(CommandCode.switch_view, View.book);
+        }
       }
 
       break;
 
     case View.options:
-      if (imgui.bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
-        imgui.sendCommand(CommandCode.switch_view, View.book);
+      {
+        auto style = imgui.ScopedStyle(&BACK_BUTTON_STYLE);
+        if (imgui.bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
+          imgui.sendCommand(CommandCode.switch_view, View.book);
+        }
       }
       break;
   }
@@ -145,6 +169,15 @@ enum OneFrameEvent {
 
 alias RenderCallback = void function(UiBox*) @nogc nothrow;
 
+struct BoxStyle {
+  uint colorText, colorBg, colorBgHeld;
+  float margin;
+  float textSize = 0;
+  SoundEffect pressedSound = SoundEffect.button_confirm;
+  float pressedSoundVol = 0.5;
+}
+immutable DEFAULT_STYLE = BoxStyle.init;
+
 struct UiBox {
   UiBox* first, last, next, prev, parent;
   UiId id;
@@ -162,6 +195,7 @@ struct UiBox {
   UiFlags flags;
   Justification justification;
   RenderCallback render;
+  const(BoxStyle)* style;
 
   UiSize[Axis2.max+1] semanticSize;
 
@@ -183,6 +217,24 @@ struct UiComm {
 }
 
 
+enum BOTTOM_BUTTON_MARGIN     = 6.0f;
+enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
+enum BOTTOM_BUTTON_DOWN_COLOR = C2D_Color32(0x8C, 0x8C, 0x8C, 0xFF);
+
+static immutable BoxStyle BOTTOM_BUTTON_STYLE = {
+  colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
+  colorBg       : BOTTOM_BUTTON_COLOR,
+  colorBgHeld   : BOTTOM_BUTTON_DOWN_COLOR,
+  margin        : BOTTOM_BUTTON_MARGIN,
+  textSize      : 0.6f,
+};
+
+static immutable BoxStyle BACK_BUTTON_STYLE = () {
+  BoxStyle result = BOTTOM_BUTTON_STYLE;
+  result.pressedSound    = SoundEffect.button_back;
+  result.pressedSoundVol = 0.5;
+  return result;
+}();
 
 UiComm button(UiId id, string text) {
   UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
@@ -289,6 +341,22 @@ void scrollableReadPane(UiId id) {
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
 }
 
+struct ScopedStyle {
+  @nogc: nothrow:
+
+  const(BoxStyle)* oldStyle;
+
+  @disable this();
+
+  this(const(BoxStyle)* newStyle) {
+    oldStyle      = gUiData.style;
+    gUiData.style = newStyle;
+  }
+
+  ~this() {
+    gUiData.style = oldStyle;
+  }
+}
 
 struct UiCommand {
   uint code, value;
@@ -305,6 +373,8 @@ struct UiData {
   size_t numCommands;
 
   UiBox* hot, active, focused;
+
+  const(BoxStyle)* style;
 }
 
 UiData gUiData;
@@ -344,6 +414,7 @@ UiBox* makeBox(UiId id, UiFlags flags, string text) { with (gUiData) {
   result.childId = result.prev == null ? 0 : result.prev.childId + 1;
   result.flags   = flags;
   result.text    = text;
+  result.style   = gUiData.style;
 
   return result;
 }}
@@ -368,6 +439,8 @@ UiComm popParentAndComm() {
 void uiFrameStart() { with (gUiData) {
   curBox = null;
   root   = null;
+
+  style = &DEFAULT_STYLE;
 }}
 
 void handleInput(Input* newInput) { with (gUiData) {
@@ -635,6 +708,11 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
           box.parent.selectedChild = box.childId;
           result.selected          = true;
         }
+
+        // @Hack: Check for clickable, in case it's actually only scrollable. Should clickable/scrollable code be separated?
+        if (box.flags & UiFlags.clickable) {
+          audioPlaySound(SoundEffect.button_down, 0.25);
+        }
       }
     }
     else if (active == box && input.held(Key.touch)) {
@@ -658,9 +736,19 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       }
       else if (insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
+
+        if ( (box.flags & UiFlags.clickable) &&
+             !insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
+        {
+          audioPlaySound(SoundEffect.button_down, 0.25);
+        }
       }
       else {
         result.released = insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py));
+
+        if (result.released && (box.flags & UiFlags.clickable)) {
+          audioPlaySound(SoundEffect.button_off, 0.25);
+        }
       }
     }
     else if (active == box && input.prevHeld(Key.touch)) {
@@ -668,6 +756,10 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       result.released = true;
       if (insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py))) {
         result.clicked  = true;
+
+        if (box.flags & UiFlags.clickable) {
+          audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
+        }
       }
     }
   }
@@ -804,6 +896,8 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
         box.parent.selectedChild = box.childId;
         result.selected = true;
       }
+
+      audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
     }
     else if (input.prevDown(Key.a)) {
       active = null;
@@ -902,8 +996,6 @@ void sendCommand(uint code, uint value) { with (gUiData) {
 }}
 
 void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState) { with (gUiData) {
-  import ctru, citro3d, citro2d;
-
   static immutable uint[] COLORS = [
     C2D_Color32(0xFF, 0x00, 0x00, 0xFF),
     C2D_Color32(0x00, 0xFF, 0x00, 0xFF),
