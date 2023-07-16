@@ -237,16 +237,17 @@ extern(C) int main(int argc, char** argv) {
 
         C2D_TargetClear(topLeft, CLEAR_COLOR);
         C2D_SceneBegin(topLeft);
+        imgui.render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
 
         if (_3DEnabled) {
           C2D_TargetClear(topRight, CLEAR_COLOR);
           C2D_SceneBegin(topRight);
+          imgui.render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
         }
 
         C2D_TargetClear(bottom, CLEAR_COLOR);
         C2D_SceneBegin(bottom);
-        imgui.render();
-
+        imgui.render(GFXScreen.bottom, GFX3DSide.left, false, 0);
     }
     C3D_FrameEnd(0);
   }

@@ -188,8 +188,22 @@ struct Rectangle {
   }
 
   pragma(inline, true)
-  this(float left, float right, float top, float bottom) {
-    this.left = left; this.right = right; this.top = top; this.bottom = bottom;
+  this(float left, float top, float right, float bottom) {
+    this.left = left; this.top = top; this.right = right; this.bottom = bottom;
+  }
+
+  pragma(inline, true)
+  pure
+  Rectangle opBinary(string op)(const Vec2 vec) const
+  if (op == "+" || op == "-") {
+    Rectangle result = void;
+
+    mixin("result.left   = left "   ~ op ~ " vec.x;");
+    mixin("result.top    = top "    ~ op ~ " vec.y;");
+    mixin("result.right  = right "  ~ op ~ " vec.x;");
+    mixin("result.bottom = bottom " ~ op ~ " vec.y;");
+
+    return result;
   }
 }
 
@@ -202,6 +216,16 @@ pure nothrow @nogc @safe
 bool intersects(const scope ref Rectangle rect, const scope ref Rectangle other) {
   if (rect.left < other.right && rect.right > other.left) {
     if (rect.top < other.bottom && rect.bottom > other.top) {
+      return true;
+    }
+  }
+  return false;
+}
+
+pure nothrow @nogc @safe
+bool intersectsOrOn(const scope ref Rectangle rect, const scope ref Rectangle other) {
+  if (rect.left <= other.right && rect.right >= other.left) {
+    if (rect.top <= other.bottom && rect.bottom >= other.top) {
       return true;
     }
   }
