@@ -24,7 +24,7 @@ import core.stdc.stdlib;
 
 import std.math : ceil;
 
-extern (C): nothrow: @nogc:
+nothrow: @nogc:
 
 C3D_Tex* s_glyphSheets;
 float s_textScale;
@@ -103,7 +103,7 @@ size_t C2Di_TextBufBufferSize(size_t maxGlyphs)
   return C2D_TextBuf_s.sizeof + maxGlyphs*C2Di_Glyph.sizeof;
 }
 
-int C2Di_GlyphComp(const void* _g1, const void* _g2)
+extern(C) int C2Di_GlyphComp(const void* _g1, const void* _g2)
 {
   const C2Di_Glyph* g1 = cast(C2Di_Glyph*)_g1;
   const C2Di_Glyph* g2 = cast(C2Di_Glyph*)_g2;
@@ -220,7 +220,7 @@ size_t C2D_TextBufGetNumGlyphs(C2D_TextBuf buf)
  *           (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)* C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)* str, uint lineNo)
+string C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, string str, uint lineNo)
 {
   return C2D_TextFontParseLine(text, null, buf, str, lineNo);
 }
@@ -238,9 +238,9 @@ const(char)* C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)* st
  *           (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)* C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)* str, uint lineNo)
+string C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, string str, uint lineNo)
 {
-  const(ubyte)* p = cast(const(ubyte)*)str;
+  const(ubyte)[] p = cast(const(ubyte)[])str;
   text.font  = font;
   text.buf   = buf;
   text.begin = buf.glyphCount;
@@ -262,7 +262,7 @@ const(char)* C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf b
         wordNum++;
       break;
     }
-    p += units;
+    p = p[units..$];
 
     fontGlyphPos_s glyphData;
     C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
@@ -294,7 +294,7 @@ const(char)* C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf b
   text.width *= s_textScale;
   text.lines = 1;
   text.words = wordNum;
-  return cast(const(char)*)p;
+  return cast(string)p;
 }
 
 /** @brief Parses and adds arbitrary text (including newlines) to a text buffer.
@@ -307,7 +307,7 @@ const(char)* C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf b
  *           or any other character (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)* C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, const(char)* str)
+string C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, string str)
 {
   return C2D_TextFontParse(text, null, buf, str);
 }
@@ -323,7 +323,7 @@ const(char)* C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, const(char)* str)
  *           or any other character (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)* C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)* str)
+string C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, string str)
 {
   text.font   = font;
   text.buf    = buf;
@@ -339,9 +339,9 @@ const(char)* C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, 
     text.words += temp.words;
     if (temp.width > text.width)
       text.width = temp.width;
-    if (!str || *str != '\n')
+    if (!str.length || str[0] != '\n')
       break;
-    str++;
+    str = str[1..$];
   }
 
   text.end = buf.glyphCount;
@@ -508,7 +508,7 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, float scaleX, float maxWid
  *  @param[in] scaleY Vertical size of the font. 1.0f corresponds to the native size of the font.
  *  @remarks The default 3DS system font has a glyph height of 30px, and the baseline is at 25px.
  */
-void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen, float x, float y, float z, float scaleX, float scaleY, ...)
+extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen, float x, float y, float z, float scaleX, float scaleY, ...)
 {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
 
@@ -790,3 +790,98 @@ void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen, float x,
 }
 
 /** @} */
+
+// Ported and modified from libctru's decode_utf8.c
+ssize_t
+decode_utf8(uint*          output,
+            const(ubyte)[] input)
+{
+  ubyte code1, code2, code3, code4;
+
+  if (input.length == 0) return 0;
+
+  code1 = input[0];
+  if(code1 < 0x80)
+  {
+    /* 1-byte sequence */
+    *output = code1;
+    return 1;
+  }
+  else if(code1 < 0xC2)
+  {
+    return -1;
+  }
+  else if(code1 < 0xE0)
+  {
+    /* 2-byte sequence */
+    if (input.length < 2) return -1;
+
+    code2 = input[1];
+    if((code2 & 0xC0) != 0x80)
+    {
+      return -1;
+    }
+
+    *output = (code1 << 6) + code2 - 0x3080;
+    return 2;
+  }
+  else if(code1 < 0xF0)
+  {
+    if (input.length < 3) return -1;
+    /* 3-byte sequence */
+    code2 = input[1];
+    if((code2 & 0xC0) != 0x80)
+    {
+      return -1;
+    }
+    if(code1 == 0xE0 && code2 < 0xA0)
+    {
+      return -1;
+    }
+
+    code3 = input[2];
+    if((code3 & 0xC0) != 0x80)
+    {
+      return -1;
+    }
+
+    *output = (code1 << 12) + (code2 << 6) + code3 - 0xE2080;
+    return 3;
+  }
+  else if(code1 < 0xF5)
+  {
+    /* 4-byte sequence */
+    if (input.length < 4) return -1;
+
+    code2 = input[1];
+    if((code2 & 0xC0) != 0x80)
+    {
+      return -1;
+    }
+    if(code1 == 0xF0 && code2 < 0x90)
+    {
+      return -1;
+    }
+    if(code1 == 0xF4 && code2 >= 0x90)
+    {
+      return -1;
+    }
+
+    code3 = input[2];
+    if((code3 & 0xC0) != 0x80)
+    {
+      return -1;
+    }
+
+    code4 = input[3];
+    if((code4 & 0xC0) != 0x80)
+    {
+      return -1;
+    }
+
+    *output = (code1 << 18) + (code2 << 12) + (code3 << 6) + code4 - 0x3C82080;
+    return 4;
+  }
+
+  return -1;
+}

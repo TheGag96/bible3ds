@@ -278,7 +278,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, float size) { with (page) {
   }
 
   foreach (lineNum; 0..pageLines.length) {
-    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum].ptr);
+    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum]);
     wrapInfos[lineNum] = C2D_CalcWrapInfo(&textArray[lineNum], size, SCREEN_BOTTOM_WIDTH - 2 * MARGIN);
   }
 
@@ -347,7 +347,7 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   char[3] buf = 0;
   foreach (i; 1..85) {
     snprintf(buf.ptr, buf.length, "%d", i);
-    C2D_TextParse(&textArray[i], textBuf, buf.ptr);
+    C2D_TextParse(&textArray[i], textBuf, buf);
   }
 
   uiState.buttonHeld    = -1;
@@ -563,7 +563,7 @@ void initBookView(BookViewData* viewData) { with (viewData) {
 
     btn.id = i;
     btn.text = &textArray[i];
-    C2D_TextParse(btn.text, textBuf, name.ptr);
+    C2D_TextParse(btn.text, textBuf, name);
     C2D_TextGetDimensions(btn.text, 0.5, 0.5, &btn.textW, &btn.textH);
     btn.x = SCREEN_BOTTOM_WIDTH/2 - BOOK_BUTTON_WIDTH/2;
     btn.y = i*(btn.textH+24) + SCREEN_HEIGHT;
