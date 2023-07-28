@@ -19,9 +19,10 @@ alias noreturn = typeof(*null);  /// bottom type
 alias hash_t = size_t; // For backwards compatibility only.
 alias equals_t = bool; // For backwards compatibility only.
 
-alias string  = immutable(char)[];
-alias wstring = immutable(wchar)[];
-alias dstring = immutable(dchar)[];
+// @Hack: Don't use immutable here, because my program does not use a GC by which we can guarantee immutability of strings
+alias string  = const(char)[];
+alias wstring = const(wchar)[];
+alias dstring = const(dchar)[];
 
 class Object {
   string toString() { return ""; }
