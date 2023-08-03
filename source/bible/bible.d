@@ -3,7 +3,6 @@ module bible.bible;
 @nogc: nothrow:
 
 import std.algorithm;
-import std.string : representation;
 import std.range;
 import bible.util;
 

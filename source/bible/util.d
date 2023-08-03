@@ -85,6 +85,10 @@ T[n] s(T, size_t n)(auto ref T[n] array) pure nothrow @nogc @safe {
   return array;
 }
 
+inout(ubyte)[] representation(inout(char)[] s) {
+  return cast(typeof(return)) s;
+}
+
 struct TemporaryStorage(size_t maxSize) {
   nothrow: @nogc:
 
