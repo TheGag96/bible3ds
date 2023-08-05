@@ -743,7 +743,13 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
 
   if (box.flags & (UiFlags.clickable | UiFlags.view_scroll)) {
     if (active == null && input.down(Key.touch)) {
-      if (insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
+      auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
+
+      // @Bug: This second check probably wouldn't work for nested scrollables if they were ever used.
+      //       If you really wanted to make this work generally, you probably have to check this all the way up the UI hierarchy.
+      if ( insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) &&
+           ( !box.parent || insideOrOn(box.parent.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) ) )
+      {
         box.hotT        = 1;
         box.activeT     = 1;
         result.held     = true;
