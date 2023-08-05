@@ -839,12 +839,12 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
       if (dir == 1) {
         do {
           runner = runner.next;
-        } while (runner != null && !(runner.flags & UiFlags.selectable) && !check(runner));
+        } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
       }
       else {
         do {
           runner = runner.prev;
-        } while (runner != null && !(runner.flags & UiFlags.selectable) && !check(runner));
+        } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
       }
 
       return runner == null ? box : runner;
