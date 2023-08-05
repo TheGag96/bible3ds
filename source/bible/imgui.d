@@ -11,6 +11,8 @@ import std.math;
 enum float ANIM_T_RATE          = 0.1;
 enum       TOUCH_DRAG_THRESHOLD = 8;
 
+enum RENDER_DEBUG_BOXES = false;
+
 static immutable Vec2[GFXScreen.max+1] SCREEN_POS = [
   GFXScreen.top    : Vec2(0, 0),
   GFXScreen.bottom : Vec2((SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, SCREEN_HEIGHT),
@@ -38,6 +40,8 @@ enum UiId : ushort {
   book_options_btn,
   book_bible_btn_first,
   book_bible_btn_last = book_bible_btn_first + BOOK_NAMES.length - 1,
+  book_bible_btn_spacer_first,
+  book_bible_btn_spacer_last = book_bible_btn_spacer_first + BOOK_NAMES.length - 1,
   reading_scroll_read_view,
   reading_scroll_indicator,
   reading_back_btn,
@@ -98,9 +102,11 @@ void usage(Input* input) {
         auto style        = imgui.ScopedStyle(&BOOK_BUTTON_STYLE);
 
         foreach (i, book; BOOK_NAMES) {
-          if (imgui.button(cast(UiId) (UiId.book_bible_btn_first + i), book).clicked) {
+          if (imgui.button(cast(UiId) (UiId.book_bible_btn_first + i), book, 150).clicked) {
             imgui.sendCommand(CommandCode.open_book, i);
           }
+
+          if (i != BOOK_NAMES.length-1) spacer(cast(UiId) (UiId.book_bible_btn_spacer_first + i), 8);
         }
       }
 
@@ -241,10 +247,18 @@ static immutable BoxStyle BACK_BUTTON_STYLE = () {
   return result;
 }();
 
-UiComm button(UiId id, string text) {
+UiComm button(UiId id, string text, int size = 0) {
   UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
 
-  box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
+  if (size == 0) {
+    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.text_content, 0, 1);
+  }
+  else {
+    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, size, 1);
+  }
+
+  box.semanticSize[Axis2.y] = UiSize(UiSizeKind.text_content, 0, 1);
+
   box.render = &renderNormalButton;
 
   return commFromBox(box);
@@ -255,6 +269,19 @@ UiComm bottomButton(UiId id, string text) {
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
   box.render = &renderBottomButton;
   return commFromBox(box);
+}
+
+void spacer(UiId id, int size) {
+  UiBox* box = makeBox(id, cast(UiFlags) 0, null);
+
+  if (box.parent && (box.parent.flags & UiFlags.horizontal_children)) {
+    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, size);
+    box.semanticSize[Axis2.y] = UiSize(UiSizeKind.percent_of_parent, 1, 1);
+  }
+  else {
+    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1, 1);
+    box.semanticSize[Axis2.y] = UiSize(UiSizeKind.pixels, size);
+  }
 }
 
 struct ScopedSelectScrollLayout {
@@ -372,7 +399,7 @@ struct UiCommand {
 struct UiData {
   Input* input;
 
-  UiBox[100] boxes;
+  UiBox[512] boxes;
   UiBox* root, curBox;
   uint frameIndex;
 
@@ -1040,7 +1067,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
     if (box.render) {
       box.render(box, screen, side, _3DEnabled, slider3DState, screenPos);
     }
-    else {
+    else if (RENDER_DEBUG_BOXES) {
       if (box.flags & UiFlags.clickable) {
         C2D_DrawRectSolid(box.rect.left - screenPos.x, box.rect.top - screenPos.y, 0, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
       }
