@@ -821,35 +821,41 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
+  static UiBox* moveToSelectable(UiBox* box, int dir, scope bool delegate(UiBox*) @nogc nothrow check) {
+    auto runner = box;
+
+    if (dir == 1) {
+      do {
+        runner = runner.next;
+      } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
+    }
+    else {
+      do {
+        runner = runner.prev;
+      } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
+    }
+
+    return runner == null ? box : runner;
+  }
+
   auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
   bool needToScrollTowardsChild = false;
   UiBox* cursored = null;
   if ((box.flags & UiFlags.select_children) && box.first != null) {
     cursored = box.first;
 
-    // @TODO: Better figure out how to handle widgets going away
-    while (cursored != null && cursored.childId != box.hoveredChild) cursored = cursored.next;
-    assert(cursored != null, "The currently selected child doesn't exist exist anymore?");
+    // Linear search our way to the current hovered child
+    while (cursored && cursored.childId != box.hoveredChild) cursored = cursored.next;
 
+    // If it's not there anymore, fallback to hovering the first selectable child if we can find it
+    if (!cursored && box.first) {
+      moveToSelectable(box.first, 1, a => true);
+    }
+  }
+
+  if (cursored) { // We may not have found any hover target in the checks above
     Key forwardKey  = flowAxis == Axis2.x ? Key.right : Key.down;
     Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
-
-    UiBox* moveToSelectable(UiBox* box, int dir, scope bool delegate(UiBox*) @nogc nothrow check) {
-      auto runner = box;
-
-      if (dir == 1) {
-        do {
-          runner = runner.next;
-        } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
-      }
-      else {
-        do {
-          runner = runner.prev;
-        } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
-      }
-
-      return runner == null ? box : runner;
-    }
 
     // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
     auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
@@ -858,8 +864,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
                            ( input.scrollMethodCur == ScrollMethod.touch ||
                              ( input.scrollMethodCur == ScrollMethod.none &&
                                input.scrollVel[flowAxis] != 0 ) );
-    if (scrollOccurring)
-    {
+    if (scrollOccurring) {
       // Mimicking how the 3DS UI works, select nearest in-vew child while scrolling
 
       if (cursored.rect.max[flowAxis] > cursorBounds.max[flowAxis]) {
