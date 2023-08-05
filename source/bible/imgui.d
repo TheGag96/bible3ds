@@ -748,8 +748,8 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
 
       // @Bug: This second check probably wouldn't work for nested scrollables if they were ever used.
       //       If you really wanted to make this work generally, you probably have to check this all the way up the UI hierarchy.
-      if ( insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) &&
-           ( !box.parent || insideOrOn(box.parent.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) ) )
+      if ( inside(box.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) &&
+           ( !box.parent || inside(box.parent.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) ) )
       {
         box.hotT        = 1;
         box.activeT     = 1;
@@ -791,17 +791,17 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
         hot                = box.parent;
         focused            = box.parent;
       }
-      else if (insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
+      else if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
 
         if ( (box.flags & UiFlags.clickable) &&
-             !insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
+             !inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
         {
           audioPlaySound(SoundEffect.button_down, 0.25);
         }
       }
       else {
-        result.released = insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py));
+        result.released = inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py));
 
         if (result.released && (box.flags & UiFlags.clickable)) {
           audioPlaySound(SoundEffect.button_off, 0.25);
@@ -811,7 +811,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
     else if (active == box && input.prevHeld(Key.touch)) {
       active          = null;
       result.released = true;
-      if (insideOrOn(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py))) {
+      if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py))) {
         result.clicked  = true;
 
         if (box.flags & UiFlags.clickable) {
@@ -1068,8 +1068,8 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
   Vec2 screenPos = SCREEN_POS[screen];
 
   preOrderApply(root, (box) {
-    if ( ( box.parent && !intersectsOrOn(box.rect, box.parent.rect) ) ||
-         !intersectsOrOn(box.rect, SCREEN_RECT[screen]) )
+    if ( ( box.parent && !intersects(box.rect, box.parent.rect) ) ||
+         !intersects(box.rect, SCREEN_RECT[screen]) )
     {
       return true; // children will be skipped
     }

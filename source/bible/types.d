@@ -207,25 +207,17 @@ struct Rectangle {
   }
 }
 
+// By convention, the mins are incusive, and the maxes are exclusive.
+
 pure nothrow @nogc @safe
-bool insideOrOn(Rectangle rect, Vec2 point) {
-  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+bool inside(Rectangle rect, Vec2 point) {
+  return point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom;
 }
 
 pure nothrow @nogc @safe
 bool intersects(const scope ref Rectangle rect, const scope ref Rectangle other) {
   if (rect.left < other.right && rect.right > other.left) {
     if (rect.top < other.bottom && rect.bottom > other.top) {
-      return true;
-    }
-  }
-  return false;
-}
-
-pure nothrow @nogc @safe
-bool intersectsOrOn(const scope ref Rectangle rect, const scope ref Rectangle other) {
-  if (rect.left <= other.right && rect.right >= other.left) {
-    if (rect.top <= other.bottom && rect.bottom >= other.top) {
       return true;
     }
   }
