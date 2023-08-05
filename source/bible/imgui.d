@@ -154,6 +154,7 @@ enum UiFlags : uint {
   select_children     = 1 << 3,
   selectable          = 1 << 4,
   horizontal_children = 1 << 5,
+  demand_focus        = 1 << 6,
 }
 
 enum UiSizeKind : ubyte {
@@ -302,7 +303,7 @@ struct ScopedSelectScrollLayout {
 }
 
 UiBox* pushSelectScrollLayout(UiId id) {
-  UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll, null);
+  UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll | UiFlags.demand_focus, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.justification  = Justification.center;
   pushParent(box);
@@ -372,7 +373,7 @@ struct ScopedDoubleScreenSplitLayout {
 }
 
 void scrollableReadPane(UiId id) {
-  UiBox* box = makeBox(id, UiFlags.view_scroll, null);
+  UiBox* box = makeBox(id, UiFlags.view_scroll | UiFlags.demand_focus, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
 }
 
@@ -741,6 +742,10 @@ auto eachChild(UiBox* box) {
 
 UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   UiSignal result;
+
+  if ((box.flags & UiFlags.demand_focus) && hot == null) {
+    focused = box;
+  }
 
   if (box.flags & (UiFlags.clickable | UiFlags.view_scroll)) {
     if (active == null && input.down(Key.touch)) {
