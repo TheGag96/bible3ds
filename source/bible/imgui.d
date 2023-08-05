@@ -219,7 +219,7 @@ struct UiBox {
 
 alias RenderCallback = void function(const(UiBox)*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
 
-struct UiComm {
+struct UiSignal {
   UiBox* box;
   Vec2 touchPos, dragDelta;
   bool clicked, pressed, held, released, dragging, hovering, selected;
@@ -248,7 +248,7 @@ static immutable BoxStyle BACK_BUTTON_STYLE = () {
   return result;
 }();
 
-UiComm button(UiId id, string text, int size = 0) {
+UiSignal button(UiId id, string text, int size = 0) {
   UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
 
   if (size == 0) {
@@ -262,14 +262,14 @@ UiComm button(UiId id, string text, int size = 0) {
 
   box.render = &renderNormalButton;
 
-  return commFromBox(box);
+  return signalFromBox(box);
 }
 
-UiComm bottomButton(UiId id, string text) {
+UiSignal bottomButton(UiId id, string text) {
   UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, text);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
   box.render = &renderBottomButton;
-  return commFromBox(box);
+  return signalFromBox(box);
 }
 
 void spacer(UiId id, int size) {
@@ -297,7 +297,7 @@ struct ScopedSelectScrollLayout {
   }
 
   ~this() {
-    popParentAndComm();
+    popParentAndSignal();
   }
 }
 
@@ -477,8 +477,8 @@ UiBox* popParent() { with (gUiData) {
   return result;
 }}
 
-UiComm popParentAndComm() {
-  return commFromBox(popParent());
+UiSignal popParentAndSignal() {
+  return signalFromBox(popParent());
 }
 
 void uiInit() { with (gUiData) {
@@ -739,8 +739,8 @@ auto eachChild(UiBox* box) {
   return Range(box.first);
 }
 
-UiComm commFromBox(UiBox* box) { with (gUiData) {
-  UiComm result;
+UiSignal signalFromBox(UiBox* box) { with (gUiData) {
+  UiSignal result;
 
   if (box.flags & (UiFlags.clickable | UiFlags.view_scroll)) {
     if (active == null && input.down(Key.touch)) {
@@ -970,7 +970,7 @@ UiComm commFromBox(UiBox* box) { with (gUiData) {
   return result;
 }}
 
-void respondToScroll(UiBox* box, UiComm* result, Vec2 scrollDiff) { with (gUiData) { with (box) {
+void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiData) { with (box) {
   enum SCROLL_TICK_DISTANCE = 60;
 
   auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
