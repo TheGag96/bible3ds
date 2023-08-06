@@ -481,7 +481,7 @@ void renderScrollIndicator(const(UiBox)* box, GFXScreen screen, GFX3DSide side, 
 
   // @TODO: Only vertical scrolling indicators are supported right now.
 
-  float scale = (rect.bottom - rect.top) / (box.related.scrollLimitMax - box.related.scrollLimitMin + viewHeight);
+  float scale = (rect.bottom - rect.top) / (box.related.scrollInfo.limitMax - box.related.scrollInfo.limitMin + viewHeight);
   float height = viewHeight * scale;
 
   C2D_Prepare(C2DShader.normal);
@@ -516,7 +516,7 @@ void renderScrollIndicator(const(UiBox)* box, GFXScreen screen, GFX3DSide side, 
   C3D_TexEnvInit(env);
 
   bool rightJustified = box.justification == Justification.max;
-  float realX = round(rect.left - rightJustified*indicatorTex.width), realY = round(rect.top + box.related.scrollOffset * scale);
+  float realX = round(rect.left - rightJustified*indicatorTex.width), realY = round(rect.top + box.related.scrollInfo.offset * scale);
   pushQuadUvSwap(realX, realY,                                realX + indicatorTex.width, realY + indicatorTex.width,           0,  0, 0,   1, 1);
   pushQuadUvSwap(realX, realY + indicatorTex.height,          realX + indicatorTex.width, realY + height - indicatorTex.height, 0,  0, 0.5, 1, 1);
   pushQuadUvSwap(realX, realY + height - indicatorTex.height, realX + indicatorTex.width, realY + height,                       0,  1, 1,   0, 0);
@@ -600,8 +600,8 @@ private void _scrollCacheRenderScrollUpdateImpl(
 ) { with (scrollCache) with (scrollInfo) {
   float drawStart, drawEnd;
 
-  float scroll     = floor(scrollOffset),
-        scrollLast = floor(scrollOffsetLast);
+  float scroll     = floor(offset),
+        scrollLast = floor(offsetLast);
 
   if (needsRepaint) {
     needsRepaint = false;
@@ -609,7 +609,7 @@ private void _scrollCacheRenderScrollUpdateImpl(
     drawEnd   = scroll+texHeight;
   }
   else {
-    if (scrollOffset == scrollOffsetLast) return;
+    if (offset == offsetLast) return;
 
     drawStart  = (scrollLast < scroll) ? scrollLast + texHeight : scroll;
     drawEnd    = (scrollLast < scroll) ? scroll     + texHeight : scrollLast;

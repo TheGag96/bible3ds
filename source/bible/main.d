@@ -349,8 +349,8 @@ void renderReadingView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
-  Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
+  Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.offset);
+  Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.offset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
   C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
   C2D_Sprite sprite;
@@ -390,7 +390,7 @@ void renderPage(
 
   const(char[][]) lines = book.chapters[curChapter];
 
-  //float renderStartOffset = round(loadedPage.scrollInfo.scrollOffset +
+  //float renderStartOffset = round(loadedPage.scrollInfo.offset +
   //                                loadedPage.actualLineNumberTable[virtualLine].realPos +
   //                                MARGIN);
 

@@ -96,9 +96,9 @@ enum OneFrameEvent {
 }
 
 struct ScrollInfo {
-  float scrollOffset = 0, scrollOffsetLast = 0;
-  float limitTop = 0, limitBottom = 0;
-  OneFrameEvent startedScrolling;
+  float offset = 0, offsetLast = 0;
+  float limitMin = 0, limitMax = 0;
+  OneFrameEvent startedScrolling;  // @TODO: Remove these?
   OneFrameEvent scrollJustStopped;
 }
 
@@ -121,10 +121,7 @@ struct UiBox {
   //LoadedPage* loadedPage;
   int hoveredChild, selectedChild;
 
-  float scrollOffset   = 0, scrollOffsetLast = 0;
-  float scrollLimitMin = 0, scrollLimitMax   = 0;
-  OneFrameEvent startedScrolling;  // @TODO: Remove these?
-  OneFrameEvent scrollJustStopped;
+  ScrollInfo scrollInfo;
 
   UiFlags flags;
   Justification justification;
@@ -630,8 +627,8 @@ void uiFrameEnd() { with (gUiData) {
 
     if (box.parent) {
       if (box.parent.flags & UiFlags.view_scroll) {
-        box.rect.top    -= box.parent.scrollOffset;
-        box.rect.bottom -= box.parent.scrollOffset;
+        box.rect.top    -= box.parent.scrollInfo.offset;
+        box.rect.bottom -= box.parent.scrollInfo.offset;
       }
 
       box.rect.left   += box.parent.rect.left;
@@ -867,7 +864,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
                                  //        This kind of sucks.
                                  ( flowAxis != Axis2.y ||
                                    !(cursored.flags & UiFlags.clickable) ||
-                                   box.scrollLimitMin + SCREEN_POS[GFXScreen.bottom].y <
+                                   box.scrollInfo.limitMin + SCREEN_POS[GFXScreen.bottom].y <
                                      box.rect.top + cursored.computedRelPosition[Axis2.y] ) &&
                                  ( cursored.rect.min[flowAxis] < cursorBounds.min[flowAxis] ||
                                    cursored.rect.max[flowAxis] > cursorBounds.max[flowAxis] );
@@ -912,8 +909,8 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       scrollDiff = updateScrollDiff(input, allowedMethods);
     }
 
-    box.scrollLimitMin    = 0;
-    box.scrollLimitMax = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
+    box.scrollInfo.limitMin = 0;
+    box.scrollInfo.limitMax = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
     respondToScroll(box, &result, scrollDiff);
   }
 
@@ -944,28 +941,28 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   return result;
 }}
 
-void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiData) { with (box) {
+void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiData) { with (box.scrollInfo) {
   enum SCROLL_TICK_DISTANCE = 60;
 
   auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
 
-  scrollOffsetLast = scrollOffset;
+  offsetLast = offset;
 
   if (input.scrollMethodCur == ScrollMethod.touch) {
     if (!input.down(Key.touch)) {
-      scrollOffset += scrollDiff[flowAxis];
+      offset += scrollDiff[flowAxis];
     }
   }
   else {
-    scrollOffset += scrollDiff[flowAxis];
+    offset += scrollDiff[flowAxis];
   }
 
-  if (scrollOffset < scrollLimitMin) {
-    scrollOffset = scrollLimitMin;
+  if (offset < limitMin) {
+    offset = limitMin;
     input.scrollVel = 0;
   }
-  else if (scrollOffset > scrollLimitMax) {
-    scrollOffset = scrollLimitMax;
+  else if (offset > limitMax) {
+    offset = limitMax;
     input.scrollVel = 0;
   }
 
@@ -974,9 +971,9 @@ void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiD
   // handle scrolling events
   ////
 
-  if (scrollOffset == scrollLimitMin || scrollOffset == scrollLimitMax) {
+  if (offset == limitMin || offset == limitMax) {
     if ( scrollJustStopped == OneFrameEvent.not_triggered &&
-         scrollOffset != scrollOffsetLast )
+         offset != offsetLast )
     {
       scrollJustStopped = OneFrameEvent.triggered;
     }
@@ -993,7 +990,7 @@ void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiD
 
   if ( startedScrolling == OneFrameEvent.not_triggered &&
        input.held(Key.touch) &&
-       scrollOffset != scrollOffsetLast )
+       offset != offsetLast )
   {
     startedScrolling = OneFrameEvent.triggered;
   }
@@ -1011,7 +1008,7 @@ void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiD
     startedScrolling = OneFrameEvent.already_processed;
   }
 
-  if (floor(scrollOffset/SCROLL_TICK_DISTANCE) != floor(scrollOffsetLast/SCROLL_TICK_DISTANCE)) {
+  if (floor(offset/SCROLL_TICK_DISTANCE) != floor(offsetLast/SCROLL_TICK_DISTANCE)) {
     audioPlaySound(SoundEffect.scroll_tick, 0.05);
   }
 
