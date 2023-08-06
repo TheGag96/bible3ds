@@ -885,20 +885,23 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       allowedMethods = allowedMethods | (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
     }
 
-    // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
-    auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
+    Rectangle cursorBounds;
+    if (box.flags & UiFlags.select_children) {
+      // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
+      cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
 
-    // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
-    if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
-      input.scrollMethodCur = ScrollMethod.custom;
-      input.scrollVel = 0;
-    }
-    else if ( input.scrollMethodCur == ScrollMethod.custom ) {
-      if ( !cursored ||
-           ( cursored.rect.min[flowAxis] >= cursorBounds.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
-             cursored.rect.max[flowAxis] <= cursorBounds.max[flowAxis] ) )
-      {
-        input.scrollMethodCur = ScrollMethod.none;
+      // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
+      if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
+        input.scrollMethodCur = ScrollMethod.custom;
+        input.scrollVel = 0;
+      }
+      else if ( input.scrollMethodCur == ScrollMethod.custom ) {
+        if ( !cursored ||
+             ( cursored.rect.min[flowAxis] >= cursorBounds.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
+               cursored.rect.max[flowAxis] <= cursorBounds.max[flowAxis] ) )
+        {
+          input.scrollMethodCur = ScrollMethod.none;
+        }
       }
     }
 
