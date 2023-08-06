@@ -627,8 +627,9 @@ void uiFrameEnd() { with (gUiData) {
 
     if (box.parent) {
       if (box.parent.flags & UiFlags.view_scroll) {
-        box.rect.top    -= box.parent.scrollInfo.offset;
-        box.rect.bottom -= box.parent.scrollInfo.offset;
+        auto axisOfFlow = (box.parent.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+        box.rect.min[axisOfFlow] -= box.parent.scrollInfo.offset;
+        box.rect.max[axisOfFlow] -= box.parent.scrollInfo.offset;
       }
 
       box.rect.left   += box.parent.rect.left;
