@@ -40,39 +40,8 @@ struct LoadedPage {
 enum View {
   book,
   reading,
+  options,
 }
-
-struct BookViewData {
-  C2D_TextBuf textBuf;
-  C2D_Text[] textArray;
-
-  enum BookButton {
-    none = -1,
-    genesis = Book.min,
-    revelation = Book.max,
-    options
-  }
-
-  ScrollInfo scrollInfo;
-
-  Book chosenBook;
-}
-
-struct ReadingViewData {
-  C2D_TextBuf textBuf;
-  C2D_Text[] textArray;
-
-  float size = 0;
-  float glyphWidth = 0, glyphHeight = 0;
-
-  OpenBook book;
-  Book curBook;
-  LoadedPage loadedPage;
-  int curChapter;
-
-  bool frameNeedsRender;
-}
-
 
 enum CLEAR_COLOR = 0xFFEEEEEE;
 
@@ -81,13 +50,19 @@ enum BACKGROUND_COLOR_STRIPES_DARK  = C2D_Color32(208,  208,  212,  255);
 enum BACKGROUND_COLOR_STRIPES_LIGHT = C2D_Color32(197,  197,  189,  255);
 
 struct MainData {
-  View curView = View.book, nextView = View.book;
+  View curView = View.book;
   ScrollCache scrollCache;
+
+  float size = 0;
+  float glyphWidth = 0, glyphHeight = 0;
+  OpenBook book;
+  Book curBook;
+  LoadedPage loadedPage;
+  int curChapter;
+
+  bool frameNeedsRender;
 }
 MainData mainData;
-
-ReadingViewData readingViewData;
-BookViewData    bookViewData;
 
 extern(C) int main(int argc, char** argv) {
   // Init libs
@@ -127,7 +102,7 @@ extern(C) int main(int argc, char** argv) {
 
   mainData.scrollCache = scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
-  initReadingView(&readingViewData);
+  initMainData(&mainData);
 
   // Main loop
   while (aptMainLoop()) {
@@ -167,7 +142,7 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
-    mainGui(&input);
+    mainGui(&mainData, &input);
 
     audioUpdate();
 
@@ -178,6 +153,17 @@ extern(C) int main(int argc, char** argv) {
     // Render the scene
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     {
+      if (mainData.curView == View.reading) {
+        scrollCacheBeginFrame(&mainData.scrollCache);
+        scrollCacheRenderScrollUpdate(
+          &mainData.scrollCache,
+          mainData.loadedPage.scrollInfo,
+          &renderPage, &mainData,
+          CLEAR_COLOR,
+        );
+        scrollCacheEndFrame(&mainData.scrollCache);
+      }
+
       C2D_TargetClear(topLeft, CLEAR_COLOR);
       C2D_SceneBegin(topLeft);
       drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
@@ -265,14 +251,11 @@ void unloadPage(LoadedPage* page) { with (page) {
 }}
 
 
-void initReadingView(ReadingViewData* viewData) { with (viewData) {
-  textBuf   = C2D_TextBufNew(192);
-  textArray = allocArray!C2D_Text(128);
-
-  size = 0.5f;
+void initMainData(MainData* mainData) { with (mainData) {
   curBook = Book.Joshua;
   curChapter = 1;
   book = openBibleBook(Translation.asv, curBook);
+  size = 0.5;
   loadPage(&loadedPage, book.chapters[curChapter], size);
   C2D_TextGetDimensions(
     &loadedPage.textArray[0], size, size,
@@ -280,7 +263,7 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
   );
 }}
 
-View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
+void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainData) {
   int chapterDiff, bookDiff;
   if (input.down(Key.l)) {
     if (curChapter == 1) {
@@ -326,62 +309,15 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
     loadPage(&loadedPage, book.chapters[curChapter], size);
     frameNeedsRender = true;
   }
-
-  return View.reading;
-}}
-
-void renderReadingView(
-  ReadingViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight,
-  C3D_RenderTarget* bottom, bool _3DEnabled, float slider3DState
-) { with (viewData) {
-  // Save battery by only rendering if we're scrolling, pressing buttons, etc.
-  if (!viewData.frameNeedsRender) return;
-
-  scrollCacheBeginFrame(&mainData.scrollCache);
-  scrollCacheRenderScrollUpdate(
-    &mainData.scrollCache,
-    loadedPage.scrollInfo,
-    &renderPage, viewData,
-    CLEAR_COLOR,
-  );
-  scrollCacheEndFrame(&mainData.scrollCache);
-
-  C2D_TargetClear(topLeft, CLEAR_COLOR);
-  C2D_SceneBegin(topLeft);
-
-  Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.offset);
-  Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.offset);
-  C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
-  C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
-  C2D_Sprite sprite;
-  C2D_SpriteFromImage(&sprite, cacheImageTop);
-
-  C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
-  C2D_DrawSprite(&sprite);
-
-  if (_3DEnabled) {
-    C2D_TargetClear(topRight, CLEAR_COLOR);
-    C2D_SceneBegin(topRight);
-
-    C2D_DrawSprite(&sprite);
-  }
-
-  C2D_TargetClear(bottom, CLEAR_COLOR);
-  C2D_SceneBegin(bottom);
-
-  C2D_SpriteFromImage(&sprite, cacheImageBottom);
-  C2D_SpriteSetPos(&sprite, 0, 0);
-  C2D_DrawSprite(&sprite);
-
-  frameNeedsRender = false;
 }}
 
 enum MARGIN = 8.0f;
 enum BOOK_BUTTON_MARGIN = 8.0f;
 enum BOTTOM_BUTTON_MARGIN = 6.0f;
+
 void renderPage(
-  ReadingViewData* viewData, float from, float to
-) { with (viewData) {
+  MainData* mainData, float from, float to
+) { with (mainData) {
   float width, height;
 
   float startX = MARGIN;
@@ -411,32 +347,40 @@ void renderPage(
   }
 }}
 
-void mainGui(Input* input) {
-  enum View {
-    book,
-    reading,
-    options
-  }
-
+// Returns the ScrollInfo needed to update the reading view's scroll cache.
+void mainGui(MainData* mainData, Input* input) {
   enum CommandCode {
     switch_view,
     open_book,
   }
 
-  static View currentView = View.book;
-  static Book currentBook;
-
   foreach (command; getCommands()) {
     final switch (cast(CommandCode) command.code) {
       case CommandCode.switch_view:
-        currentView = cast(View) command.value;
+        mainData.curView = cast(View) command.value;
         break;
       case CommandCode.open_book:
-        currentView = View.reading;
-        currentBook = cast(Book) command.value;
-        //openBook();
+        mainData.curView = View.reading;
+
+        with (mainData) {
+          unloadPage(&loadedPage);
+          closeBibleBook(&book);
+          curBook = cast(Book) command.value;
+          book = openBibleBook(Translation.asv, curBook);
+          curChapter = 1;
+          loadPage(&loadedPage, book.chapters[curChapter], 0.5);
+          resetScrollDiff(input);
+          mainData.scrollCache.needsRepaint = true;
+          frameNeedsRender = true;
+        }
+
         break;
     }
+  }
+
+  // @TODO: Should this be handled as a UI command?
+  if (mainData.curView == View.reading) {
+    handleChapterSwitchHotkeys(mainData, input);
   }
 
   uiFrameStart();
@@ -445,7 +389,7 @@ void mainGui(Input* input) {
   auto mainLayout = ScopedCombinedScreenSplitLayout(UiId.combined_screen_layout_main, UiId.combined_screen_layout_left, UiId.combined_screen_layout_center, UiId.combined_screen_layout_right);
   mainLayout.startCenter();
 
-  final switch (currentView) {
+  final switch (mainData.curView) {
     case View.book:
       UiBox* scrollLayoutBox;
       {
@@ -481,7 +425,10 @@ void mainGui(Input* input) {
       break;
 
     case View.reading:
-      scrollableReadPane(UiId.book_scroll_layout);
+      // @TODO: Move?
+      auto paneScrollLimit = max(mainData.loadedPage.actualLineNumberTable.length * mainData.glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0);
+      auto readPane = scrollableReadPane(UiId.reading_scroll_read_view, &mainData.scrollCache, paneScrollLimit);
+      mainData.loadedPage.scrollInfo = readPane.scrollInfo;
 
       {
         auto style = ScopedStyle(&BACK_BUTTON_STYLE);

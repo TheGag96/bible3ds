@@ -9,7 +9,7 @@ import std.math;
 enum BUTTON_DEPRESS_NORMAL = 3;
 enum BUTTON_DEPRESS_BOTTOM = 1;
 
-void renderNormalButton(const(UiBox)* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderNormalButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + Vec2(0, pressed * BUTTON_DEPRESS_NORMAL) - screenPos;
@@ -74,7 +74,7 @@ void renderNormalButton(const(UiBox)* box, GFXScreen screen, GFX3DSide side, boo
   }
 }
 
-void renderBottomButton(const(UiBox)* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderBottomButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM) - screenPos;
@@ -221,7 +221,7 @@ void renderBottomButton(const(UiBox)* box, GFXScreen screen, GFX3DSide side, boo
   );
 }
 
-void renderButtonSelectionIndicator(const(UiBox)* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderButtonSelectionIndicator(UiBox* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   C2D_Prepare(C2DShader.normal);
@@ -445,7 +445,7 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
 // Scroll Indicator
 ////////
 
-void renderScrollIndicator(const(UiBox)* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderScrollIndicator(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
@@ -705,3 +705,26 @@ Tex3DS_SubTexture scrollCacheGetUvs(
   };
   return result;
 }}
+
+void scrollCacheDraw(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+  Tex3DS_SubTexture subtex;
+
+  auto rect = box.rect - screenPos;
+
+  // @TODO: Don't hardcode the UVs? Clip the box's rect to the screen and figure out where it should go?
+  if (screen == GFXScreen.top) {
+    subtex = scrollCacheGetUvs(*box.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             box.scrollInfo.offset);
+  }
+  else {
+    subtex = scrollCacheGetUvs(*box.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, box.scrollInfo.offset);
+    rect.top    += SCREEN_HEIGHT;
+    rect.bottom += SCREEN_HEIGHT;
+  }
+
+  C2D_Image cacheImage = { &box.scrollCache.scrollTex, &subtex };
+  C2D_Sprite sprite;
+  C2D_SpriteFromImage(&sprite, cacheImage);
+
+  C2D_SpriteSetPos(&sprite, rect.left, rect.top);
+  C2D_DrawSprite(&sprite);
+}

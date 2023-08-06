@@ -66,13 +66,14 @@ static immutable BoxStyle BOOK_BUTTON_STYLE = {
 };
 
 enum UiFlags : uint {
-  clickable           = 1 << 0,
-  view_scroll         = 1 << 1,
-  draw_text           = 1 << 2,
-  select_children     = 1 << 3,
-  selectable          = 1 << 4,
-  horizontal_children = 1 << 5,
-  demand_focus        = 1 << 6,
+  clickable            = 1 << 0,
+  view_scroll          = 1 << 1,
+  manual_scroll_limits = 1 << 2,
+  draw_text            = 1 << 3,
+  select_children      = 1 << 4,
+  selectable           = 1 << 5,
+  horizontal_children  = 1 << 6,
+  demand_focus         = 1 << 7,
 }
 
 enum UiSizeKind : ubyte {
@@ -122,6 +123,7 @@ struct UiBox {
   int hoveredChild, selectedChild;
 
   ScrollInfo scrollInfo;
+  ScrollCache* scrollCache;
 
   UiFlags flags;
   Justification justification;
@@ -141,7 +143,8 @@ struct UiBox {
   UiBox* related;  // General-purpose field to relate boxes to other boxes.
 }
 
-alias RenderCallback = void function(const(UiBox)*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
+// @Note: Render scroll caches forced me to make the UiBox* parameter non-const. Can/should this be changed?
+alias RenderCallback = void function(UiBox*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
 
 struct UiSignal {
   UiBox* box;
@@ -337,9 +340,18 @@ struct ScopedDoubleScreenSplitLayout {
   }
 }
 
-void scrollableReadPane(UiId id) {
-  UiBox* box = makeBox(id, UiFlags.view_scroll | UiFlags.demand_focus, null);
+UiBox* scrollableReadPane(UiId id, ScrollCache* scrollCache, float scrollLimit) {
+  UiBox* box = makeBox(id, UiFlags.view_scroll | UiFlags.manual_scroll_limits | UiFlags.demand_focus, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+  box.scrollCache    = scrollCache;
+  box.render         = &scrollCacheDraw;
+
+  box.scrollInfo.limitMin = 0;
+  box.scrollInfo.limitMax = scrollLimit;
+
+  signalFromBox(box);
+
+  return box;
 }
 
 struct ScopedStyle {
@@ -913,8 +925,10 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       scrollDiff = updateScrollDiff(input, allowedMethods);
     }
 
-    box.scrollInfo.limitMin = 0;
-    box.scrollInfo.limitMax = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
+    if (!(box.flags & UiFlags.manual_scroll_limits)) {
+      box.scrollInfo.limitMin = 0;
+      box.scrollInfo.limitMax = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
+    }
     respondToScroll(box, &result, scrollDiff);
   }
 
