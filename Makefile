@@ -274,7 +274,7 @@ else
 $(OUTPUT).3dsx	:	$(OUTPUT).elf $(_3DSXDEPS)
 endif
 
-$(OFILES_SOURCES) : $(HFILES)
+# $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT).elf	:	$(OFILES) $(OFILES_D)
 
