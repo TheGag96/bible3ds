@@ -11,7 +11,8 @@ import citro2d;
 
 import bible.bible, bible.audio, bible.input, bible.util, bible.save;
 import bible.widgets;
-import imgui = bible.imgui;
+import imgui        = bible.imgui;
+import imgui_render = bible.imgui_render;
 
 //debug import bible.debugging;
 
@@ -110,7 +111,7 @@ extern(C) int main(int argc, char** argv) {
   //C3D_AlphaTest(true, GPUTestFunc.notequal, 0); //make empty space in sprites properly transparent, even despite using the depth buffer
   //consoleInit(GFXScreen.bottom, null);
 
-  imgui.loadUiAssets();
+  imgui_render.loadUiAssets();
   imgui.uiInit();
 
   Input input;
@@ -234,19 +235,19 @@ extern(C) int main(int argc, char** argv) {
 
         C2D_TargetClear(topLeft, CLEAR_COLOR);
         C2D_SceneBegin(topLeft);
-        imgui.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        imgui_render.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
         imgui.render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
 
         if (_3DEnabled) {
           C2D_TargetClear(topRight, CLEAR_COLOR);
           C2D_SceneBegin(topRight);
-          imgui.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+          imgui_render.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
           imgui.render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
         }
 
         C2D_TargetClear(bottom, CLEAR_COLOR);
         C2D_SceneBegin(bottom);
-        imgui.drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        imgui_render.drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
         imgui.render(GFXScreen.bottom, GFX3DSide.left, false, 0);
     }
     C3D_FrameEnd(0);
