@@ -32,17 +32,20 @@ static immutable Rectangle[GFXScreen.max+1] SCREEN_RECT = [
 
 // @TODO: Replace this with hashing system
 enum UiId : ushort {
-  double_screen_layout_main,
-  double_screen_layout_left,
-  double_screen_layout_center,
-  double_screen_layout_right,
+  combined_screen_layout_main,
+  combined_screen_layout_left,
+  combined_screen_layout_center,
+  combined_screen_layout_right,
   book_scroll_layout,
-  book_scroll_indicator,
   book_options_btn,
   book_bible_btn_first,
   book_bible_btn_last = book_bible_btn_first + BOOK_NAMES.length - 1,
   book_bible_btn_spacer_first,
   book_bible_btn_spacer_last = book_bible_btn_spacer_first + BOOK_NAMES.length - 1,
+  book_right_split_layout_main,
+  book_right_split_layout_top,
+  book_right_split_layout_bottom,
+  book_scroll_indicator,
   reading_scroll_read_view,
   reading_scroll_indicator,
   reading_back_btn,
@@ -93,14 +96,17 @@ void usage(Input* input) {
   imgui.uiFrameStart();
   imgui.handleInput(input);
 
-  auto mainLayout = ScopedDoubleScreenSplitLayout(UiId.double_screen_layout_main, UiId.double_screen_layout_left, UiId.double_screen_layout_center, UiId.double_screen_layout_right);
+  auto mainLayout = ScopedCombinedScreenSplitLayout(UiId.combined_screen_layout_main, UiId.combined_screen_layout_left, UiId.combined_screen_layout_center, UiId.combined_screen_layout_right);
   mainLayout.startCenter();
 
   final switch (currentView) {
     case View.book:
+      UiBox* scrollLayoutBox;
       {
         auto scrollLayout = imgui.ScopedSelectScrollLayout(UiId.book_scroll_layout);
         auto style        = imgui.ScopedStyle(&BOOK_BUTTON_STYLE);
+
+        scrollLayoutBox = scrollLayout.box;
 
         foreach (i, book; BOOK_NAMES) {
           if (imgui.button(cast(UiId) (UiId.book_bible_btn_first + i), book, 150).clicked) {
@@ -116,6 +122,14 @@ void usage(Input* input) {
         if (imgui.bottomButton(UiId.book_options_btn, "Options").clicked) {
           imgui.sendCommand(CommandCode.switch_view, View.options);
         }
+      }
+
+      mainLayout.startRight();
+
+      {
+        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.book_right_split_layout_main, UiId.book_right_split_layout_top, UiId.book_right_split_layout_bottom);
+
+        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max);
       }
 
       break;
@@ -216,6 +230,8 @@ struct UiBox {
   uint lastFrameTouchedIndex;
 
   float hotT = 0, activeT = 0;
+
+  UiBox* related;  // General-purpose field to relate boxes to other boxes.
 }
 
 alias RenderCallback = void function(const(UiBox)*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
@@ -286,6 +302,18 @@ void spacer(UiId id, int size) {
   }
 }
 
+void scrollIndicator(UiId id, UiBox* source, Justification justification) {
+  UiBox* box = makeBox(id, cast(UiFlags) 0, null);
+  box.render = &renderScrollIndicator;
+
+  // @TODO: Only vertical scroll indicators are supported at the moment.
+  // @Note: The widget will fill the parent but will only draw as wide as the indicator texture.
+  box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+
+  box.justification = justification;
+  box.related       = source;
+}
+
 struct ScopedSelectScrollLayout {
   @nogc: nothrow:
 
@@ -339,7 +367,7 @@ struct ScopedLayout {
 
 // Makes a layout encompassing the bounding box of the top and bottom screens together, splitting into 3 columns with
 // the center one being the width of the bottom screen.
-struct ScopedDoubleScreenSplitLayout {
+struct ScopedCombinedScreenSplitLayout {
   @nogc: nothrow:
 
   UiBox* main, left, center, right;
@@ -365,6 +393,36 @@ struct ScopedDoubleScreenSplitLayout {
   void startLeft()   { gUiData.curBox = left;   }
   void startCenter() { gUiData.curBox = center; }
   void startRight()  { gUiData.curBox = right;  }
+
+  ~this() {
+    gUiData.curBox = main;
+    popParent();
+  }
+}
+
+// Makes a layout splitting the screen in two vertically.
+struct ScopedDoubleScreenSplitLayout {
+  @nogc: nothrow:
+
+  UiBox* main, top, bottom;
+
+  @disable this();
+
+  this(UiId mainId, UiId topId, UiId bottomId) {
+    main   = pushLayout(mainId,   Axis2.y);
+    top    = makeLayout(topId,    Axis2.x);
+    bottom = makeLayout(bottomId, Axis2.x);
+    // @TODO: Fix layout violation resolution so that the top and bottom sizes are figured out automatically...
+    main.semanticSize[Axis2.x]   = UiSize(UiSizeKind.percent_of_parent, 1, 0);
+    main.semanticSize[Axis2.y]   = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2, 1);
+    top.semanticSize[Axis2.x]    = UiSize(UiSizeKind.percent_of_parent, 1, 0);
+    top.semanticSize[Axis2.y]    = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT, 1);
+    bottom.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1, 0);
+    bottom.semanticSize[Axis2.y] = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT, 1);
+  }
+
+  void startTop()    { gUiData.curBox = top;    }
+  void startBottom() { gUiData.curBox = bottom; }
 
   ~this() {
     gUiData.curBox = main;
@@ -424,10 +482,11 @@ UiBox* makeBox(UiId id, UiFlags flags, string text) { with (gUiData) {
   }
   result.lastFrameTouchedIndex = frameIndex;
 
-  result.first = null;
-  result.last  = null;
-  result.next  = null;
-  result.prev  = null;
+  result.first   = null;
+  result.last    = null;
+  result.next    = null;
+  result.prev    = null;
+  result.related = null;
 
   if (curBox) {
     if (curBox.first) {
@@ -1089,10 +1148,10 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
         C2D_DrawRectSolid(box.rect.left - screenPos.x, box.rect.top - screenPos.y, 0, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
       }
       else {
-        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.top - screenPos.y,    0, box.rect.right - box.rect.left, 1, color);
-        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.bottom - screenPos.y, 0, box.rect.right - box.rect.left, 1, color);
-        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top, color);
-        C2D_DrawRectSolid(box.rect.right - screenPos.x, box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top, color);
+        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.top - screenPos.y,    0, box.rect.right - box.rect.left-1, 1, color);
+        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.bottom - screenPos.y-1, 0, box.rect.right - box.rect.left-1, 1, color);
+        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top-1, color);
+        C2D_DrawRectSolid(box.rect.right - screenPos.x-1, box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top-1, color);
       }
 
       if (box.parent && (box.parent.flags & UiFlags.select_children) && (box.flags & UiFlags.selectable) && box.hotT > 0) {
