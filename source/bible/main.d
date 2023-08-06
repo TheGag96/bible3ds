@@ -167,7 +167,7 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
-    usage(&input);
+    mainGui(&input);
 
     audioUpdate();
 
@@ -410,3 +410,99 @@ void renderPage(
     i++;
   }
 }}
+
+void mainGui(Input* input) {
+  enum View {
+    book,
+    reading,
+    options
+  }
+
+  enum CommandCode {
+    switch_view,
+    open_book,
+  }
+
+  static View currentView = View.book;
+  static Book currentBook;
+
+  foreach (command; getCommands()) {
+    final switch (cast(CommandCode) command.code) {
+      case CommandCode.switch_view:
+        currentView = cast(View) command.value;
+        break;
+      case CommandCode.open_book:
+        currentView = View.reading;
+        currentBook = cast(Book) command.value;
+        //openBook();
+        break;
+    }
+  }
+
+  uiFrameStart();
+  handleInput(input);
+
+  auto mainLayout = ScopedCombinedScreenSplitLayout(UiId.combined_screen_layout_main, UiId.combined_screen_layout_left, UiId.combined_screen_layout_center, UiId.combined_screen_layout_right);
+  mainLayout.startCenter();
+
+  final switch (currentView) {
+    case View.book:
+      UiBox* scrollLayoutBox;
+      {
+        auto scrollLayout = ScopedSelectScrollLayout(UiId.book_scroll_layout);
+        auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
+
+        scrollLayoutBox = scrollLayout.box;
+
+        foreach (i, book; BOOK_NAMES) {
+          if (button(cast(UiId) (UiId.book_bible_btn_first + i), book, 150).clicked) {
+            sendCommand(CommandCode.open_book, i);
+          }
+
+          if (i != BOOK_NAMES.length-1) spacer(cast(UiId) (UiId.book_bible_btn_spacer_first + i), 8);
+        }
+      }
+
+      {
+        auto style = ScopedStyle(&BOTTOM_BUTTON_STYLE);
+        if (bottomButton(UiId.book_options_btn, "Options").clicked) {
+          sendCommand(CommandCode.switch_view, View.options);
+        }
+      }
+
+      mainLayout.startRight();
+
+      {
+        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.book_right_split_layout_main, UiId.book_right_split_layout_top, UiId.book_right_split_layout_bottom);
+
+        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max);
+      }
+
+      break;
+
+    case View.reading:
+      scrollableReadPane(UiId.book_scroll_layout);
+
+      {
+        auto style = ScopedStyle(&BACK_BUTTON_STYLE);
+        if (bottomButton(UiId.reading_back_btn, "Back").clicked || input.down(Key.b)) {
+          sendCommand(CommandCode.switch_view, View.book);
+          audioPlaySound(SoundEffect.button_back, 0.5);
+        }
+      }
+
+      break;
+
+    case View.options:
+      {
+        auto style = ScopedStyle(&BACK_BUTTON_STYLE);
+        if (bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
+          sendCommand(CommandCode.switch_view, View.book);
+          audioPlaySound(SoundEffect.button_back, 0.5);
+        }
+      }
+      break;
+  }
+
+  uiFrameEnd();
+}
