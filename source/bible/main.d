@@ -10,9 +10,7 @@ import citro3d;
 import citro2d;
 
 import bible.bible, bible.audio, bible.input, bible.util, bible.save;
-import bible.widgets;
-import imgui        = bible.imgui;
-import imgui_render = bible.imgui_render;
+import bible.imgui, bible.imgui_render;
 
 //debug import bible.debugging;
 
@@ -55,12 +53,8 @@ struct BookViewData {
     options
   }
 
-  Button[Book.max+1] bookButtons;
-  Button optionsBtn;
-
   ScrollInfo scrollInfo;
 
-  UiState uiState;
   Book chosenBook;
 }
 
@@ -75,10 +69,6 @@ struct ReadingViewData {
   Book curBook;
   LoadedPage loadedPage;
   int curChapter;
-
-  Button backBtn;
-
-  UiState uiState;
 
   bool frameNeedsRender;
 }
@@ -111,8 +101,8 @@ extern(C) int main(int argc, char** argv) {
   //C3D_AlphaTest(true, GPUTestFunc.notequal, 0); //make empty space in sprites properly transparent, even despite using the depth buffer
   //consoleInit(GFXScreen.bottom, null);
 
-  imgui_render.loadUiAssets();
-  imgui.uiInit();
+  loadUiAssets();
+  uiInit();
 
   Input input;
 
@@ -138,7 +128,6 @@ extern(C) int main(int argc, char** argv) {
   mainData.scrollCache = scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   initReadingView(&readingViewData);
-  initBookView(&bookViewData);
 
   // Main loop
   while (aptMainLoop()) {
@@ -178,41 +167,7 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     gTempStorage.reset();
 
-    /*final switch (mainData.nextView) {
-      case View.book:
-        if (mainData.curView != mainData.nextView) {
-          mainData.curView = mainData.nextView;
-          resetScrollDiff(&input);
-          mainData.scrollCache.needsRepaint = true;
-        }
-
-        mainData.nextView = updateBookView(&bookViewData, &input);
-
-        break;
-
-      case View.reading:
-        if (mainData.curView != mainData.nextView) {
-          mainData.curView = mainData.nextView;
-
-          with (readingViewData) {
-            unloadPage(&loadedPage);
-            closeBibleBook(&book);
-            curBook = cast(Book) bookViewData.chosenBook;
-            book = openBibleBook(Translation.asv, curBook);
-            curChapter = 1;
-            loadPage(&loadedPage, book.chapters[curChapter], 0.5);
-            resetScrollDiff(&input);
-            mainData.scrollCache.needsRepaint = true;
-            frameNeedsRender = true;
-          }
-        }
-
-        mainData.nextView = updateReadingView(&readingViewData, &input);
-
-        break;
-    }*/
-
-    imgui.usage(&input);
+    usage(&input);
 
     audioUpdate();
 
@@ -223,32 +178,22 @@ extern(C) int main(int argc, char** argv) {
     // Render the scene
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     {
-      /*final switch (mainData.curView) {
-        case View.book:
-          renderBookView(&bookViewData, topLeft, topRight, bottom, _3DEnabled, slider);
-          break;
+      C2D_TargetClear(topLeft, CLEAR_COLOR);
+      C2D_SceneBegin(topLeft);
+      drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+      render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
 
-        case View.reading:
-          renderReadingView(&readingViewData, topLeft, topRight, bottom, _3DEnabled, slider);
-          break;
-      }*/
+      if (_3DEnabled) {
+        C2D_TargetClear(topRight, CLEAR_COLOR);
+        C2D_SceneBegin(topRight);
+        drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
+      }
 
-        C2D_TargetClear(topLeft, CLEAR_COLOR);
-        C2D_SceneBegin(topLeft);
-        imgui_render.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-        imgui.render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
-
-        if (_3DEnabled) {
-          C2D_TargetClear(topRight, CLEAR_COLOR);
-          C2D_SceneBegin(topRight);
-          imgui_render.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-          imgui.render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
-        }
-
-        C2D_TargetClear(bottom, CLEAR_COLOR);
-        C2D_SceneBegin(bottom);
-        imgui_render.drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-        imgui.render(GFXScreen.bottom, GFX3DSide.left, false, 0);
+      C2D_TargetClear(bottom, CLEAR_COLOR);
+      C2D_SceneBegin(bottom);
+      drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+      render(GFXScreen.bottom, GFX3DSide.left, false, 0);
     }
     C3D_FrameEnd(0);
   }
@@ -333,34 +278,9 @@ void initReadingView(ReadingViewData* viewData) { with (viewData) {
     &loadedPage.textArray[0], size, size,
     &glyphWidth, &glyphHeight
   );
-
-  float textWidth, textHeight;
-  auto text = &textArray[0];
-  C2D_TextParse(text, textBuf, "Back");
-  C2D_TextGetDimensions(text, BOTTOM_BUTTON_STYLE.textSize, BOTTOM_BUTTON_STYLE.textSize, &textWidth, &textHeight);
-  //auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  auto buttonHeight = 28;
-  backBtn = Button(0, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight, &BACK_BUTTON_STYLE);
-
-  char[3] buf = 0;
-  foreach (i; 1..85) {
-    snprintf(buf.ptr, buf.length, "%d", i);
-    C2D_TextParse(&textArray[i], textBuf, buf);
-  }
-
-  uiState.buttonHeld    = -1;
-  uiState.buttonHovered = -1;
 }}
 
 View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData) {
-  uiState.buttonHeldLast = uiState.buttonHeld;
-  uiState.buttonHoveredLast = uiState.buttonHovered;
-
-  if (input.down(Key.b) || handleButton(backBtn, *input, loadedPage.scrollInfo, &uiState, false)) {
-    frameNeedsRender = true;
-    return View.book;
-  }
-
   int chapterDiff, bookDiff;
   if (input.down(Key.l)) {
     if (curChapter == 1) {
@@ -407,26 +327,6 @@ View updateReadingView(ReadingViewData* viewData, Input* input) { with (viewData
     frameNeedsRender = true;
   }
 
-
-  ////
-  // update scrolling
-  ////
-
-  if (uiState.buttonHeld == -1) {
-    float scrollLimit = max(loadedPage.actualLineNumberTable.length * glyphHeight + MARGIN * 2 - SCREEN_HEIGHT * 2, 0)
-                        + backBtn.textH + 2*BOTTOM_BUTTON_MARGIN;
-    handleScroll(&loadedPage.scrollInfo, input, 0, scrollLimit);
-
-    frameNeedsRender = frameNeedsRender || loadedPage.scrollInfo.scrollOffset != loadedPage.scrollInfo.scrollOffsetLast;
-  }
-  else {
-    loadedPage.scrollInfo.scrollOffsetLast = loadedPage.scrollInfo.scrollOffset;
-    input.scrollVel = 0;
-    frameNeedsRender = true;
-  }
-
-  frameNeedsRender = frameNeedsRender || loadedPage.scrollInfo.pushingAgainstTimer != 0;
-
   return View.reading;
 }}
 
@@ -449,8 +349,6 @@ void renderReadingView(
   C2D_TargetClear(topLeft, CLEAR_COLOR);
   C2D_SceneBegin(topLeft);
 
-  drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-
   Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             loadedPage.scrollInfo.scrollOffset);
   Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, loadedPage.scrollInfo.scrollOffset);
   C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
@@ -460,16 +358,12 @@ void renderReadingView(
 
   C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
   C2D_DrawSprite(&sprite);
-  renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight);
 
   if (_3DEnabled) {
     C2D_TargetClear(topRight, CLEAR_COLOR);
     C2D_SceneBegin(topRight);
 
-    drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-
     C2D_DrawSprite(&sprite);
-    renderScrollIndicator(loadedPage.scrollInfo, SCREEN_BOTTOM_WIDTH + (SCREEN_TOP_WIDTH-SCREEN_BOTTOM_WIDTH)/2, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight);
   }
 
   C2D_TargetClear(bottom, CLEAR_COLOR);
@@ -479,35 +373,12 @@ void renderReadingView(
   C2D_SpriteSetPos(&sprite, 0, 0);
   C2D_DrawSprite(&sprite);
 
-  renderButton(backBtn, uiState);
-
   frameNeedsRender = false;
 }}
 
 enum MARGIN = 8.0f;
-enum BOOK_BUTTON_WIDTH = 200.0f;
 enum BOOK_BUTTON_MARGIN = 8.0f;
 enum BOTTOM_BUTTON_MARGIN = 6.0f;
-enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
-enum BOTTOM_BUTTON_DOWN_COLOR = C2D_Color32(0x8C, 0x8C, 0x8C, 0xFF);
-
-static immutable ButtonStyle BOTTOM_BUTTON_STYLE = {
-  type          : ButtonType.bottom,
-  colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
-  colorBg       : BOTTOM_BUTTON_COLOR,
-  colorBgHeld   : BOTTOM_BUTTON_DOWN_COLOR,
-  margin        : BOTTOM_BUTTON_MARGIN,
-  textSize      : 0.6f,
-  justification : Justification.centered,
-};
-
-static immutable ButtonStyle BACK_BUTTON_STYLE = () {
-  ButtonStyle result = BOTTOM_BUTTON_STYLE;
-  result.pressedSound    = SoundEffect.button_back;
-  result.pressedSoundVol = 0.5;
-  return result;
-}();
-
 void renderPage(
   ReadingViewData* viewData, float from, float to
 ) { with (viewData) {
@@ -538,168 +409,4 @@ void renderPage(
     offsetY += extra;
     i++;
   }
-}}
-
-void initBookView(BookViewData* viewData) { with (viewData) {
-  enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
-  enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
-  static immutable ButtonStyle BOOK_BUTTON_STYLE = {
-    type          : ButtonType.normal,
-    colorText     : C2D_Color32(0, 0, 0, 255),
-    colorBg       : BOOK_BUTTON_COLOR,
-    colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
-    margin        : BOOK_BUTTON_MARGIN,
-    textSize      : 0.5f,
-    justification : Justification.left_justified,
-  };
-
-  textBuf = C2D_TextBufNew(4096);
-  textArray = allocArray!C2D_Text(128);
-
-  foreach (i, name; BOOK_NAMES) {
-    Button* btn = &bookButtons[i];
-
-    btn.id = i;
-    btn.text = &textArray[i];
-    C2D_TextParse(btn.text, textBuf, name);
-    C2D_TextGetDimensions(btn.text, 0.5, 0.5, &btn.textW, &btn.textH);
-    btn.x = SCREEN_BOTTOM_WIDTH/2 - BOOK_BUTTON_WIDTH/2;
-    btn.y = i*(btn.textH+24) + SCREEN_HEIGHT;
-    btn.z = 0.25;
-    btn.w = BOOK_BUTTON_WIDTH;
-    btn.h = btn.textH + 2*BOOK_BUTTON_MARGIN;
-    btn.style = &BOOK_BUTTON_STYLE;
-  }
-
-  float textWidth, textHeight;
-  auto text = &textArray[BOOK_NAMES.length+1];
-  C2D_TextParse(text, textBuf, "Options");
-  C2D_TextGetDimensions(text, BOTTOM_BUTTON_STYLE.textSize, BOTTOM_BUTTON_STYLE.textSize, &textWidth, &textHeight);
-  //auto buttonHeight = textHeight + 2*BOTTOM_BUTTON_MARGIN;
-  auto buttonHeight = 28;
-  optionsBtn = Button(BookButton.options, 0, SCREEN_HEIGHT - buttonHeight, 0.5, SCREEN_BOTTOM_WIDTH, buttonHeight, text, textWidth, textHeight, &BOTTOM_BUTTON_STYLE);
-
-  uiState.buttonHeld    = BookButton.none;
-  uiState.buttonHovered = BookButton.none;
-}}
-
-View updateBookView(BookViewData* viewData, Input* input) { with (viewData) {
-  View retVal = View.book;
-
-  uiState.buttonHeldLast = uiState.buttonHeld;
-  uiState.buttonHoveredLast = uiState.buttonHovered;
-
-  if (handleButton(optionsBtn, *input, scrollInfo, &uiState, false)) {
-    //
-  }
-
-  foreach (i, ref btn; bookButtons) {
-    if (handleButton(btn, *input, scrollInfo, &uiState, true)) {
-      retVal = View.reading;
-      chosenBook = cast(Book) uiState.buttonHeldLast;
-    }
-  }
-
-  if (uiState.buttonHeld == BookButton.none) {
-    int buttonSelected = handleButtonSelectionAndScroll(&uiState, bookButtons[], &scrollInfo, input, 0, bookButtons[$-1].y+bookButtons[$-1].h - SCREEN_HEIGHT + optionsBtn.textH + 2*BOTTOM_BUTTON_MARGIN);
-    if (buttonSelected != -1) {
-      retVal = View.reading;
-      chosenBook = cast(Book) buttonSelected;
-    }
-  }
-  else {
-    //@TODO: Move this into widget code or something?
-    uiState.selectedLastFadeTimer = approach(uiState.selectedLastFadeTimer, 0, 0.1);
-    scrollInfo.scrollOffsetLast = scrollInfo.scrollOffset;
-    input.scrollVel = 0;
-  }
-
-  return retVal;
-}}
-
-void renderBookView(
-  BookViewData* viewData, C3D_RenderTarget* topLeft, C3D_RenderTarget* topRight, C3D_RenderTarget* bottom,
-  bool _3DEnabled, float slider3DState
-) { with (viewData) {
-  static void renderBookButtons(
-    BookViewData* viewData, float from, float to
-  ) { with (viewData) {
-
-    foreach (i, ref btn; bookButtons) {
-      if (btn.y + btn.h < from) {
-      }
-      else if (btn.y > to){
-        break;
-      }
-      else {
-        renderButton(btn, uiState);
-      }
-    }
-  }}
-
-
-  scrollCacheBeginFrame(&mainData.scrollCache);
-  scrollCacheRenderScrollUpdate(
-    &mainData.scrollCache,
-    scrollInfo,
-    &renderBookButtons, viewData,
-  );
-
-  if (uiState.buttonHeld != -1 || uiState.buttonHeldLast != -1) {
-    auto btnId = uiState.buttonHeld == -1 ? uiState.buttonHeldLast : uiState.buttonHeld;
-
-    if (btnId >= BookButton.genesis && btnId <= BookButton.revelation) {
-      Button* btn = &bookButtons[btnId];
-
-      scrollCacheRenderRegion(
-        &mainData.scrollCache,
-        btn.y-4, btn.y+btn.h+4,
-        &renderBookButtons, viewData,
-      );
-    }
-  }
-  scrollCacheEndFrame(&mainData.scrollCache);
-
-  C2D_TargetClear(topLeft, CLEAR_COLOR);
-  C2D_SceneBegin(topLeft);
-
-  drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-
-  Tex3DS_SubTexture subtexTop    = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             scrollInfo.scrollOffset);
-  Tex3DS_SubTexture subtexBottom = scrollCacheGetUvs(mainData.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, scrollInfo.scrollOffset);
-  C2D_Image cacheImageTop    = { &mainData.scrollCache.scrollTex, &subtexTop };
-  C2D_Image cacheImageBottom = { &mainData.scrollCache.scrollTex, &subtexBottom };
-  C2D_Sprite sprite;
-  C2D_SpriteFromImage(&sprite, cacheImageTop);
-
-  C2D_SpriteSetPos(&sprite, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2, 0);
-  C2D_DrawSprite(&sprite);
-
-  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top);
-
-  renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
-
-  if (_3DEnabled) {
-    C2D_TargetClear(topRight, CLEAR_COLOR);
-    C2D_SceneBegin(topRight);
-
-    drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-
-    C2D_DrawSprite(&sprite);
-    renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.top);
-
-    renderScrollIndicator(scrollInfo, SCREEN_TOP_WIDTH, 0, SCREEN_HEIGHT, mainData.scrollCache.desiredHeight, true);
-  }
-
-  C2D_TargetClear(bottom, CLEAR_COLOR);
-  C2D_SceneBegin(bottom);
-
-  drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-
-  C2D_SpriteFromImage(&sprite, cacheImageBottom);
-  C2D_DrawSprite(&sprite);
-
-  renderButtonSelectionIndicator(uiState, bookButtons, scrollInfo, GFXScreen.bottom);
-
-  renderButton(optionsBtn, uiState);
 }}

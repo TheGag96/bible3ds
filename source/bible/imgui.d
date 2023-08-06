@@ -191,6 +191,12 @@ enum OneFrameEvent {
   not_triggered, triggered, already_processed,
 }
 
+struct ScrollInfo {
+  float scrollOffset = 0, scrollOffsetLast = 0;
+  float limitTop = 0, limitBottom = 0;
+  OneFrameEvent startedScrolling;
+  OneFrameEvent scrollJustStopped;
+}
 
 struct BoxStyle {
   uint colorText, colorBg, colorBgHeld;

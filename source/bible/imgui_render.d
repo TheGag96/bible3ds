@@ -524,3 +524,184 @@ void renderScrollIndicator(const(UiBox)* box, GFXScreen screen, GFX3DSide side, 
   //Cleanup, resetting things to how C2D normally expects
   C2D_Prepare(C2DShader.normal, true);
 }
+
+////////
+// Scroll Cache
+////////
+
+struct ScrollCache {
+  C3D_Tex scrollTex;
+  C3D_RenderTarget* scrollTarget;
+  float desiredWidth = 0, desiredHeight = 0, texWidth = 0, texHeight = 0;
+
+  bool needsRepaint;
+  int u_scrollRenderOffset; // location of uniform from scroll_cache.v.pica
+  ubyte curStencilVal;
+}
+
+ScrollCache scrollCacheCreate(ushort width, ushort height) {
+  import std.math.algebraic : nextPow2;
+
+  ScrollCache result;
+
+  with (result) {
+    //round sizes to power of two if needed
+    desiredWidth  = width;
+    desiredHeight = height;
+    width         = (width  & (width  - 1)) ? nextPow2(width)  : width;
+    height        = (height & (height - 1)) ? nextPow2(height) : height;
+    texWidth      = width;
+    texHeight     = height;
+
+    C3D_TexInitVRAM(&scrollTex, width, height, GPUTexColor.rgba8);
+    C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
+    scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
+    u_scrollRenderOffset = C2D_ShaderGetUniformLocation(C2DShader.scroll_cache, GPUShaderType.vertex_shader, "scrollRenderOffset");
+  }
+
+  return result;
+}
+
+alias renderCallback(T) = void function(T* userData, float from, float to);
+
+void scrollCacheBeginFrame(ScrollCache* scrollCache) { with (scrollCache) {
+  C2D_Flush();
+  C3D_RenderTargetClear(scrollTarget, C3DClearBits.clear_depth, 0, 0);
+  C2D_SceneBegin(scrollTarget);
+  C2D_Prepare(C2DShader.scroll_cache);
+  curStencilVal = 1;
+}}
+
+void scrollCacheEndFrame(ScrollCache* scrollCache) { with (scrollCache) {
+  C2D_Prepare(C2DShader.normal);
+  C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
+}}
+
+pragma(inline, true)
+void scrollCacheRenderScrollUpdate(T)(
+  ScrollCache* scrollCache,
+  in ScrollInfo scrollInfo,
+  void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
+  uint clearColor = 0,
+) {
+  _scrollCacheRenderScrollUpdateImpl(
+    scrollCache,
+    scrollInfo,
+    cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
+    clearColor,
+  );
+}
+
+private void _scrollCacheRenderScrollUpdateImpl(
+  ScrollCache* scrollCache,
+  in ScrollInfo scrollInfo,
+  void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
+  uint clearColor = 0,
+) { with (scrollCache) with (scrollInfo) {
+  float drawStart, drawEnd;
+
+  float scroll     = floor(scrollOffset),
+        scrollLast = floor(scrollOffsetLast);
+
+  if (needsRepaint) {
+    needsRepaint = false;
+    drawStart = scroll;
+    drawEnd   = scroll+texHeight;
+  }
+  else {
+    if (scrollOffset == scrollOffsetLast) return;
+
+    drawStart  = (scrollLast < scroll) ? scrollLast + texHeight : scroll;
+    drawEnd    = (scrollLast < scroll) ? scroll     + texHeight : scrollLast;
+  }
+
+  _scrollCacheRenderRegionImpl(
+    scrollCache,
+    drawStart, drawEnd,
+    render, userData,
+    clearColor,
+  );
+}}
+
+pragma(inline, true)
+void scrollCacheRenderRegion(T)(
+  ScrollCache* scrollCache,
+  float from, float to,
+  void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
+  uint clearColor = 0,
+) {
+  _scrollCacheRenderRegionImpl(
+    scrollCache,
+    from, to,
+    cast(void function(void* userData, float from, float to) @nogc nothrow) render, userData,
+    clearColor,
+  );
+}
+
+private void _scrollCacheRenderRegionImpl(
+  ScrollCache* scrollCache,
+  float from, float to,
+  void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
+  uint clearColor = 0,
+) { with (scrollCache) {
+  float drawStart  = from;
+  float drawEnd    = to;
+  float drawOffset = -(drawStart - wrap(drawStart, texHeight));
+  float drawHeight = drawEnd-drawStart;
+
+  float drawStartOnTexture = wrap(drawStart, texHeight);
+  float drawEndOnTexture   = drawStartOnTexture + drawHeight;
+  float drawOffTexture     = max(drawEndOnTexture - texHeight, 0);
+
+  C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset, 0, 0);
+
+  //carve out stencil and clear piece of screen simulatenously
+  C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
+  C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
+  C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.zero, GPUBlendFactor.src_alpha, GPUBlendFactor.zero);
+
+  C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, clearColor);
+  C2D_Flush();
+
+  //use callback to draw newly scrolled region
+  C3D_StencilTest(true, GPUTestFunc.equal, curStencilVal, 0xFF, 0xFF);
+  C3D_StencilOp(GPUStencilOp.keep, GPUStencilOp.keep, GPUStencilOp.keep);
+  C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha);
+
+  render(userData, drawStart, drawEnd - drawOffTexture);
+  C2D_Flush();
+  curStencilVal++;
+
+  //draw from top if we draw past the bottom. use a different stencil to prevent overwriting stuff we just drew
+  if (drawEndOnTexture >= texHeight) {
+    C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - texHeight, 0, 0);
+    C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
+    C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
+    C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.zero, GPUBlendFactor.src_alpha, GPUBlendFactor.zero);
+    C2D_DrawRectSolid(0, drawStart, 0, desiredWidth, drawHeight, clearColor);
+    C2D_Flush();
+
+    C3D_StencilTest(true, GPUTestFunc.equal, curStencilVal, 0xFF, 0xFF);
+    C3D_StencilOp(GPUStencilOp.keep, GPUStencilOp.keep, GPUStencilOp.keep);
+    C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha);
+    render(userData, drawEnd - drawOffTexture, drawEnd);
+    C2D_Flush();
+
+    curStencilVal++;
+  }
+}}
+
+Tex3DS_SubTexture scrollCacheGetUvs(
+  in ScrollCache scrollCache,
+  float width, float height, float yOffset, float scroll
+) { with (scrollCache) {
+  Tex3DS_SubTexture result = {
+    width  : cast(ushort) width,
+    height : cast(ushort) height,
+    left   : 0,
+    right  : width/texWidth,
+    top    : 1.0f - yOffset         /texHeight - floor(wrap(scroll, texHeight))/texHeight,
+    bottom : 1.0f - (yOffset+height)/texHeight - floor(wrap(scroll, texHeight))/texHeight,
+  };
+  return result;
+}}
