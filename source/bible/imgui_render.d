@@ -707,24 +707,50 @@ Tex3DS_SubTexture scrollCacheGetUvs(
 }}
 
 void scrollCacheDraw(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
-  Tex3DS_SubTexture subtex;
+  auto rect = clipWithinOther(box.rect, SCREEN_RECT[screen]);
 
-  auto rect = box.rect - screenPos;
-
-  // @TODO: Don't hardcode the UVs? Clip the box's rect to the screen and figure out where it should go?
-  if (screen == GFXScreen.top) {
-    subtex = scrollCacheGetUvs(*box.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, 0,             box.scrollInfo.offset);
-  }
-  else {
-    subtex = scrollCacheGetUvs(*box.scrollCache, SCREEN_BOTTOM_WIDTH, SCREEN_HEIGHT, SCREEN_HEIGHT, box.scrollInfo.offset);
-    rect.top    += SCREEN_HEIGHT;
-    rect.bottom += SCREEN_HEIGHT;
-  }
+  Tex3DS_SubTexture subtex = scrollCacheGetUvs(*box.scrollCache, rect.right-rect.left, rect.bottom-rect.top, rect.top, box.scrollInfo.offset);
 
   C2D_Image cacheImage = { &box.scrollCache.scrollTex, &subtex };
   C2D_Sprite sprite;
   C2D_SpriteFromImage(&sprite, cacheImage);
 
-  C2D_SpriteSetPos(&sprite, rect.left, rect.top);
+  auto drawPos = Vec2(rect.left, rect.top) - screenPos;
+  C2D_SpriteSetPos(&sprite, drawPos.x, drawPos.y);
   C2D_DrawSprite(&sprite);
 }
+
+
+////
+// Loaded reading page
+////
+
+void renderPage(
+  LoadedPage* loadedPage, float from, float to
+) { with (loadedPage) {
+  float width, height;
+
+  float startX = pageMargin;
+
+  C2D_TextGetDimensions(&loadedPage.textArray[0], textSize, textSize, &width, &height);
+
+  //float renderStartOffset = round(loadedPage.scrollInfo.offset +
+  //                                loadedPage.actualLineNumberTable[virtualLine].realPos +
+  //                                pageMargin);
+
+  int virtualLine = min(max(cast(int) floor((round(from-pageMargin))/glyphHeight), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
+  int startLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
+  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + pageMargin;
+
+  float extra = 0;
+  int i = startLine; //max(startLine, 0);
+  while (offsetY < to && i < linesInPage) {
+    C2D_DrawText(
+      &loadedPage.textArray[i], C2D_WordWrapPrecalc, GFXScreen.bottom, startX, offsetY, 0.5f, textSize, textSize,
+      &loadedPage.wrapInfos[i]
+    );
+    extra = height * (1 + loadedPage.wrapInfos[i].words[loadedPage.textArray[i].words-1].newLineNumber);
+    offsetY += extra;
+    i++;
+  }
+}}

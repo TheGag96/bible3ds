@@ -224,6 +224,18 @@ bool intersects(const scope ref Rectangle rect, const scope ref Rectangle other)
   return false;
 }
 
+pure nothrow @nogc @safe
+Rectangle clipWithinOther(in Rectangle rect, in Rectangle other) {
+  import std.algorithm : min, max;
+
+  Rectangle result = void;
+  result.left   = max(rect.left,   other.left);
+  result.top    = max(rect.top,    other.top);
+  result.right  = min(rect.right,  other.right);
+  result.bottom = min(rect.bottom, other.bottom);
+  return result;
+}
+
 struct DimSlice(T, size_t n = 1) {
   nothrow:
 

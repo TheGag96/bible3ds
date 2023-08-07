@@ -96,6 +96,26 @@ enum OneFrameEvent {
   not_triggered, triggered, already_processed,
 }
 
+struct LoadedPage {
+  C2D_TextBuf textBuf;
+  C2D_Text[] textArray;
+
+  C2D_WrapInfo[] wrapInfos;
+
+  static struct LineTableEntry {
+    uint textLineIndex;
+    float realPos = 0;
+  }
+  LineTableEntry[] actualLineNumberTable;
+
+  ScrollInfo scrollInfo;
+
+  int linesInPage;
+
+  float textSize = 0, pageMargin = 0;
+  float glyphWidth = 0, glyphHeight = 0;
+}
+
 struct ScrollInfo {
   float offset = 0, offsetLast = 0;
   float limitMin = 0, limitMax = 0;
@@ -119,7 +139,6 @@ struct UiBox {
 
   C2D_Text text;
   float textHeight = 0;
-  //LoadedPage* loadedPage;
   int hoveredChild, selectedChild;
 
   ScrollInfo scrollInfo;
@@ -340,14 +359,16 @@ struct ScopedDoubleScreenSplitLayout {
   }
 }
 
-UiBox* scrollableReadPane(UiId id, ScrollCache* scrollCache, float scrollLimit) {
+UiBox* scrollableReadPane(UiId id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
   UiBox* box = makeBox(id, UiFlags.view_scroll | UiFlags.manual_scroll_limits | UiFlags.demand_focus, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.scrollCache    = scrollCache;
   box.render         = &scrollCacheDraw;
 
   box.scrollInfo.limitMin = 0;
-  box.scrollInfo.limitMax = scrollLimit;
+
+  auto height = box.rect.bottom - box.rect.top;
+  box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphHeight + loadedPage.pageMargin * 2 - height, 0);
 
   signalFromBox(box);
 
@@ -842,7 +863,8 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
 
     // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
-    auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
+    auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ?
+                            clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
 
     bool scrollOccurring = (box.flags & UiFlags.view_scroll) &&
                            ( input.scrollMethodCur == ScrollMethod.touch ||
@@ -900,7 +922,8 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     Rectangle cursorBounds;
     if (box.flags & UiFlags.select_children) {
       // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
-      cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ? clipWithinBottomScreen(box.rect) : box.rect;
+      cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ?
+                         clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
 
       // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
       if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
@@ -1105,11 +1128,62 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
   }
 }}
 
-Rectangle clipWithinBottomScreen(in Rectangle rect) {
-  Rectangle result = void;
-  result.left   = max(rect.left,   SCREEN_RECT[GFXScreen.bottom].left);
-  result.top    = max(rect.top,    SCREEN_RECT[GFXScreen.bottom].top);
-  result.right  = min(rect.right,  SCREEN_RECT[GFXScreen.bottom].right);
-  result.bottom = min(rect.bottom, SCREEN_RECT[GFXScreen.bottom].bottom);
-  return result;
-}
+void loadPage(LoadedPage* page, char[][] pageLines, float textScale, float margin) { with (page) {
+  if (!textArray.length) textArray = allocArray!C2D_Text(512);
+  if (!textBuf)          textBuf   = C2D_TextBufNew(16384);
+
+  page.linesInPage = pageLines.length;
+  page.textSize    = textScale;
+  page.pageMargin  = margin;
+
+  if (wrapInfos.length < pageLines.length) {
+    freeArray(wrapInfos);
+    wrapInfos = allocArray!C2D_WrapInfo(pageLines.length);
+  }
+  else {
+    //reuse memory if possible
+    wrapInfos = wrapInfos[0..pageLines.length];
+  }
+
+  foreach (lineNum; 0..pageLines.length) {
+    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum]);
+    wrapInfos[lineNum] = C2D_CalcWrapInfo(&textArray[lineNum], textScale, SCREEN_BOTTOM_WIDTH - 2 * margin);
+  }
+
+  auto actualNumLines = pageLines.length;
+  foreach (ref wrapInfo; wrapInfos) {
+    actualNumLines += wrapInfo.words[$-1].newLineNumber;
+  }
+
+  C2D_TextGetDimensions(&textArray[0], textScale, textScale, &glyphWidth, &glyphHeight);
+
+  if (actualLineNumberTable.length < actualNumLines) {
+    freeArray(actualLineNumberTable);
+    actualLineNumberTable = allocArray!(LoadedPage.LineTableEntry)(actualNumLines);
+  }
+  else {
+    //reuse memory if possible
+    actualLineNumberTable = actualLineNumberTable[0..actualNumLines];
+  }
+
+  size_t runner = 0;
+  foreach (i, ref wrapInfo; wrapInfos) {
+    auto realLines = wrapInfo.words[$-1].newLineNumber + 1;
+
+    actualLineNumberTable[runner..runner+realLines] = LoadedPage.LineTableEntry(i, runner * glyphHeight);
+
+    runner += realLines;
+  }
+
+  foreach (lineNum; 0..pageLines.length) {
+    C2D_TextOptimize(&textArray[lineNum]);
+  }
+
+  page.scrollInfo = ScrollInfo.init;
+
+  //mainData.scrollCache.needsRepaint = true;
+}}
+
+void unloadPage(LoadedPage* page) { with (page) {
+  if (textBuf) C2D_TextBufClear(textBuf);
+}}
