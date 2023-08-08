@@ -25,6 +25,35 @@ alias string  = immutable(char)[];
 alias wstring = immutable(wchar)[];
 alias dstring = immutable(dchar)[];
 
+version (LDC) // note: there's a copy for importC in __builtins.di
+{
+  version (ARM)     version = ARM_Any;
+  version (AArch64) version = ARM_Any;
+
+  // Define a __va_list[_tag] alias if the platform uses an elaborate type, as it
+  // is referenced from implicitly generated code for D-style variadics, etc.
+  // LDC does not require people to manually import core.vararg like DMD does.
+  version (X86_64)
+  {
+    version (Win64) {} else
+    alias __va_list_tag = imported!"core.internal.vararg.sysv_x64".__va_list_tag;
+  }
+  else version (ARM_Any)
+  {
+    // Darwin does not use __va_list
+    version (OSX) {}
+    else version (iOS) {}
+    else version (TVOS) {}
+    else version (WatchOS) {}
+    else:
+
+    version (ARM)
+      public import core.stdc.stdarg : __va_list;
+    else version (AArch64)
+      public import core.internal.vararg.aarch64 : __va_list;
+  }
+}
+
 class Object {
   string toString() { return ""; }
 

@@ -31,7 +31,7 @@ version (StdDdoc)
             alias ddoc_long = int;
             alias ddoc_ulong = uint;
         }
-        struct ddoc_complex(T) { T re; T im; };
+        struct ddoc_complex(T) { T re; T im; }
     }
 
     /***
@@ -163,6 +163,37 @@ else version (Posix)
     alias ulong cpp_ulonglong;
   }
 }
+else version (WASI)
+{
+    static if ( (void*).sizeof > int.sizeof )
+    {
+        enum __c_longlong  : long;
+        enum __c_ulonglong : ulong;
+
+        alias long  c_long;
+        alias ulong c_ulong;
+
+        alias long   cpp_long;
+        alias ulong  cpp_ulong;
+
+        alias __c_longlong  cpp_longlong;
+        alias __c_ulonglong cpp_ulonglong;
+    }
+    else
+    {
+        enum __c_long  : int;
+        enum __c_ulong : uint;
+
+        alias int   c_long;
+        alias uint  c_ulong;
+
+        alias __c_long   cpp_long;
+        alias __c_ulong  cpp_ulong;
+
+        alias long  cpp_longlong;
+        alias ulong cpp_ulonglong;
+    }
+}
 else version (_3DS)
 {
     alias int  c_long;
@@ -175,7 +206,18 @@ else version (_3DS)
     alias ulong cpp_ulonglong;
 }
 
-version (CRuntime_Microsoft)
+version (GNU)
+    alias c_long_double = real;
+else version (LDC)
+    alias c_long_double = real; // 64-bit real for MSVC targets
+else version (SDC)
+{
+    version (X86)
+        alias c_long_double = real;
+    else version (X86_64)
+        alias c_long_double = real;
+}
+else version (CRuntime_Microsoft)
 {
     /* long double is 64 bits, not 80 bits, but is mangled differently
      * than double. To distinguish double from long double, create a wrapper to represent
@@ -211,17 +253,6 @@ else version (DigitalMars)
             alias real c_long_double;
     }
 }
-else version (GNU)
-    alias real c_long_double;
-else version (LDC)
-    alias real c_long_double;
-else version (SDC)
-{
-    version (X86)
-        alias real c_long_double;
-    else version (X86_64)
-        alias real c_long_double;
-}
 
 static assert(is(c_long_double), "c_long_double needs to be declared for this platform/architecture.");
 
@@ -244,22 +275,54 @@ private struct _Complex(T)
 {
     T re;
     T im;
+
+    // Helper properties.
+    pragma(inline, true)
+    {
+        static @property epsilon()()    { return _Complex(T.epsilon, T.epsilon); }
+        static @property infinity()()   { return _Complex(T.infinity, T.infinity); }
+        static @property max()()        { return _Complex(T.max, T.max); }
+        static @property min_normal()() { return _Complex(T.min_normal, T.min_normal); }
+        static @property nan()()        { return _Complex(T.nan, T.nan); }
+        static @property dig()()        { return T.dig; }
+        static @property mant_dig()()   { return T.mant_dig; }
+        static @property max_10_exp()() { return T.max_10_exp; }
+        static @property max_exp()()    { return T.max_exp; }
+        static @property min_10_exp()() { return T.min_10_exp; }
+        static @property min_exp()()    { return T.min_exp; }
+    }
 }
 
-version (Posix)
-{
-    align(float.alignof)  enum __c_complex_float : _Complex!float;
-    align(double.alignof) enum __c_complex_double : _Complex!double;
-    align(real.alignof)   enum __c_complex_real : _Complex!real;
-}
-else
-{
-    align(float.sizeof * 2)  enum __c_complex_float : _Complex!float;
-    align(double.sizeof * 2) enum __c_complex_double : _Complex!double;
-    align(real.alignof)      enum __c_complex_real : _Complex!real;
-}
+enum __c_complex_float  : _Complex!float;
+enum __c_complex_double : _Complex!double;
+enum __c_complex_real   : _Complex!c_long_double;
 
 alias c_complex_float = __c_complex_float;
 alias c_complex_double = __c_complex_double;
 alias c_complex_real = __c_complex_real;
+}
+
+
+// Returns the mangled name for the 64-bit time_t versions of
+// functions affected by musl's transition to 64-bit time_t.
+// https://musl.libc.org/time64.html
+version (CRuntime_Musl)
+{
+    version (CRuntime_Musl_Pre_Time64)
+        enum muslRedirTime64 = false;
+    else
+    {
+        // time_t was defined as a C long in older Musl versions.
+        enum muslRedirTime64 = (c_long.sizeof == 4);
+    }
+}
+else
+    enum muslRedirTime64 = false;
+
+package(core) template muslRedirTime64Mangle(string name, string redirectedName)
+{
+    static if (muslRedirTime64)
+        enum muslRedirTime64Mangle = redirectedName;
+    else
+        enum muslRedirTime64Mangle = name;
 }

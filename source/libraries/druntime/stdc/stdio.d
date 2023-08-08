@@ -347,6 +347,24 @@ else version (CRuntime_UClibc)
         L_tmpnam     = 20
     }
 }
+else version (WASI)
+{
+    enum
+    {
+        ///
+        BUFSIZ       = 1024,
+        ///
+        EOF          = -1,
+        ///
+        FOPEN_MAX    = 1000,
+        ///
+        FILENAME_MAX = 4096,
+        ///
+        TMP_MAX      = 10000,
+        ///
+        L_tmpnam     = 20
+    }
+}
 else version (CRuntime_Newlib_3DS)
 {
     enum
@@ -470,6 +488,20 @@ else version (CRuntime_Glibc)
 
     ///
     alias _IO_FILE _iobuf;
+    ///
+    alias shared(_IO_FILE) FILE;
+}
+else version (WASI)
+{
+    union fpos_t
+    {
+        char[16] __opaque = 0;
+        double __align;
+    }
+    struct _IO_FILE;
+
+    ///
+    alias _IO_FILE _iobuf; // needed for phobos
     ///
     alias shared(_IO_FILE) FILE;
 }
@@ -724,9 +756,8 @@ else version (Solaris)
 }
 else version (CRuntime_Bionic)
 {
-    import core.sys.posix.sys.types : off_t;
     ///
-    alias off_t fpos_t;
+    alias c_long fpos_t; // couldn't use off_t because of static if issue
 
     ///
     struct __sFILE
@@ -769,12 +800,10 @@ else version (CRuntime_UClibc)
     import core.stdc.stddef : wchar_t;
     import core.sys.posix.sys.types : ssize_t, pthread_mutex_t;
 
-    alias long off_t;
-
     ///
     struct fpos_t
     {
-        off_t __pos;
+        long __pos; // couldn't use off_t because of static if issue
         mbstate_t __state;
         int __mblen_pending;
     }
@@ -783,7 +812,7 @@ else version (CRuntime_UClibc)
     {
        ssize_t function(void* __cookie, char* __buf, size_t __bufsize)          read;
        ssize_t function(void* __cookie, const char* __buf, size_t __bufsize)    write;
-       int function(void* __cookie, off_t* __pos, int __whence)                 seek;
+       int function(void* __cookie, long* __pos, int __whence)                  seek;
        int function(void* __cookie)                                             close;
     }
 
@@ -1103,12 +1132,14 @@ else version (CRuntime_Microsoft)
 
     extern shared void function() _fcloseallp;
 
+    FILE* __acrt_iob_func(int hnd);     // VS2015+, reimplemented in msvc.d for VS2013-
+
     ///
-    shared FILE* stdin;  // = &__iob_func()[0];
+    FILE* stdin()() { return __acrt_iob_func(0); }
     ///
-    shared FILE* stdout; // = &__iob_func()[1];
+    FILE* stdout()() { return __acrt_iob_func(1); }
     ///
-    shared FILE* stderr; // = &__iob_func()[2];
+    FILE* stderr()() { return __acrt_iob_func(2); }
 }
 else version (CRuntime_Glibc)
 {
@@ -1187,7 +1218,7 @@ else version (NetBSD)
         _IONBF = 2,
     }
 
-    private extern __gshared FILE[3] __sF;
+    private extern shared FILE[3] __sF;
     @property auto __stdin()() { return &__sF[0]; }
     @property auto __stdout()() { return &__sF[1]; }
     @property auto __stderr()() { return &__sF[2]; }
@@ -1210,7 +1241,7 @@ else version (OpenBSD)
         _IONBF = 2,
     }
 
-    private extern __gshared FILE[3] __sF;
+    private extern shared FILE[3] __sF;
     @property auto __stdin()() { return &__sF[0]; }
     @property auto __stdout()() { return &__sF[1]; }
     @property auto __stderr()() { return &__sF[2]; }
@@ -1265,11 +1296,11 @@ else version (Solaris)
     private extern shared FILE[_NFILE] __iob;
 
     ///
-    shared stdin = &__iob[0];
+    @property auto stdin()() { return &__iob[0]; }
     ///
-    shared stdout = &__iob[1];
+    @property auto stdout()() { return &__iob[1]; }
     ///
-    shared stderr = &__iob[2];
+    @property auto stderr()() { return &__iob[2]; }
 }
 else version (CRuntime_Bionic)
 {
@@ -1286,11 +1317,11 @@ else version (CRuntime_Bionic)
     private extern shared FILE[3] __sF;
 
     ///
-    shared stdin  = &__sF[0];
+    @property auto stdin()() { return &__sF[0]; }
     ///
-    shared stdout = &__sF[1];
+    @property auto stdout()() { return &__sF[1]; }
     ///
-    shared stderr = &__sF[2];
+    @property auto stderr()() { return &__sF[2]; }
 }
 else version (CRuntime_Musl)
 {
@@ -1328,6 +1359,24 @@ else version (CRuntime_UClibc)
     extern shared FILE* stdout;
     ///
     extern shared FILE* stderr;
+}
+else version (WASI)
+{
+    // needs tail const
+    extern shared FILE* stdin;
+    ///
+    extern shared FILE* stdout;
+    ///
+    extern shared FILE* stderr;
+    enum
+    {
+        ///
+        _IOFBF = 0,
+        ///
+        _IOLBF = 1,
+        ///
+        _IONBF = 2,
+    }
 }
 else version (CRuntime_Newlib_3DS)
 {
@@ -1464,6 +1513,57 @@ version (MinGW)
     ///
     alias __mingw_scanf scanf;
 }
+else version (CRuntime_Glibc)
+{
+    ///
+    pragma(printf)
+    int fprintf(FILE* stream, scope const char* format, scope const ...);
+    ///
+    pragma(scanf)
+    int __isoc99_fscanf(FILE* stream, scope const char* format, scope ...);
+    ///
+    alias fscanf = __isoc99_fscanf;
+    ///
+    pragma(printf)
+    int sprintf(scope char* s, scope const char* format, scope const ...);
+    ///
+    pragma(scanf)
+    int __isoc99_sscanf(scope const char* s, scope const char* format, scope ...);
+    ///
+    alias sscanf = __isoc99_sscanf;
+    ///
+    pragma(printf)
+    int vfprintf(FILE* stream, scope const char* format, va_list arg);
+    ///
+    pragma(scanf)
+    int __isoc99_vfscanf(FILE* stream, scope const char* format, va_list arg);
+    ///
+    alias vfscanf = __isoc99_vfscanf;
+    ///
+    pragma(printf)
+    int vsprintf(scope char* s, scope const char* format, va_list arg);
+    ///
+    pragma(scanf)
+    int __isoc99_vsscanf(scope const char* s, scope const char* format, va_list arg);
+    ///
+    alias vsscanf = __isoc99_vsscanf;
+    ///
+    pragma(printf)
+    int vprintf(scope const char* format, va_list arg);
+    ///
+    pragma(scanf)
+    int __isoc99_vscanf(scope const char* format, va_list arg);
+    ///
+    alias vscanf = __isoc99_vscanf;
+    ///
+    pragma(printf)
+    int printf(scope const char* format, scope const ...);
+    ///
+    pragma(scanf)
+    int __isoc99_scanf(scope const char* format, scope ...);
+    ///
+    alias scanf = __isoc99_scanf;
+}
 else
 {
     ///
@@ -1529,11 +1629,12 @@ extern (D) @trusted
     int getchar()()                 { return getc(stdin);     }
     ///
     int putchar()(int c)            { return putc(c,stdout);  }
-    ///
-    int getc()(FILE* stream)        { return fgetc(stream);   }
-    ///
-    int putc()(int c, FILE* stream) { return fputc(c,stream); }
 }
+
+///
+alias getc = fgetc;
+///
+alias putc = fputc;
 
 ///
 @trusted int ungetc(int c, FILE* stream); // No unsafe pointer manipulation.
@@ -1573,7 +1674,7 @@ version (CRuntime_DigitalMars)
     ///
     pure int  fileno()(FILE* stream)   { return stream._file; }
   }
-  ///
+    ///
     pragma(printf)
     int   _snprintf(scope char* s, size_t n, scope const char* fmt, scope const ...);
     ///
@@ -1584,6 +1685,26 @@ version (CRuntime_DigitalMars)
     int   _vsnprintf(scope char* s, size_t n, scope const char* format, va_list arg);
     ///
     alias _vsnprintf vsnprintf;
+
+    //
+    // Digital Mars under-the-hood C I/O functions. Uses _iobuf* for the
+    // unshared version of FILE*, usable when the FILE is locked.
+    //
+
+    ///
+    int _fputc_nlock(int c, _iobuf* fp);
+    ///
+    int _fputwc_nlock(int c, _iobuf* fp);
+    ///
+    int _fgetc_nlock(_iobuf* fp);
+    ///
+    int _fgetwc_nlock(_iobuf* fp);
+    ///
+    int __fp_lock(FILE* fp);
+    ///
+    void __fp_unlock(FILE* fp);
+    ///
+    int setmode(int fd, int mode);
 }
 else version (CRuntime_Microsoft)
 {
@@ -1636,16 +1757,31 @@ else version (CRuntime_Microsoft)
     int  vsnprintf(scope char* s, size_t n, scope const char* format, va_list arg);
   }
 
-    ///
-    int _fputc_nolock(int c, FILE *fp);
-    ///
-    int _fgetc_nolock(FILE *fp);
+    //
+    // Microsoft under-the-hood C I/O functions. Uses _iobuf* for the unshared
+    // version of FILE*, usable when the FILE is locked.
+    //
+    import core.stdc.stddef : wchar_t;
+    import core.stdc.wchar_ : wint_t;
 
     ///
-    int _lock_file(FILE *fp);
+    int _fputc_nolock(int c, _iobuf* fp);
     ///
-    int _unlock_file(FILE *fp);
-
+    int _fgetc_nolock(_iobuf* fp);
+    ///
+    wint_t _fputwc_nolock(wchar_t c, _iobuf* fp);
+    ///
+    wint_t _fgetwc_nolock(_iobuf* fp);
+    ///
+    void _lock_file(FILE* fp);
+    ///
+    void _unlock_file(FILE* fp);
+    ///
+    int _setmode(int fd, int mode);
+    ///
+    int _fseeki64(FILE* stream, long offset, int origin);
+    ///
+    long _ftelli64(FILE* stream);
     ///
     intptr_t _get_osfhandle(int fd);
     ///
@@ -1674,6 +1810,23 @@ else version (CRuntime_Glibc)
     ///
     pragma(printf)
     int  vsnprintf(scope char* s, size_t n, scope const char* format, va_list arg);
+
+    //
+    // Gnu under-the-hood C I/O functions. Uses _iobuf* for the unshared
+    // version of FILE*, usable when the FILE is locked.
+    // See http://gnu.org/software/libc/manual/html_node/I_002fO-on-Streams.html
+    //
+    import core.stdc.wchar_ : wint_t;
+    import core.stdc.stddef : wchar_t;
+
+    ///
+    int fputc_unlocked(int c, _iobuf* stream);
+    ///
+    int fgetc_unlocked(_iobuf* stream);
+    ///
+    wint_t fputwc_unlocked(wchar_t wc, _iobuf* stream);
+    ///
+    wint_t fgetwc_unlocked(_iobuf* stream);
 }
 else version (Darwin)
 {
@@ -1968,6 +2121,28 @@ else version (CRuntime_UClibc)
     pragma(printf)
     int  vsnprintf(scope char* s, size_t n, scope const char* format, va_list arg);
 }
+else version (WASI)
+{
+    // No unsafe pointer manipulation.
+    @trusted
+    {
+        ///
+        void rewind(FILE* stream);
+        ///
+        pure void clearerr(FILE* stream);
+        ///
+        pure int  feof(FILE* stream);
+        ///
+        pure int  ferror(FILE* stream);
+        ///
+        int  fileno(FILE *);
+    }
+
+    ///
+    int  snprintf(scope char* s, size_t n, scope const char* format, ...);
+    ///
+    int  vsnprintf(scope char* s, size_t n, scope const char* format, va_list arg);
+}
 else version (CRuntime_Newlib_3DS)
 {
   // No unsafe pointer manipulation.
@@ -2157,6 +2332,22 @@ version (Windows)
         O_TEXT = _O_TEXT, ///
         _O_BINARY = 0x8000, ///
         O_BINARY = _O_BINARY, ///
+        _O_WTEXT = 0x10000, ///
+        _O_U16TEXT = 0x20000, ///
+        _O_U8TEXT = 0x40000, ///
+        _O_ACCMODE = (_O_RDONLY|_O_WRONLY|_O_RDWR), ///
+        O_ACCMODE = _O_ACCMODE, ///
+        _O_RAW = _O_BINARY, ///
+        O_RAW = _O_BINARY, ///
+        _O_NOINHERIT = 0x0080, ///
+        O_NOINHERIT = _O_NOINHERIT, ///
+        _O_TEMPORARY = 0x0040, ///
+        O_TEMPORARY = _O_TEMPORARY, ///
+        _O_SHORT_LIVED = 0x1000, ///
+        _O_SEQUENTIAL = 0x0020, ///
+        O_SEQUENTIAL = _O_SEQUENTIAL, ///
+        _O_RANDOM = 0x0010, ///
+        O_RANDOM = _O_RANDOM, ///
     }
 
     enum
