@@ -220,7 +220,7 @@ size_t C2D_TextBufGetNumGlyphs(C2D_TextBuf buf)
  *           (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-string C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, string str, uint lineNo)
+const(char)[] C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)[] str, uint lineNo)
 {
   return C2D_TextFontParseLine(text, null, buf, str, lineNo);
 }
@@ -238,7 +238,7 @@ string C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, string str, uint line
  *           (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-string C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, string str, uint lineNo)
+const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)[] str, uint lineNo)
 {
   const(ubyte)[] p = cast(const(ubyte)[])str;
   text.font  = font;
@@ -294,7 +294,7 @@ string C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, st
   text.width *= s_textScale;
   text.lines = 1;
   text.words = wordNum;
-  return cast(string)p;
+  return cast(const(char)[])p;
 }
 
 /** @brief Parses and adds arbitrary text (including newlines) to a text buffer.
@@ -307,7 +307,7 @@ string C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, st
  *           or any other character (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-string C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, string str)
+const(char)[] C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, const(char)[] str)
 {
   return C2D_TextFontParse(text, null, buf, str);
 }
@@ -323,7 +323,7 @@ string C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, string str)
  *           or any other character (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-string C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, string str)
+const(char)[] C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)[] str)
 {
   text.font   = font;
   text.buf    = buf;
