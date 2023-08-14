@@ -47,6 +47,9 @@ enum UiId : ushort {
   book_right_split_layout_bottom,
   book_scroll_indicator,
   reading_scroll_read_view,
+  reading_right_split_layout_main,
+  reading_right_split_layout_top,
+  reading_right_split_layout_bottom,
   reading_scroll_indicator,
   reading_back_btn,
   options_back_btn,
@@ -173,6 +176,11 @@ struct UiSignal {
   bool pushingAgainstScrollLimit;
 }
 
+struct UiBoxAndSignal {
+  UiBox* box;
+  UiSignal signal;
+}
+
 
 enum BOTTOM_BUTTON_MARGIN     = 6.0f;
 enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
@@ -231,7 +239,7 @@ void spacer(UiId id, int size) {
   }
 }
 
-void scrollIndicator(UiId id, UiBox* source, Justification justification) {
+void scrollIndicator(UiId id, UiBox* source, Justification justification, bool limitHit) {
   UiBox* box = makeBox(id, cast(UiFlags) 0, null);
   box.render = &renderScrollIndicator;
 
@@ -241,21 +249,25 @@ void scrollIndicator(UiId id, UiBox* source, Justification justification) {
 
   box.justification = justification;
   box.related       = source;
+
+  box.hotT = approach(box.hotT, 1.0f*limitHit, 2*ANIM_T_RATE);
 }
 
 struct ScopedSelectScrollLayout {
   @nogc: nothrow:
 
   UiBox* box;
+  UiSignal* signalToWrite;
 
   @disable this();
 
-  this(UiId id) {
+  this(UiId id, UiSignal* signalToWrite) {
     box = pushSelectScrollLayout(id);
+    this.signalToWrite = signalToWrite;
   }
 
   ~this() {
-    popParentAndSignal();
+    *signalToWrite = popParentAndSignal();
   }
 }
 
@@ -359,7 +371,7 @@ struct ScopedDoubleScreenSplitLayout {
   }
 }
 
-UiBox* scrollableReadPane(UiId id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
+UiBoxAndSignal scrollableReadPane(UiId id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
   UiBox* box = makeBox(id, UiFlags.view_scroll | UiFlags.manual_scroll_limits | UiFlags.demand_focus, null);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.scrollCache    = scrollCache;
@@ -370,9 +382,7 @@ UiBox* scrollableReadPane(UiId id, in LoadedPage loadedPage, ScrollCache* scroll
   auto height = box.rect.bottom - box.rect.top;
   box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphHeight + loadedPage.pageMargin * 2 - height, 0);
 
-  signalFromBox(box);
-
-  return box;
+  return UiBoxAndSignal(box, signalFromBox(box));
 }
 
 struct ScopedStyle {
@@ -743,7 +753,9 @@ auto eachChild(UiBox* box) {
 UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   UiSignal result;
 
-  if ((box.flags & UiFlags.demand_focus) && hot == null) {
+  auto local = &gUiData;
+
+  if ((box.flags & UiFlags.demand_focus) && active == null) {
     focused = box;
   }
 

@@ -285,8 +285,9 @@ void mainGui(MainData* mainData, Input* input) {
   final switch (mainData.curView) {
     case View.book:
       UiBox* scrollLayoutBox;
+      UiSignal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout(UiId.book_scroll_layout);
+        auto scrollLayout = ScopedSelectScrollLayout(UiId.book_scroll_layout, &scrollLayoutSignal);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
 
         scrollLayoutBox = scrollLayout.box;
@@ -312,14 +313,16 @@ void mainGui(MainData* mainData, Input* input) {
       {
         auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.book_right_split_layout_main, UiId.book_right_split_layout_top, UiId.book_right_split_layout_bottom);
 
-        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max);
+        rightSplit.startTop();
+
+        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
       }
 
       break;
 
     case View.reading:
       auto readPane = scrollableReadPane(UiId.reading_scroll_read_view, mainData.loadedPage, &mainData.scrollCache);
-      mainData.loadedPage.scrollInfo = readPane.scrollInfo;
+      mainData.loadedPage.scrollInfo = readPane.box.scrollInfo;
 
       {
         auto style = ScopedStyle(&BACK_BUTTON_STYLE);
@@ -327,6 +330,16 @@ void mainGui(MainData* mainData, Input* input) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
         }
+      }
+
+      mainLayout.startRight();
+
+      {
+        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.reading_right_split_layout_main, UiId.reading_right_split_layout_top, UiId.reading_right_split_layout_bottom);
+
+        rightSplit.startTop();
+
+        scrollIndicator(UiId.reading_scroll_indicator, readPane.box, Justification.min, readPane.signal.pushingAgainstScrollLimit);
       }
 
       break;
