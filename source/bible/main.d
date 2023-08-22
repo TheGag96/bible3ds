@@ -292,12 +292,15 @@ void mainGui(MainData* mainData, Input* input) {
 
         scrollLayoutBox = scrollLayout.box;
 
+        // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
+        spacer(UiId.book_screen_spacer, SCREEN_HEIGHT + 8);
+
         foreach (i, book; BOOK_NAMES) {
           if (button(cast(UiId) (UiId.book_bible_btn_first + i), book, 150).clicked) {
             sendCommand(CommandCode.open_book, i);
           }
 
-          if (i != BOOK_NAMES.length-1) spacer(cast(UiId) (UiId.book_bible_btn_spacer_first + i), 8);
+          spacer(cast(UiId) (UiId.book_bible_btn_spacer_first + i), 8);
         }
       }
 

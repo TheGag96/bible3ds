@@ -38,6 +38,7 @@ enum UiId : ushort {
   combined_screen_layout_right,
   book_scroll_layout,
   book_options_btn,
+  book_screen_spacer,
   book_bible_btn_first,
   book_bible_btn_last = book_bible_btn_first + BOOK_NAMES.length - 1,
   book_bible_btn_spacer_first,
@@ -226,7 +227,7 @@ UiSignal bottomButton(UiId id, string text) {
   return signalFromBox(box);
 }
 
-void spacer(UiId id, int size) {
+void spacer(UiId id, float size) {
   UiBox* box = makeBox(id, cast(UiFlags) 0, null);
 
   if (box.parent && (box.parent.flags & UiFlags.horizontal_children)) {
@@ -971,7 +972,9 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
 
     if (!(box.flags & UiFlags.manual_scroll_limits)) {
       box.scrollInfo.limitMin = 0;
-      box.scrollInfo.limitMax = box.last ? box.last.computedRelPosition[Axis2.y] + box.last.computedSize[Axis2.y] : 0;
+      box.scrollInfo.limitMax = box.last
+                                    ? box.last.computedRelPosition[flowAxis] + box.last.computedSize[flowAxis] - box.computedSize[flowAxis]
+                                    : 0;
     }
     respondToScroll(box, &result, scrollDiff);
   }
