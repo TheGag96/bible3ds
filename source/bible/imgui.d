@@ -920,6 +920,15 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     box.hoveredChild = cursored.childId;
     if (!scrollOccurring) cursored.hotT = 1;
     hot = cursored; // @Note: There can only be one select_children box on screen, or else they conflict...
+
+    // Signal pushing against scroll limit if we're holding a directional key and can't go any further
+    {
+      int dir = input.held(backwardKey) ? -1 : 1;
+
+      if (input.held(forwardKey | backwardKey) && moveToSelectable(cursored, dir, a => true) == cursored) {
+        result.pushingAgainstScrollLimit = true;
+      }
+    }
   }
 
   if ((box.flags & UiFlags.view_scroll) && focused == box) {
