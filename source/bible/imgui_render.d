@@ -65,9 +65,12 @@ void renderNormalButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEn
   pushQuad(tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, brX,                brY,                 z, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height,          1, (16.0f+CORNER_HEIGHT)/tex.height); //center
   C2D_Flush();
 
-  C2D_DrawText(
-    &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colorText
-  );
+
+  if (box.flags & UiFlags.draw_text) {
+    C2D_DrawText(
+      &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colorText
+    );
+  }
 
   if (box.parent && (box.parent.flags & UiFlags.select_children) && (box.flags & UiFlags.selectable) && box.hotT > 0) {
     renderButtonSelectionIndicator(box, rect, screen, side, _3DEnabled, slider3DState, screenPos);
@@ -212,13 +215,15 @@ void renderBottomButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEn
 
   int textBevelOffset = pressed ? 1 : -1;
 
-  C2D_DrawText(
-    &box.text, C2D_WithColor, GFXScreen.top, textX, textY + textBevelOffset, z, box.style.textSize, box.style.textSize, bevelTexColor
-  );
+  if (box.flags & UiFlags.draw_text) {
+    C2D_DrawText(
+      &box.text, C2D_WithColor, GFXScreen.top, textX, textY + textBevelOffset, z, box.style.textSize, box.style.textSize, bevelTexColor
+    );
 
-  C2D_DrawText(
-    &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, textColor
-  );
+    C2D_DrawText(
+      &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, textColor
+    );
+  }
 }
 
 void renderButtonSelectionIndicator(UiBox* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
