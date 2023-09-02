@@ -81,7 +81,7 @@ void closeBibleBook(OpenBook* book) { with (book) {
   freeArray(chapters);
 }}
 
-enum Translation {
+enum Translation : ubyte {
   asv,
   bbe,
   kjv,
@@ -107,7 +107,7 @@ static immutable string[enumCount!Translation] TRANSLATION_NAMES_LONG = arrayOfE
   ylt : "Young's Literal Translation",
 );
 
-enum Book {
+enum Book : ubyte {
   Genesis,
   Exodus,
   Leviticus,

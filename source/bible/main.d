@@ -43,15 +43,9 @@ struct PageId {
   int chapter;
 }
 
-struct Settings {
-  Translation translation;
-}
-
 struct MainData {
   View curView = View.book;
   ScrollCache scrollCache;
-
-  Settings settings;
 
   float size = 0;
   OpenBook book;
@@ -85,10 +79,8 @@ extern(C) int main(int argc, char** argv) {
 
   gTempStorage.init();
 
-  Result saveResult = saveGameInit();
+  Result saveResult = saveFileInit();
   assert(!saveResult, "file creation failed");
-
-  saveGameSelect(0);
 
   // Create screens
   C3D_RenderTarget* topLeft  = C2D_CreateScreenTarget(GFXScreen.top,    GFX3DSide.left);
@@ -96,11 +88,6 @@ extern(C) int main(int argc, char** argv) {
   C3D_RenderTarget* bottom   = C2D_CreateScreenTarget(GFXScreen.bottom, GFX3DSide.left);
 
   osTickCounterStart(&tickCounter);
-
-  enum SCROLL_CACHE_WIDTH  = cast(ushort) SCREEN_BOTTOM_WIDTH,
-       SCROLL_CACHE_HEIGHT = cast(ushort) (2*SCREEN_HEIGHT);
-
-  mainData.scrollCache = scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   initMainData(&mainData);
 
@@ -195,7 +182,10 @@ extern(C) int main(int argc, char** argv) {
 
 
 void initMainData(MainData* mainData) { with (mainData) {
-  settings.translation = Translation.asv;
+  enum SCROLL_CACHE_WIDTH  = cast(ushort) SCREEN_BOTTOM_WIDTH,
+       SCROLL_CACHE_HEIGHT = cast(ushort) (2*SCREEN_HEIGHT);
+
+  scrollCache = scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   defaultPageTextSize = DEFAULT_PAGE_TEXT_SIZE;
   defaultPageMargin   = DEFAULT_PAGE_MARGIN;
@@ -278,7 +268,7 @@ void mainGui(MainData* mainData, Input* input) {
         break;
       case CommandCode.open_book:
         mainData.curView = View.reading;
-        loadBiblePage(mainData, PageId(mainData.settings.translation, cast(Book) command.value, 1));
+        loadBiblePage(mainData, PageId(gSaveFile.settings.translation, cast(Book) command.value, 1));
         break;
     }
   }
@@ -376,7 +366,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         foreach (i, translation; TRANSLATION_NAMES_LONG) {
           if (button(cast(UiId) (UiId.options_translation_btn_first + i), translation).clicked) {
-            mainData.settings.translation = cast(Translation) i;
+            gSaveFile.settings.translation = cast(Translation) i;
           }
 
           spacer(cast(UiId) (UiId.options_translation_spacer_first + i), 8);
@@ -388,6 +378,7 @@ void mainGui(MainData* mainData, Input* input) {
         if (bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
+          saveSettings();
         }
       }
 

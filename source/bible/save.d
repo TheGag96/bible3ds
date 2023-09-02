@@ -1,31 +1,48 @@
 module bible.save;
 
-import bible.util;
+import bible.bible, bible.util;
 import ctru.result;
 import ctru.services.fs;
 import ctru.types;
 
 nothrow: @nogc:
 
-struct SaveFile {
-  ubyte todo;
+struct Settings {
+  Translation translation;
+  ubyte[63] spare;
 }
 
-struct SaveData {
-  SaveFile[3] saveFiles;
-  SaveFile* currentSave;
+struct Progress {
+  ubyte chapter;
+  ubyte scrollAmount; // 0-255 meaning top of page to bottom of page
 }
-__gshared SaveData gSaveData;
+
+// @TODO: Consider an actual config file of some kind
+struct SaveFile {
+  ushort fileVersion = 0;
+
+  Settings settings;
+
+  Progress[enumCount!Book] progress;
+
+  Book bookmarkBook;
+  ubyte bookmarkChapter;
+
+  ubyte[56] spare;
+}
+static assert (SaveFile.sizeof == 256);
+
+__gshared SaveFile gSaveFile;
 
 static immutable FS_Path EMPTY_PATH = { type : FSPathType.empty, size : 0, data : null };
 
 version (Output_CIA) {
-  static immutable FS_Path SAVE_PATH  = { type : FSPathType.ascii, size : "/save.dat".length + 1, data : "/save.dat".ptr };
+  static immutable FS_Path SAVE_PATH  = { type : FSPathType.ascii, size : "/save.dat".length + 1, data : "/settings.dat".ptr };
   enum SAVE_ARCHIVE_ID = FSArchiveID.savedata;
 }
 else version (Output_3DSX) {
   enum SAVE_PATH_DIR_STRING = "/3ds/bible3ds";
-  enum SAVE_PATH_STRING     = "/3ds/bible3ds/save.dat";
+  enum SAVE_PATH_STRING     = "/3ds/bible3ds/settings.dat";
   static immutable FS_Path SAVE_PATH     = { type : FSPathType.ascii, size : SAVE_PATH_STRING.length + 1,
                                              data : SAVE_PATH_STRING.ptr };
   static immutable FS_Path SAVE_DIR_PATH = { type : FSPathType.ascii, size : SAVE_PATH_DIR_STRING.length + 1,
@@ -34,7 +51,7 @@ else version (Output_3DSX) {
 }
 else static assert(0);
 
-Result saveGameInit() {
+Result saveFileInit() {
   FS_Archive archiveHandle;
   Handle fileHandle;
 
@@ -42,12 +59,12 @@ Result saveGameInit() {
 
   version (Output_CIA) {
     if (R_FAILED(rc)) {
-      return saveGameCreate();
+      return saveFileCreate();
     }
   }
   else version (Output_3DSX) {
     if (R_FAILED(rc)) {
-      assert(0, "couldn't open SD card filesystem");
+      assert(0, "Couldn't open SD card filesystem!");
       return rc;
     }
   }
@@ -59,13 +76,13 @@ Result saveGameInit() {
 
   version (Output_CIA) {
     if (R_FAILED(rc)) {
-      assert(0, "couldn't open the app's save file??");
+      assert(0, "Couldn't open the app's save file??");
       return rc;
     }
   }
   else version (Output_3DSX) {
     if (R_FAILED(rc)) {
-      return saveGameCreate();
+      return saveFileCreate();
     }
   }
   else static assert(0);
@@ -74,25 +91,25 @@ Result saveGameInit() {
 
   ulong fileSize;
   rc = FSFILE_GetSize(fileHandle, &fileSize);
-  //assert(fileSize == gSaveData.saveFiles.sizeof);
+  //assert(fileSize == gSaveFile.sizeof);
 
-  if (R_FAILED(rc) || fileSize != gSaveData.saveFiles.sizeof) {
-    //assert(0, "either couldn't get save file size or it mismatches");
+  if (R_FAILED(rc) || fileSize != gSaveFile.sizeof) {
+    assert(0, "Either couldn't get save file size or it mismatches what we expect it to be!");
     return rc;
   }
 
   uint bytesRead;
-  rc = FSFILE_Read(fileHandle, &bytesRead, 0, &gSaveData.saveFiles, gSaveData.saveFiles.sizeof);
+  rc = FSFILE_Read(fileHandle, &bytesRead, 0, &gSaveFile, gSaveFile.sizeof);
 
-  if (R_FAILED(rc) || bytesRead != gSaveData.saveFiles.sizeof) {
-    assert(0, "couldn't read");
+  if (R_FAILED(rc) || bytesRead != gSaveFile.sizeof) {
+    assert(0, "Couldn't read the save file for some reason!");
     return rc;
   }
 
   return 0;
 }
 
-Result saveGameCreate() {
+Result saveFileCreate() {
   Result rc;
 
   version (Output_CIA) {
@@ -100,7 +117,7 @@ Result saveGameCreate() {
 
     if (R_FAILED(rc)) {
       printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-      assert(0, "couldn't format");
+      assert(0, "Couldn't format the save file!");
       return rc;
     }
   }
@@ -110,41 +127,44 @@ Result saveGameCreate() {
 
   if (R_FAILED(rc)) {
     printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-    assert(0, "couldn't open archive");
+    assert(0, "Couldn't open the save archive!");
     return rc;
   }
 
   version (Output_3DSX) {
     rc = FSUSER_CreateDirectory(archiveHandle, SAVE_DIR_PATH, FS_ATTRIBUTE_DIRECTORY);
 
-    if (R_FAILED(rc)) {
+    auto description = R_DESCRIPTION(rc);
+
+    // If the directory exists already, we'll get an error that we can ignore
+    if (R_FAILED(rc) && !(description >= 180 && description <= 199)) {
       printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-      assert(0, "couldn't create directory");
+      assert(0, "Couldn't create the save directory!");
       return rc;
     }
   }
 
-  rc = FSUSER_CreateFile(archiveHandle, SAVE_PATH, 0, gSaveData.saveFiles.sizeof);
+  rc = FSUSER_CreateFile(archiveHandle, SAVE_PATH, 0, gSaveFile.sizeof);
 
   if (R_FAILED(rc)) {
     printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-    assert(0, "couldn't create file");
+    assert(0, "Couldn't create the file in which the save lives!");
     return rc;
   }
 
   FSUSER_CloseArchive(archiveHandle);
 
-  return saveGames();
+  return saveSettings();
 }
 
-Result saveGames() {
+Result saveSettings() {
   FS_Archive archiveHandle;
 
   Result rc = FSUSER_OpenArchive(&archiveHandle, SAVE_ARCHIVE_ID, EMPTY_PATH);
 
   if (R_FAILED(rc)) {
     printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-    assert(0, "couldn't open archive");
+    assert(0, "Couldn't open the save archive!");
     return rc;
   }
 
@@ -156,25 +176,20 @@ Result saveGames() {
 
   if (R_FAILED(rc)) {
     printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-    assert(0, "couldn't open file");
+    assert(0, "Couldn't open the file in which the save lives!");
     return rc;
   }
 
   scope (exit) FSFILE_Close(fileHandle);
 
   size_t bytesWritten;
-  rc = FSFILE_Write(fileHandle, &bytesWritten, 0, &gSaveData.saveFiles, gSaveData.saveFiles.sizeof, 0);
+  rc = FSFILE_Write(fileHandle, &bytesWritten, 0, &gSaveFile, gSaveFile.sizeof, 0);
 
   if (R_FAILED(rc)) {
     printf("\x1b[15;1Herror: %08X\x1b[K", rc);
-    assert(0, "couldn't write file");
+    assert(0, "Couldn't write to the save file!");
     return rc;
   }
 
   return 0;
-}
-
-void saveGameSelect(size_t saveNum) {
-  assert(saveNum < gSaveData.saveFiles.length);
-  gSaveData.currentSave = &gSaveData.saveFiles[saveNum];
 }
