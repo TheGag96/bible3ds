@@ -6,6 +6,31 @@ import std.math;
 
 @nogc: nothrow:
 
+void renderLabel(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+  float z = 0;
+
+  auto rect = box.rect - screenPos;
+  rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
+
+  float textX, textY;
+  final switch (box.justification) {
+    case Justification.min:
+      textX = rect.left+box.style.margin;
+      textY = rect.top+box.style.margin;
+      break;
+    case Justification.center:
+      textX = (rect.left + rect.right)/2 - box.text.width/2;
+      textY = (rect.top + rect.bottom)/2 - box.textHeight/2;
+      break;
+    case Justification.max:
+      break;
+  }
+
+  C2D_DrawText(
+    &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colorText
+  );
+}
+
 enum BUTTON_DEPRESS_NORMAL = 3;
 enum BUTTON_DEPRESS_BOTTOM = 1;
 

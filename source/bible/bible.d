@@ -89,13 +89,23 @@ enum Translation {
   ylt,
 }
 
-static immutable string[] TRANSLATION_NAMES = [
-  Translation.asv : "asv",
-  Translation.bbe : "bbe",
-  Translation.kjv : "kjv",
-  Translation.web : "web",
-  Translation.ylt : "ylt",
-];
+alias blah = arrayOfEnum!(Translation, int);
+
+static immutable string[enumCount!Translation] TRANSLATION_NAMES = arrayOfEnum!(Translation, string)(
+  asv : "asv",
+  bbe : "bbe",
+  kjv : "kjv",
+  web : "web",
+  ylt : "ylt",
+);
+
+static immutable string[enumCount!Translation] TRANSLATION_NAMES_LONG = arrayOfEnum!(Translation, string)(
+  asv : "American Standard Version",
+  bbe : "Bible in Basic English",
+  kjv : "King James Version",
+  web : "World English Bible",
+  ylt : "Young's Literal Translation",
+);
 
 enum Book {
   Genesis,

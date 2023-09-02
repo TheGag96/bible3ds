@@ -53,7 +53,17 @@ enum UiId : ushort {
   reading_right_split_layout_bottom,
   reading_scroll_indicator,
   reading_back_btn,
+  options_scroll_layout,
+  options_screen_spacer,
+  options_translation_label,
+  options_translation_btn_first,
+  options_translation_btn_last = options_translation_btn_first + TRANSLATION_NAMES_LONG.length - 1,
+  options_translation_spacer_first,
+  options_translation_spacer_last = options_translation_spacer_first + TRANSLATION_NAMES_LONG.length - 1,
   options_back_btn,
+  options_right_split_layout_main,
+  options_right_split_layout_top,
+  options_right_split_layout_bottom,
 }
 
 enum MARGIN = 8.0f;
@@ -182,6 +192,14 @@ struct UiBoxAndSignal {
   UiSignal signal;
 }
 
+
+void label(UiId id, string text, Justification justification = Justification.min) {
+  UiBox* box = makeBox(id, UiFlags.draw_text, text);
+
+  box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
+  box.justification  = justification;
+  box.render         = &renderLabel;
+}
 
 enum BOTTOM_BUTTON_MARGIN     = 6.0f;
 enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);

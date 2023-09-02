@@ -37,15 +37,26 @@ enum BACKGROUND_COLOR_STRIPES_LIGHT = C2D_Color32(197,  197,  189,  255);
 enum DEFAULT_PAGE_TEXT_SIZE = 0.5;
 enum DEFAULT_PAGE_MARGIN    = 8;
 
+struct PageId {
+  Translation translation;
+  Book book;
+  int chapter;
+}
+
+struct Settings {
+  Translation translation;
+}
+
 struct MainData {
   View curView = View.book;
   ScrollCache scrollCache;
 
+  Settings settings;
+
   float size = 0;
   OpenBook book;
-  Book curBook;
+  PageId pageId;
   LoadedPage loadedPage;
-  int curChapter;
 
   float defaultPageTextSize = 0, defaultPageMargin = 0;
 
@@ -184,19 +195,38 @@ extern(C) int main(int argc, char** argv) {
 
 
 void initMainData(MainData* mainData) { with (mainData) {
-  curBook = Book.Joshua;
-  curChapter = 1;
-  book = openBibleBook(Translation.asv, curBook);
+  settings.translation = Translation.asv;
+
   defaultPageTextSize = DEFAULT_PAGE_TEXT_SIZE;
   defaultPageMargin   = DEFAULT_PAGE_MARGIN;
-  loadPage(&loadedPage, book.chapters[curChapter], defaultPageTextSize, defaultPageMargin);
+}}
+
+void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
+  if (newPageId == pageId) return;
+
+  unloadPage(&loadedPage);
+
+  if (!book.rawFile || newPageId.translation != pageId.translation || newPageId.book != pageId.book) {
+    closeBibleBook(&book);
+    book = openBibleBook(newPageId.translation, newPageId.book);
+  }
+
+  loadPage(&loadedPage, book.chapters[newPageId.chapter], defaultPageTextSize, defaultPageMargin);
+  scrollCache.needsRepaint = true;
+  frameNeedsRender = true;
+
+  // @Hack: Is there any better way to do this?
+  gUiData.boxes[UiId.reading_scroll_read_view].scrollInfo.offset     = 0;
+  gUiData.boxes[UiId.reading_scroll_read_view].scrollInfo.offsetLast = 0;
+
+  pageId = newPageId;
 }}
 
 void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainData) {
   int chapterDiff, bookDiff;
   if (input.down(Key.l)) {
-    if (curChapter == 1) {
-      if (curBook != Book.min) {
+    if (pageId.chapter == 1) {
+      if (pageId.book != Book.min) {
         bookDiff = -1;
       }
     }
@@ -205,8 +235,8 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
     }
   }
   else if (input.down(Key.r)) {
-    if (curChapter == book.chapters.length-1) {
-      if (curBook != Book.max) {
+    if (pageId.chapter == book.chapters.length-1) {
+      if (pageId.book != Book.max) {
         bookDiff = 1;
       }
     }
@@ -215,29 +245,23 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
     }
   }
 
-  if (bookDiff) {
-    unloadPage(&loadedPage);
+  PageId newPageId = pageId;
 
-    closeBibleBook(&book);
-    curBook = cast(Book) (curBook + bookDiff);
-    book = openBibleBook(Translation.asv, curBook);
+  if (bookDiff) {
+    newPageId.book = cast(Book) (newPageId.book + bookDiff);
 
     if (bookDiff > 0) {
-      curChapter = 1;
+      newPageId.chapter = 1;
     }
     else {
-      curChapter = book.chapters.length-1;
+      newPageId.chapter = book.chapters.length-1;
     }
-
-    loadPage(&loadedPage, book.chapters[curChapter], defaultPageTextSize, defaultPageMargin);
-    frameNeedsRender = true;
   }
   else if (chapterDiff) {
-    unloadPage(&loadedPage);
-    curChapter += chapterDiff;
-    loadPage(&loadedPage, book.chapters[curChapter], defaultPageTextSize, defaultPageMargin);
-    frameNeedsRender = true;
+    newPageId.chapter += chapterDiff;
   }
+
+  loadBiblePage(mainData, newPageId);
 }}
 
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
@@ -254,19 +278,7 @@ void mainGui(MainData* mainData, Input* input) {
         break;
       case CommandCode.open_book:
         mainData.curView = View.reading;
-
-        with (mainData) {
-          unloadPage(&loadedPage);
-          closeBibleBook(&book);
-          curBook = cast(Book) command.value;
-          book = openBibleBook(Translation.asv, curBook);
-          curChapter = 1;
-          loadPage(&loadedPage, book.chapters[curChapter], defaultPageTextSize, defaultPageMargin);
-          resetScrollDiff(input);
-          mainData.scrollCache.needsRepaint = true;
-          frameNeedsRender = true;
-        }
-
+        loadBiblePage(mainData, PageId(mainData.settings.translation, cast(Book) command.value, 1));
         break;
     }
   }
@@ -348,12 +360,45 @@ void mainGui(MainData* mainData, Input* input) {
       break;
 
     case View.options:
+      UiBox* scrollLayoutBox;
+      UiSignal scrollLayoutSignal;
+      {
+        auto scrollLayout = ScopedSelectScrollLayout(UiId.options_scroll_layout, &scrollLayoutSignal);
+        auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
+        scrollLayout.box.justification = Justification.min;
+
+        scrollLayoutBox = scrollLayout.box;
+
+        // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
+        spacer(UiId.options_screen_spacer, SCREEN_HEIGHT + 8);
+
+        label(UiId.options_translation_label, "Translation");
+
+        foreach (i, translation; TRANSLATION_NAMES_LONG) {
+          if (button(cast(UiId) (UiId.options_translation_btn_first + i), translation).clicked) {
+            mainData.settings.translation = cast(Translation) i;
+          }
+
+          spacer(cast(UiId) (UiId.options_translation_spacer_first + i), 8);
+        }
+      }
+
       {
         auto style = ScopedStyle(&BACK_BUTTON_STYLE);
         if (bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
         }
+      }
+
+      mainLayout.startRight();
+
+      {
+        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.options_right_split_layout_main, UiId.options_right_split_layout_top, UiId.options_right_split_layout_bottom);
+
+        rightSplit.startTop();
+
+        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
       }
       break;
   }
