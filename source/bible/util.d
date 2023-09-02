@@ -336,6 +336,38 @@ auto enumRange(T)(T first, T last) if (is(T == enum)) {
   return EnumRange!T(first, last);
 }
 
+enum enumCount(T) = T.max-T.min+1;
+
+// Generate an array with a value for each member of an enum.
+// @Compiler Bug: Doesn't work with large enums because of how many function parameters ther eare...
+template arrayOfEnum(T, V) if (is(T == enum)) {
+  static assert(T.min >= 0 && T.max >= 0, "This function doesn't handle enums with negative bounds!");
+
+  mixin(() {
+    import std.conv : to;
+    string result = "V[enumCount!T] arrayOfEnum(\n";
+
+    foreach (field; __traits(allMembers, T)) {
+      result ~= "  V ";
+      result ~= field;
+      result ~= ",\n";
+    }
+
+    result ~= ") {\n  V[enumCount!T] result;\n";
+
+    foreach (field; __traits(allMembers, T)) {
+      result ~= "  result[T.";
+      result ~= field;
+      result ~= "] = ";
+      result ~= field;
+      result ~= ";\n";
+    }
+
+    result ~= "  return result; }";
+    return result;
+  }());
+}
+
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;
