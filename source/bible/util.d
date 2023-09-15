@@ -410,6 +410,12 @@ auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   }
 }
 
+pragma(inline, true)
+void breakpoint() {
+  import ldc.llvmasm;
+  __asm("bkpt", "");
+}
+
 bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
   auto bytes = readFile(filename);
   scope (exit) freeArray(bytes);
