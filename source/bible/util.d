@@ -198,7 +198,7 @@ struct TemporaryStorage(size_t maxSize) {
     va_list args;
     va_start(args, spec);
 
-    size_t spaceRemaining = maxSize - (index-data.ptr);
+    int spaceRemaining = maxSize - (index-data.ptr);
 
     int length = vsnprintf(cast(char*) index, spaceRemaining, spec, args);
 
