@@ -30,42 +30,6 @@ static immutable Rectangle[GFXScreen.max+1] SCREEN_RECT = [
   ),
 ];
 
-// @TODO: Replace this with hashing system
-enum UiId : ushort {
-  combined_screen_layout_main,
-  combined_screen_layout_left,
-  combined_screen_layout_center,
-  combined_screen_layout_right,
-  book_scroll_layout,
-  book_options_btn,
-  book_screen_spacer,
-  book_bible_btn_first,
-  book_bible_btn_last = book_bible_btn_first + BOOK_NAMES.length - 1,
-  book_bible_btn_spacer_first,
-  book_bible_btn_spacer_last = book_bible_btn_spacer_first + BOOK_NAMES.length - 1,
-  book_right_split_layout_main,
-  book_right_split_layout_top,
-  book_right_split_layout_bottom,
-  book_scroll_indicator,
-  reading_scroll_read_view,
-  reading_right_split_layout_main,
-  reading_right_split_layout_top,
-  reading_right_split_layout_bottom,
-  reading_scroll_indicator,
-  reading_back_btn,
-  options_scroll_layout,
-  options_screen_spacer,
-  options_translation_label,
-  options_translation_btn_first,
-  options_translation_btn_last = options_translation_btn_first + TRANSLATION_NAMES_LONG.length - 1,
-  options_translation_spacer_first,
-  options_translation_spacer_last = options_translation_spacer_first + TRANSLATION_NAMES_LONG.length - 1,
-  options_back_btn,
-  options_right_split_layout_main,
-  options_right_split_layout_top,
-  options_right_split_layout_bottom,
-}
-
 enum MARGIN = 8.0f;
 enum BOOK_BUTTON_WIDTH      = 200.0f;
 enum BOOK_BUTTON_MARGIN     = 8.0f;
@@ -148,7 +112,11 @@ immutable DEFAULT_STYLE = BoxStyle.init;
 
 struct UiBox {
   UiBox* first, last, next, prev, parent;
-  UiId id;
+  UiBox* hashNext, hashPrev;
+  UiBox* freeListNext;
+
+  ulong hashKey;
+
   int childId;
 
   C2D_Text text;
@@ -193,8 +161,8 @@ struct UiBoxAndSignal {
 }
 
 
-void label(UiId id, string text, Justification justification = Justification.min) {
-  UiBox* box = makeBox(id, UiFlags.draw_text, text);
+void label(const(char)[] text, Justification justification = Justification.min) {
+  UiBox* box = makeBox(UiFlags.draw_text, text);
 
   box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
   box.justification  = justification;
@@ -221,8 +189,8 @@ static immutable BoxStyle BACK_BUTTON_STYLE = () {
   return result;
 }();
 
-UiSignal button(UiId id, string text, int size = 0) {
-  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
+UiSignal button(const(char)[] text, int size = 0) {
+  UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
 
   if (size == 0) {
     box.semanticSize[Axis2.x] = UiSize(UiSizeKind.text_content, 0, 1);
@@ -238,15 +206,15 @@ UiSignal button(UiId id, string text, int size = 0) {
   return signalFromBox(box);
 }
 
-UiSignal bottomButton(UiId id, string text) {
-  UiBox* box = makeBox(id, UiFlags.clickable | UiFlags.draw_text, text);
+UiSignal bottomButton(const(char)[] text) {
+  UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text, text);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
   box.render = &renderBottomButton;
   return signalFromBox(box);
 }
 
-void spacer(UiId id, float size) {
-  UiBox* box = makeBox(id, cast(UiFlags) 0, null);
+void spacer(const(char)[] id, float size) {
+  UiBox* box = makeBox(cast(UiFlags) 0, id);
 
   if (box.parent && (box.parent.flags & UiFlags.horizontal_children)) {
     box.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, size);
@@ -258,8 +226,8 @@ void spacer(UiId id, float size) {
   }
 }
 
-void scrollIndicator(UiId id, UiBox* source, Justification justification, bool limitHit) {
-  UiBox* box = makeBox(id, cast(UiFlags) 0, null);
+void scrollIndicator(const(char)[] id, UiBox* source, Justification justification, bool limitHit) {
+  UiBox* box = makeBox(cast(UiFlags) 0, id);
   box.render = &renderScrollIndicator;
 
   // @TODO: Only vertical scroll indicators are supported at the moment.
@@ -280,7 +248,7 @@ struct ScopedSelectScrollLayout {
 
   @disable this();
 
-  this(UiId id, UiSignal* signalToWrite) {
+  this(const(char)[] id, UiSignal* signalToWrite) {
     box = pushSelectScrollLayout(id);
     this.signalToWrite = signalToWrite;
   }
@@ -290,22 +258,22 @@ struct ScopedSelectScrollLayout {
   }
 }
 
-UiBox* pushSelectScrollLayout(UiId id) {
-  UiBox* box = makeBox(id, UiFlags.select_children | UiFlags.view_scroll | UiFlags.demand_focus, null);
+UiBox* pushSelectScrollLayout(const(char)[] id) {
+  UiBox* box = makeBox(UiFlags.select_children | UiFlags.view_scroll | UiFlags.demand_focus, id);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.justification  = Justification.center;
   pushParent(box);
   return box;
 }
 
-UiBox* makeLayout(UiId id, Axis2 flowDirection) {
-  UiBox* box = makeBox(id, cast(UiFlags) ((flowDirection == Axis2.x) * UiFlags.horizontal_children), null);
+UiBox* makeLayout(const(char)[] id, Axis2 flowDirection) {
+  UiBox* box = makeBox(cast(UiFlags) ((flowDirection == Axis2.x) * UiFlags.horizontal_children), id);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.justification  = Justification.center;
   return box;
 }
 
-UiBox* pushLayout(UiId id, Axis2 flowDirection) {
+UiBox* pushLayout(const(char)[] id, Axis2 flowDirection) {
   auto result = makeLayout(id, flowDirection);
   pushParent(result);
   return result;
@@ -316,7 +284,7 @@ struct ScopedLayout {
 
   @disable this();
 
-  this(UiId id, Axis2 flowDirection) {
+  this(const(char)[] id, Axis2 flowDirection) {
     pushLayout(id, flowDirection);
   }
 
@@ -334,7 +302,7 @@ struct ScopedCombinedScreenSplitLayout {
 
   @disable this();
 
-  this(UiId mainId, UiId leftId, UiId centerId, UiId rightId) {
+  this(const(char)[] mainId, const(char)[] leftId, const(char)[] centerId, const(char)[] rightId) {
     main   = pushLayout(mainId,   Axis2.x);
     left   = makeLayout(leftId,   Axis2.y);
     center = makeLayout(centerId, Axis2.y);
@@ -368,7 +336,7 @@ struct ScopedDoubleScreenSplitLayout {
 
   @disable this();
 
-  this(UiId mainId, UiId topId, UiId bottomId) {
+  this(const(char)[] mainId, const(char)[] topId, const(char)[] bottomId) {
     main   = pushLayout(mainId,   Axis2.y);
     top    = makeLayout(topId,    Axis2.x);
     bottom = makeLayout(bottomId, Axis2.x);
@@ -390,8 +358,8 @@ struct ScopedDoubleScreenSplitLayout {
   }
 }
 
-UiBoxAndSignal scrollableReadPane(UiId id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
-  UiBox* box = makeBox(id, UiFlags.view_scroll | UiFlags.manual_scroll_limits | UiFlags.demand_focus, null);
+UiBoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
+  UiBox* box = makeBox(UiFlags.view_scroll | UiFlags.manual_scroll_limits | UiFlags.demand_focus, id);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   box.scrollCache    = scrollCache;
   box.render         = &scrollCacheDraw;
@@ -426,9 +394,11 @@ struct UiCommand {
 }
 
 struct UiData {
-  Input* input;
+  //UiBox[512] boxes;
+  TemporaryStorage!(16*1024) tempAlloc;
+  UiHashTable boxes;
 
-  UiBox[512] boxes;
+  Input* input;
   UiBox* root, curBox;
   uint frameIndex;
 
@@ -444,11 +414,30 @@ struct UiData {
 
 UiData gUiData;
 
-UiBox* makeBox(UiId id, UiFlags flags, string text) { with (gUiData) {
-  UiBox* result = &boxes[id];
-  if (frameIndex-1 != result.lastFrameTouchedIndex) {
-    *result = UiBox.init;
+const(char)[] tprint(T...)(const(char)[] format, T args) {
+  return gUiData.tempAlloc.printf(format.ptr, args);
+}
+
+// Returns ID part of string followed by non-ID
+const(char)[][2] parseIdFromString(const(char)[] text) {
+  const(char)[][2] result = [text, text];
+
+  foreach (i; 0..text.length-1) {
+    if (text[i] == '#' && text[i+1] == '#') {
+      result[0]   = text[i+2..$];
+      result[1]   = text[0..i];
+      break;
+    }
   }
+
+  return result;
+}
+
+UiBox* makeBox(UiFlags flags, const(char)[] text) { with (gUiData) {
+  const(char)[][2] idAndNon = parseIdFromString(text);
+  const(char)[] id = idAndNon[0], displayText = idAndNon[1];
+
+  UiBox* result = hashTableFindOrAlloc(&boxes, id);
   result.lastFrameTouchedIndex = frameIndex;
 
   result.first   = null;
@@ -476,13 +465,12 @@ UiBox* makeBox(UiId id, UiFlags flags, string text) { with (gUiData) {
     curBox = result;
   }
 
-  result.id      = id;
   result.childId = result.prev == null ? 0 : result.prev.childId + 1;
   result.flags   = flags;
   result.style   = gUiData.style;
 
-  if ((flags & UiFlags.draw_text) && text.length) {
-    C2D_TextParse(&result.text, textBuf, text);
+  if ((flags & UiFlags.draw_text) && displayText.length) {
+    C2D_TextParse(&result.text, textBuf, displayText);
     float width, height;
     C2D_TextGetDimensions(&result.text, result.style.textSize, result.style.textSize, &width, &height);
     result.text.width = width;
@@ -512,6 +500,8 @@ UiSignal popParentAndSignal() {
 
 void uiInit() { with (gUiData) {
   textBuf = C2D_TextBufNew(16384);
+  boxes   = hashTableMake(maxElements: 512, tableElements: 128);
+  tempAlloc.init();
 }}
 
 void uiFrameStart() { with (gUiData) {
@@ -703,6 +693,8 @@ void uiFrameEnd() { with (gUiData) {
     return false;
   });
 
+  hashTablePrune(&gUiData.boxes);
+  gUiData.tempAlloc.reset();
   frameIndex++;
 }}
 
@@ -1128,7 +1120,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
       return true; // children will be skipped
     }
 
-    auto color = COLORS[box.id % COLORS.length];
+    auto color = COLORS[box.hashKey % COLORS.length];
 
     if (box.render) {
       box.render(box, screen, side, _3DEnabled, slider3DState, screenPos);
@@ -1229,3 +1221,145 @@ void loadPage(LoadedPage* page, char[][] pageLines, float textScale, float margi
 void unloadPage(LoadedPage* page) { with (page) {
   if (textBuf) C2D_TextBufClear(textBuf);
 }}
+
+struct UiHashTable {
+  UiBox*[] table;
+
+  UiBox[] pool;
+  size_t poolPos;
+  UiBox* firstFree;
+
+  @nogc: nothrow:
+  UiBox* opIndex(const(char)[] text) {
+    auto key   = uiBoxHash(text);
+    auto index = cast(size_t) (key % this.table.length);
+
+    UiBox* runner = this.table[index];
+    while (runner && runner.hashKey != key) {
+      runner = runner.hashNext;
+    }
+
+    return runner;
+  }
+
+  debug {
+    struct PerfStats {
+      uint collisions;
+      uint longestChain;
+    }
+    PerfStats perfStats;
+  }
+}
+
+ulong uiBoxHash(const(char)[] text) {
+  // @TODO: This hash sucks!!!! Replace it!
+  ulong hash = 5381;
+
+  foreach (c; cast(const(ubyte)[]) text) {
+    hash = hash * 33 ^ c;
+  }
+
+  return hash;
+}
+
+UiHashTable hashTableMake(size_t maxElements, size_t tableElements) {
+  UiHashTable result;
+
+  // @TODO: Use arenas instead
+  result.pool  = allocArray!(UiBox,  true)(maxElements);
+  result.table = allocArray!(UiBox*, true)(tableElements);
+
+  return result;
+}
+
+void hashTableFree(UiHashTable* hashTable) {
+  freeArray(hashTable.pool);
+  freeArray(hashTable.table);
+  *hashTable = UiHashTable.init;
+}
+
+UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
+  auto key      = uiBoxHash(text);
+  auto index    = cast(size_t) (key % hashTable.table.length);
+  UiBox* runner = hashTable.table[index], last = null;
+  UiBox* result;
+
+  bool fillingSlot = runner == null;
+  if (runner) {
+    debug hashTable.perfStats.collisions++;
+
+    // Look for the end of the chain or a box with our key, if it's there
+    debug uint chainLength = 0;
+    while (runner) {
+      if (runner.hashKey == key) {
+        result = runner;
+        break;
+      }
+      last   = runner;
+      runner = runner.hashNext;
+      debug chainLength++;
+    }
+
+    debug if (chainLength > hashTable.perfStats.longestChain) {
+      hashTable.perfStats.longestChain = chainLength;
+    }
+  }
+
+  if (!result) {
+    // Looks like we must add to the end of the chain, so allocate on the free list
+    if (hashTable.firstFree) {
+      result              = hashTable.firstFree;
+      hashTable.firstFree = hashTable.firstFree.freeListNext;
+    }
+    else {
+      assert(hashTable.poolPos < hashTable.pool.length);
+      result = &hashTable.pool[hashTable.poolPos];
+      hashTable.poolPos++;
+    }
+
+    if (fillingSlot) {
+      hashTable.table[index] = result;
+    }
+
+    *result = UiBox.init;
+    result.hashKey  = key;
+    if (last) last.hashNext = result;
+    result.hashPrev = last;
+    result.hashNext = null;
+  }
+
+  return result;
+}
+
+void hashTableRemove(UiHashTable* hashTable, UiBox* box) {
+  assert(box >= hashTable.pool.ptr && box < hashTable.pool.ptr + hashTable.pool.length);
+
+  if (box.hashPrev) {
+    box.hashPrev.hashNext = box.hashNext;
+  }
+
+  if (box.hashNext) {
+    box.hashNext.hashPrev = box.hashPrev;
+  }
+
+  box.freeListNext    = hashTable.firstFree;
+  hashTable.firstFree = box;
+
+  box.hashKey = 0;
+
+  // @Note: Doesn't update the table array - only hashTablePrune knows enough to do that without a loop. Is this a bad API?
+}
+
+void hashTablePrune(UiHashTable* hashTable) {
+  foreach (ref box; hashTable.table) {
+    auto runner = box;
+
+    while (runner) {
+      if (runner.lastFrameTouchedIndex != gUiData.frameIndex) {
+        hashTableRemove(hashTable, runner);
+        if (box == runner) box = runner.next;
+      }
+      runner = runner.next;
+    }
+  }
+}

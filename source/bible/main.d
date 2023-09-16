@@ -14,9 +14,12 @@ import bible.imgui, bible.imgui_render;
 
 //debug import bible.debugging;
 
+import core.stdc.signal;
 import core.stdc.stdio;
 import core.stdc.stdlib;
 import core.stdc.time;
+
+import ldc.llvmasm;
 
 nothrow: @nogc:
 
@@ -206,8 +209,8 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
   frameNeedsRender = true;
 
   // @Hack: Is there any better way to do this?
-  gUiData.boxes[UiId.reading_scroll_read_view].scrollInfo.offset     = 0;
-  gUiData.boxes[UiId.reading_scroll_read_view].scrollInfo.offsetLast = 0;
+  gUiData.boxes["reading_scroll_read_view"].scrollInfo.offset     = 0;
+  gUiData.boxes["reading_scroll_read_view"].scrollInfo.offsetLast = 0;
 
   pageId = newPageId;
 }}
@@ -281,7 +284,7 @@ void mainGui(MainData* mainData, Input* input) {
   uiFrameStart();
   handleInput(input);
 
-  auto mainLayout = ScopedCombinedScreenSplitLayout(UiId.combined_screen_layout_main, UiId.combined_screen_layout_left, UiId.combined_screen_layout_center, UiId.combined_screen_layout_right);
+  auto mainLayout = ScopedCombinedScreenSplitLayout("combined_screen_layout_main", "combined_screen_layout_left", "combined_screen_layout_center", "combined_screen_layout_right");
   mainLayout.startCenter();
 
   final switch (mainData.curView) {
@@ -289,26 +292,26 @@ void mainGui(MainData* mainData, Input* input) {
       UiBox* scrollLayoutBox;
       UiSignal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout(UiId.book_scroll_layout, &scrollLayoutSignal);
+        auto scrollLayout = ScopedSelectScrollLayout("book_scroll_layout", &scrollLayoutSignal);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
 
         scrollLayoutBox = scrollLayout.box;
 
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
-        spacer(UiId.book_screen_spacer, SCREEN_HEIGHT + 8);
+        spacer("book_screen_spacer", SCREEN_HEIGHT + 8);
 
         foreach (i, book; BOOK_NAMES) {
-          if (button(cast(UiId) (UiId.book_bible_btn_first + i), book, 150).clicked) {
+          if (button(book, 150).clicked) {
             sendCommand(CommandCode.open_book, i);
           }
 
-          spacer(cast(UiId) (UiId.book_bible_btn_spacer_first + i), 8);
+          spacer(tprint("book_bible_btn_spacer_%d", i), 8);
         }
       }
 
       {
         auto style = ScopedStyle(&BOTTOM_BUTTON_STYLE);
-        if (bottomButton(UiId.book_options_btn, "Options").clicked) {
+        if (bottomButton("Options").clicked) {
           sendCommand(CommandCode.switch_view, View.options);
         }
       }
@@ -316,22 +319,22 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.book_right_split_layout_main, UiId.book_right_split_layout_top, UiId.book_right_split_layout_bottom);
+        auto rightSplit = ScopedDoubleScreenSplitLayout("book_right_split_layout_main", "book_right_split_layout_top", "book_right_split_layout_bottom");
 
         rightSplit.startTop();
 
-        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
+        scrollIndicator("book_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
       }
 
       break;
 
     case View.reading:
-      auto readPane = scrollableReadPane(UiId.reading_scroll_read_view, mainData.loadedPage, &mainData.scrollCache);
+      auto readPane = scrollableReadPane("reading_scroll_read_view", mainData.loadedPage, &mainData.scrollCache);
       mainData.loadedPage.scrollInfo = readPane.box.scrollInfo;
 
       {
         auto style = ScopedStyle(&BACK_BUTTON_STYLE);
-        if (bottomButton(UiId.reading_back_btn, "Back").clicked || input.down(Key.b)) {
+        if (bottomButton("Back").clicked || input.down(Key.b)) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
         }
@@ -340,11 +343,11 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.reading_right_split_layout_main, UiId.reading_right_split_layout_top, UiId.reading_right_split_layout_bottom);
+        auto rightSplit = ScopedDoubleScreenSplitLayout("reading_right_split_layout_main", "reading_right_split_layout_top", "reading_right_split_layout_bottom");
 
         rightSplit.startTop();
 
-        scrollIndicator(UiId.reading_scroll_indicator, readPane.box, Justification.min, readPane.signal.pushingAgainstScrollLimit);
+        scrollIndicator("reading_scroll_indicator", readPane.box, Justification.min, readPane.signal.pushingAgainstScrollLimit);
       }
 
       break;
@@ -353,29 +356,29 @@ void mainGui(MainData* mainData, Input* input) {
       UiBox* scrollLayoutBox;
       UiSignal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout(UiId.options_scroll_layout, &scrollLayoutSignal);
+        auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
         scrollLayout.box.justification = Justification.min;
 
         scrollLayoutBox = scrollLayout.box;
 
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
-        spacer(UiId.options_screen_spacer, SCREEN_HEIGHT + 8);
+        spacer("options_screen_spacer", SCREEN_HEIGHT + 8);
 
-        label(UiId.options_translation_label, "Translation");
+        label("Translation");
 
         foreach (i, translation; TRANSLATION_NAMES_LONG) {
-          if (button(cast(UiId) (UiId.options_translation_btn_first + i), translation).clicked) {
+          if (button(translation).clicked) {
             gSaveFile.settings.translation = cast(Translation) i;
           }
 
-          spacer(cast(UiId) (UiId.options_translation_spacer_first + i), 8);
+          spacer(tprint("options_translation_spacer_%d", i), 8);
         }
       }
 
       {
         auto style = ScopedStyle(&BACK_BUTTON_STYLE);
-        if (bottomButton(UiId.options_back_btn, "Back").clicked || input.down(Key.b)) {
+        if (bottomButton("Back").clicked || input.down(Key.b)) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
@@ -385,11 +388,11 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout(UiId.options_right_split_layout_main, UiId.options_right_split_layout_top, UiId.options_right_split_layout_bottom);
+        auto rightSplit = ScopedDoubleScreenSplitLayout("options_right_split_layout_main", "options_right_split_layout_top", "options_right_split_layout_bottom");
 
         rightSplit.startTop();
 
-        scrollIndicator(UiId.book_scroll_indicator, scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
+        scrollIndicator("book_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
       }
       break;
   }
