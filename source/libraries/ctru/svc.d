@@ -138,6 +138,98 @@ enum CUR_THREAD_HANDLE = 0xFFFF8000;
 ///@name Debugging
 ///@{
 
+/// Operations for \ref svcControlPerformanceCounter
+enum PerfCounterOperation : ubyte {
+    enable                        = 0,    ///< Enable and lock perfmon. functionality.
+    disable                       = 1,    ///< Disable and forcibly unlock perfmon. functionality.
+    get_value                     = 2,    ///< Get the value of a counter register.
+    set_value                     = 3,    ///< Set the value of a counter register.
+    get_overflow_flags            = 4,    ///< Get the overflow flags for all CP15 and SCU counters.
+    reset                         = 5,    ///< Reset the value and/or overflow flags of selected counters.
+    get_event                     = 6,    ///< Get the event ID associated to a particular counter.
+    set_event                     = 7,    ///< Set the event ID associated to a paritcular counter.
+    set_virtual_counter_enabled   = 8,    ///< (Dis)allow the kernel to track counter overflows and to use 64-bit counter values.
+}
+
+/// Performance counter register IDs (CP15 and SCU).
+enum PerfCounterRegister : ubyte {
+    // CP15 registers:
+    core_base = 0,
+    core_count_reg_0 = core_base, ///< CP15 PMN0.
+    core_count_reg_1,   ///< CP15 PMN1.
+    core_cycle_counter, ///< CP15 CCNT.
+
+    // SCU registers
+    scu_base = 0x10,
+    scu_0 = scu_base, ///< SCU MN0.
+    scu_1,  ///< SCU MN1.
+    scu_2,  ///< SCU MN2.
+    scu_3,  ///< SCU MN3.
+    scu_4,  ///< SCU MN4. Prod-N3DS only. IRQ line missing.
+    scu_5,  ///< SCU MN5. Prod-N3DS only. IRQ line missing.
+    scu_6,  ///< SCU MN6. Prod-N3DS only. IRQ line missing.
+    scu_7,  ///< SCU MN7. Prod-N3DS only. IRQ line missing.
+}
+
+/**
+ * @brief Performance counter event IDs (CP15 or SCU).
+ *
+ * @note Refer to:
+ *     - CP15: https://developer.arm.com/documentation/ddi0360/e/control-coprocessor-cp15/register-descriptions/c15--performance-monitor-control-register--pmnc-
+ *     - SCU: https://developer.arm.com/documentation/ddi0360/e/mpcore-private-memory-region/about-the-mpcore-private-memory-region/performance-monitor-event-registers
+ */
+enum PerfCounterEvent : ushort {
+    // Core events:
+    core_base = 0x0,
+    core_inst_cache_miss = core_base,
+    core_stall_by_lack_of_inst,
+    core_stall_by_data_hazard,
+    core_inst_micro_tlb_miss,
+    core_data_micro_tlb_miss,
+    core_branch_inst,
+    core_branch_not_predicted,
+    core_branch_miss_predicted,
+    core_inst_executed,
+    core_folded_inst_executed,
+    core_data_cache_read,
+    core_data_cache_read_miss,
+    core_data_cache_write,
+    core_data_cache_write_miss,
+    core_data_cache_line_eviction,
+    core_pc_changed,
+    core_main_tlb_miss,
+    core_external_request,
+    core_stall_by_lsu_full,
+    core_store_buffer_drain,
+    core_merge_in_store_buffer,
+    core_cycle_count = core_base + 0xFF,     ///< One cycle elapsed.
+    core_cycle_count_64 = core_base + 0xFFF, ///< 64 cycles elapsed.
+
+
+    scu_base = 0x1000,
+    scu_disabled = scu_base,
+    scu_linefill_miss_from_core0,
+    scu_linefill_miss_from_core1,
+    scu_linefill_miss_from_core2,
+    scu_linefill_miss_from_core3,
+    scu_linefill_hit_from_core0,
+    scu_linefill_hit_from_core1,
+    scu_linefill_hit_from_core2,
+    scu_linefill_hit_from_core3,
+    scu_line_missing_from_core0,
+    scu_line_missing_from_core1,
+    scu_line_missing_from_core2,
+    scu_line_missing_from_core3,
+    scu_line_migration,
+    scu_read_busy_port0,
+    scu_read_busy_port1,
+    scu_write_busy_port0,
+    scu_write_busy_port1,
+    scu_external_read,
+    scu_external_write,
+    scu_cycle_count = scu_base + 0x1F,
+}
+
 /// Event relating to the attachment of a process.
 struct AttachProcessEvent
 {
@@ -549,6 +641,18 @@ Result svcStopDma(Handle dma);
  * @param dma Handle of the DMA.
  */
 Result svcGetDmaState(void* dmaState, Handle dma);
+
+/**
+ * @brief Restarts a DMA transfer, using the same configuration as before.
+ * @param[out] state Pointer to output the state of the DMA transfer to.
+ * @param dma Handle of the DMA channel object.
+ * @param dstAddr Address in the destination process to write data to.
+ * @param srcAddr Address in the source to read data from.
+ * @param size Size of the data to transfer.
+ * @param flags Restart flags, \ref DMARST_UNLOCK and/or \ref DMARST_RESUME_DEVICE.
+ * @note The first transfer has to be configured with \ref DMACFG_KEEP_LOCKED.
+ */
+Result svcRestartDma(Handle dma, uint dstAddr, uint srcAddr, uint size, byte flags);
 
 /**
  * @brief Queries memory information.
@@ -974,6 +1078,17 @@ Result svcCreateAddressArbiter(Handle* arbiter);
 Result svcArbitrateAddress(Handle arbiter, uint addr, ArbitrationType type, int value, long nanoseconds);
 
 /**
+ * @brief Same as \ref svcArbitrateAddress but with the timeout_ns parameter undefined.
+ * @param arbiter Handle of the arbiter
+ * @param addr A pointer to a s32 value.
+ * @param type Type of action to be performed by the arbiter
+ * @param value Number of threads to signal if using @ref ARBITRATION_SIGNAL, or the value used for comparison.
+ * @note Usage of this syscall entails an implicit Data Memory Barrier (dmb).
+ * @warning Please use \ref syncArbitrateAddress instead.
+ */
+Result svcArbitrateAddressNoTimeout(Handle arbiter, uint addr, ArbitrationType type, int value);
+
+/**
  * @brief Sends a synchronized request to a session handle.
  * @param session Handle of the session.
  */
@@ -1134,6 +1249,33 @@ void svcBreakRO(UserBreakType breakReason, const(void)* croInfo, uint croInfoSiz
  * @param length Length of the string to output, needs to be positive.
  */
 Result svcOutputDebugString(const(char)* str, int length);
+
+/**
+ * @brief Controls performance monitoring on the CP15 interface and the SCU.
+ * The meaning of the parameters depend on the operation.
+ * @param[out] out Output.
+ * @param op Operation, see details.
+ * @param param1 First parameter.
+ * @param param2 Second parameter.
+ * @details The operations are the following:
+ *     - \ref PERFCOUNTEROP_ENABLE (void) -> void, tries to enable and lock perfmon. functionality.
+ *     - \ref PERFCOUNTEROP_DISABLE (void) -> void, disable and forcibly unlocks perfmon. functionality.
+ *     - \ref PERFCOUNTEROP_GET_VALUE (\ref PerfCounterRegister reg) -> u64, gets the value of a particular counter register.
+ *     - \ref PERFCOUNTEROP_SET_VALUE (\ref PerfCounterRegister reg, u64 value) -> void, sets the value of a particular counter register.
+ *     - \ref PERFCOUNTEROP_GET_OVERFLOW_FLAGS (void) -> u32, gets the overflow flags of all CP15 and SCU registers.
+ *         - Format is a bitfield of \ref PerfCounterRegister.
+ *     - \ref PERFCOUNTEROP_RESET (u32 valueResetMask, u32 overflowFlagResetMask) -> void, resets the value and/or
+ *     overflow flags of selected registers.
+ *         - Format is two bitfields of \ref PerfCounterRegister.
+ *     - \ref PERFCOUNTEROP_GET_EVENT (\ref PerfCounterRegister reg) -> \ref PerfCounterEvent, gets the event associated
+ *     to a particular counter register.
+ *     - \ref PERFCOUNTEROP_SET_EVENT (\ref PerfCounterRegister reg, \ref PerfCounterEvent) -> void, sets the event associated
+ *     to a particular counter register.
+ *     - \ref PERFCOUNTEROP_SET_VIRTUAL_COUNTER_ENABLED (bool enabled) -> void, (dis)allows the kernel to track counter overflows
+ *     and to use 64-bit counter values.
+ */
+Result svcControlPerformanceCounter(ulong *out_, PerfCounterOperation op, uint param1, ulong param2);
+
 /**
  * @brief Creates a debug handle for an active process.
  * @param[out] debug Pointer to output the created debug handle to.
