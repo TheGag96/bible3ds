@@ -62,6 +62,10 @@ struct MainData {
 MainData mainData;
 
 extern(C) int main(int argc, char** argv) {
+  threadOnException(&crashHandler,
+                    RUN_HANDLER_ON_FAULTING_STACK,
+                    WRITE_DATA_TO_FAULTING_STACK);
+
   // Init libs
   romfsInit();
 
@@ -398,4 +402,29 @@ void mainGui(MainData* mainData, Input* input) {
   }
 
   uiFrameEnd();
+}
+
+extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {
+  import ctru.console : consoleInit;
+  import ctru.gfx     : GFXScreen;
+
+  consoleInit(GFXScreen.bottom, null);
+  printf("\x1b[1;1HException hit!\n");
+  printf("PC\t= %08X, LR  \t= %08X\n", regs.pc, regs.lr);
+  printf("SP\t= %08X, CPSR\t= %08X\n", regs.sp, regs.cpsr);
+
+  foreach (i, x; regs.r) {
+    printf("R%d\t= %08X\n", i, x);
+  }
+
+  printf("\n\nPress Start to exit...\n");
+
+  //wait for key press and exit (so we can read the error message)
+  while (aptMainLoop()) {
+    hidScanInput();
+
+    if ((hidKeysDown() & (1<<3))) {
+      exit(0);
+    }
+  }
 }
