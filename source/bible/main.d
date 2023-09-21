@@ -11,6 +11,7 @@ import citro2d;
 
 import bible.bible, bible.audio, bible.input, bible.util, bible.save;
 import bible.imgui, bible.imgui_render;
+import bible.profiling;
 
 //debug import bible.debugging;
 
@@ -61,6 +62,13 @@ struct MainData {
 }
 MainData mainData;
 
+enum SOC_ALIGN      = 0x1000;
+enum SOC_BUFFERSIZE = 0x100000;
+
+uint* SOC_buffer = null;
+
+extern(C) void* memalign(size_t, size_t);
+
 extern(C) int main(int argc, char** argv) {
   threadOnException(&crashHandler,
                     RUN_HANDLER_ON_FAULTING_STACK,
@@ -68,6 +76,22 @@ extern(C) int main(int argc, char** argv) {
 
   // Init libs
   romfsInit();
+
+  {
+    int ret;
+    // allocate buffer for SOC service
+    SOC_buffer = cast(uint*) memalign(SOC_ALIGN, SOC_BUFFERSIZE);
+
+    assert(SOC_buffer, "memalign: failed to allocate\n");
+
+    // Now intialise soc:u service
+    if ((ret = socInit(SOC_buffer, SOC_BUFFERSIZE)) != 0) {
+        //failExit("socInit: 0x%08X\n", (unsigned int)ret);
+      assert(0);
+    }
+
+    link3dsStdio();
+  }
 
   gfxInitDefault();
   gfxSet3D(true); // Enable stereoscopic 3D
@@ -100,6 +124,8 @@ extern(C) int main(int argc, char** argv) {
 
   // Main loop
   while (aptMainLoop()) {
+    beginProfile();
+
     osTickCounterUpdate(&tickCounter);
     float frameTime = osTickCounterRead(&tickCounter);
 
@@ -144,10 +170,16 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[4;1HGPU:     %6.2f%%\x1b[K", C3D_GetDrawingTime()*6.0f);
     //debug printf("\x1b[5;1HCmdBuf:  %6.2f%%\x1b[K", C3D_GetCmdBufUsage()*100.0f);
 
+    {
+      auto renderBlock = TimeBlock.make!("render");
+
+
     // Render the scene
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     {
       if (mainData.curView == View.reading) {
+        auto block = TimeBlock.make!("render > scroll cache");
+
         scrollCacheBeginFrame(&mainData.scrollCache);
         scrollCacheRenderScrollUpdate(
           &mainData.scrollCache,
@@ -158,24 +190,34 @@ extern(C) int main(int argc, char** argv) {
         scrollCacheEndFrame(&mainData.scrollCache);
       }
 
-      C2D_TargetClear(topLeft, CLEAR_COLOR);
-      C2D_SceneBegin(topLeft);
-      drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-      render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
+      {
+        auto renderLeft = TimeBlock.make!();
+        C2D_TargetClear(topLeft, CLEAR_COLOR);
+        C2D_SceneBegin(topLeft);
+        drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
+      }
 
       if (_3DEnabled) {
+        auto renderRight = TimeBlock.make!("render > right");
         C2D_TargetClear(topRight, CLEAR_COLOR);
         C2D_SceneBegin(topRight);
         drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
         render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
       }
 
-      C2D_TargetClear(bottom, CLEAR_COLOR);
-      C2D_SceneBegin(bottom);
-      drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-      render(GFXScreen.bottom, GFX3DSide.left, false, 0);
+      {
+        auto renderBottom = TimeBlock.make!("render > bottom");
+        C2D_TargetClear(bottom, CLEAR_COLOR);
+        C2D_SceneBegin(bottom);
+        drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        render(GFXScreen.bottom, GFX3DSide.left, false, 0);
+      }
+    }
+
     }
     C3D_FrameEnd(0);
+    endProfileAndLog();
   }
 
   // Deinit libs
@@ -263,6 +305,8 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
 
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
 void mainGui(MainData* mainData, Input* input) {
+  auto mainGui = TimeBlock.make!("mainGui");
+
   enum CommandCode {
     switch_view,
     open_book,

@@ -6,6 +6,7 @@ import bible.input, bible.util, bible.audio, bible.bible;
 import ctru, citro2d, citro3d;
 import std.math;
 import bible.imgui_render;
+import bible.profiling;
 
 @nogc: nothrow:
 
@@ -505,6 +506,8 @@ void uiInit() { with (gUiData) {
 }}
 
 void uiFrameStart() { with (gUiData) {
+  auto uiFrameStart = TimeBlock.make!("uiFrameStart");
+
   curBox      = null;
   root        = null;
   style       = &DEFAULT_STYLE;
@@ -518,6 +521,8 @@ void handleInput(Input* newInput) { with (gUiData) {
 }}
 
 void uiFrameEnd() { with (gUiData) {
+  auto uiFrameEnd = TimeBlock.make!("uiFrameEnd");
+
   if (hot     && hot.lastFrameTouchedIndex      != frameIndex) hot     = null;
   if (active  && active.lastFrameTouchedIndex   != frameIndex) active  = null;
   if (focused && focused .lastFrameTouchedIndex != frameIndex) focused = null;
@@ -1279,6 +1284,8 @@ void hashTableFree(UiHashTable* hashTable) {
 }
 
 UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
+  auto timeThis = TimeBlock.make!("hashTableFindOrAlloc");
+
   auto key      = uiBoxHash(text);
   auto index    = cast(size_t) (key % hashTable.table.length);
   UiBox* runner = hashTable.table[index], last = null;
@@ -1351,6 +1358,8 @@ void hashTableRemove(UiHashTable* hashTable, UiBox* box) {
 }
 
 void hashTablePrune(UiHashTable* hashTable) {
+  auto hashTablePrune = TimeBlock.make!("hashTablePrune");
+
   foreach (ref box; hashTable.table) {
     auto runner = box;
 
