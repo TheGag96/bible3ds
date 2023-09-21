@@ -213,8 +213,11 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
   frameNeedsRender = true;
 
   // @Hack: Is there any better way to do this?
-  gUiData.boxes["reading_scroll_read_view"].scrollInfo.offset     = 0;
-  gUiData.boxes["reading_scroll_read_view"].scrollInfo.offsetLast = 0;
+  auto readViewPane = gUiData.boxes["reading_scroll_read_view"];
+  if (readViewPane) {
+    readViewPane.scrollInfo.offset     = 0;
+    readViewPane.scrollInfo.offsetLast = 0;
+  }
 
   pageId = newPageId;
 }}
