@@ -305,14 +305,14 @@ void mainGui(MainData* mainData, Input* input) {
         scrollLayoutBox = scrollLayout.box;
 
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
-        spacer("book_screen_spacer", SCREEN_HEIGHT + 8);
+        spacer(SCREEN_HEIGHT + 8);
 
         foreach (i, book; BOOK_NAMES) {
           if (button(book, 150).clicked) {
             sendCommand(CommandCode.open_book, i);
           }
 
-          spacer(tprint("book_bible_btn_spacer_%d", i), 8);
+          spacer(8);
         }
       }
 
@@ -370,7 +370,7 @@ void mainGui(MainData* mainData, Input* input) {
         scrollLayoutBox = scrollLayout.box;
 
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
-        spacer("options_screen_spacer", SCREEN_HEIGHT + 8);
+        spacer(SCREEN_HEIGHT + 8);
 
         label("Translation");
 
@@ -379,7 +379,7 @@ void mainGui(MainData* mainData, Input* input) {
             gSaveFile.settings.translation = cast(Translation) i;
           }
 
-          spacer(tprint("options_translation_spacer_%d", i), 8);
+          spacer(8);
         }
       }
 

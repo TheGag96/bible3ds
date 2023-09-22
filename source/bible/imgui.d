@@ -160,7 +160,6 @@ struct UiBoxAndSignal {
   UiSignal signal;
 }
 
-
 void label(const(char)[] text, Justification justification = Justification.min) {
   UiBox* box = makeBox(UiFlags.draw_text, text);
 
@@ -213,8 +212,8 @@ UiSignal bottomButton(const(char)[] text) {
   return signalFromBox(box);
 }
 
-void spacer(const(char)[] id, float size) {
-  UiBox* box = makeBox(cast(UiFlags) 0, id);
+void spacer(float size) {
+  UiBox* box = makeBox(cast(UiFlags) 0, "");
 
   if (box.parent && (box.parent.flags & UiFlags.horizontal_children)) {
     box.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, size);
@@ -422,11 +421,13 @@ const(char)[] tprint(T...)(const(char)[] format, T args) {
 const(char)[][2] parseIdFromString(const(char)[] text) {
   const(char)[][2] result = [text, text];
 
-  foreach (i; 0..text.length-1) {
-    if (text[i] == '#' && text[i+1] == '#') {
-      result[0]   = text[i+2..$];
-      result[1]   = text[0..i];
-      break;
+  if (text.length) {
+    foreach (i; 0..text.length-1) {
+      if (text[i] == '#' && text[i+1] == '#') {
+        result[0]   = text[i+2..$];
+        result[1]   = text[0..i];
+        break;
+      }
     }
   }
 
@@ -500,7 +501,7 @@ UiSignal popParentAndSignal() {
 
 void uiInit() { with (gUiData) {
   textBuf = C2D_TextBufNew(16384);
-  boxes   = hashTableMake(maxElements: 512, tableElements: 128);
+  boxes   = hashTableMake(maxElements: 512, tableElements: 128, tempElements: 256);
   tempAlloc.init();
 }}
 
@@ -1229,6 +1230,9 @@ struct UiHashTable {
   size_t poolPos;
   UiBox* firstFree;
 
+  UiBox[] temp;
+  size_t tempPos;
+
   @nogc: nothrow:
   UiBox* opIndex(const(char)[] text) {
     auto key   = uiBoxHash(text);
@@ -1262,12 +1266,13 @@ ulong uiBoxHash(const(char)[] text) {
   return hash;
 }
 
-UiHashTable hashTableMake(size_t maxElements, size_t tableElements) {
+UiHashTable hashTableMake(size_t maxElements, size_t tableElements, size_t tempElements) {
   UiHashTable result;
 
   // @TODO: Use arenas instead
   result.pool  = allocArray!(UiBox,  true)(maxElements);
   result.table = allocArray!(UiBox*, true)(tableElements);
+  result.temp  = allocArray!(UiBox,  true)(tempElements);
 
   return result;
 }
@@ -1275,14 +1280,24 @@ UiHashTable hashTableMake(size_t maxElements, size_t tableElements) {
 void hashTableFree(UiHashTable* hashTable) {
   freeArray(hashTable.pool);
   freeArray(hashTable.table);
+  freeArray(hashTable.temp);
   *hashTable = UiHashTable.init;
 }
 
 UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
+  UiBox* result;
+
+  // If we're passed an empty ID, allocate it on the per-frame temporary box arena
+  if (!text.length) {
+    assert(hashTable.tempPos < hashTable.temp.length);
+    result = &hashTable.temp[hashTable.tempPos];
+    hashTable.tempPos++;
+    return result;
+  }
+
   auto key      = uiBoxHash(text);
   auto index    = cast(size_t) (key % hashTable.table.length);
   UiBox* runner = hashTable.table[index], last = null;
-  UiBox* result;
 
   bool fillingSlot = runner == null;
   if (runner) {
@@ -1362,4 +1377,6 @@ void hashTablePrune(UiHashTable* hashTable) {
       runner = runner.next;
     }
   }
+
+  hashTable.tempPos = 0;
 }
