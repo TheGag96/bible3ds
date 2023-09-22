@@ -1372,9 +1372,9 @@ void hashTablePrune(UiHashTable* hashTable) {
     while (runner) {
       if (runner.lastFrameTouchedIndex != gUiData.frameIndex) {
         hashTableRemove(hashTable, runner);
-        if (box == runner) box = runner.next;
+        if (box == runner) box = runner.hashNext;
       }
-      runner = runner.next;
+      runner = runner.hashNext;
     }
   }
 
