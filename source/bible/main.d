@@ -208,6 +208,10 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
     book = openBibleBook(newPageId.translation, newPageId.book);
   }
 
+  if (newPageId.chapter < 0) {
+    newPageId.chapter = book.chapters.length + newPageId.chapter;
+  }
+
   loadPage(&loadedPage, book.chapters[newPageId.chapter], defaultPageTextSize, defaultPageMargin);
   scrollCache.needsRepaint = true;
   frameNeedsRender = true;
@@ -254,7 +258,7 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
       newPageId.chapter = 1;
     }
     else {
-      newPageId.chapter = book.chapters.length-1;
+      newPageId.chapter = -1;  // Resolved in loadBiblePage
     }
   }
   else if (chapterDiff) {
