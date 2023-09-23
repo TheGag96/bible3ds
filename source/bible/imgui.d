@@ -797,7 +797,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
 
         // @Hack: Check for clickable, in case it's actually only scrollable. Should clickable/scrollable code be separated?
         if (box.flags & UiFlags.clickable) {
-          audioPlaySound(SoundEffect.button_down, 0.25);
+          audioPlaySound(SoundEffect.button_down, 0.125);
         }
       }
     }
@@ -826,14 +826,14 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
         if ( (box.flags & UiFlags.clickable) &&
              !inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
         {
-          audioPlaySound(SoundEffect.button_down, 0.25);
+          audioPlaySound(SoundEffect.button_down, 0.125);
         }
       }
       else {
         result.released = inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py));
 
         if (result.released && (box.flags & UiFlags.clickable)) {
-          audioPlaySound(SoundEffect.button_off, 0.25);
+          audioPlaySound(SoundEffect.button_off, 0.125);
         }
       }
     }
@@ -909,10 +909,10 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
 
       auto newCursored = moveToSelectable(cursored, dir, a => true);
       if (newCursored == cursored) {
-        audioPlaySound(SoundEffect.scroll_stop, 0.1);
+        audioPlaySound(SoundEffect.scroll_stop, 0.05);
       }
       else {
-        audioPlaySound(SoundEffect.button_move, 0.1);
+        audioPlaySound(SoundEffect.button_move, 0.05);
       }
       cursored = newCursored;
 
@@ -1080,16 +1080,16 @@ void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiD
   ////
 
   if (startedScrolling == OneFrameEvent.triggered) {
-    audioPlaySound(SoundEffect.scroll_tick, 0.1);
+    audioPlaySound(SoundEffect.scroll_tick, 0.025);
     startedScrolling = OneFrameEvent.already_processed;
   }
 
   if (floor(offset/SCROLL_TICK_DISTANCE) != floor(offsetLast/SCROLL_TICK_DISTANCE)) {
-    audioPlaySound(SoundEffect.scroll_tick, 0.05);
+    audioPlaySound(SoundEffect.scroll_tick, 0.0125);
   }
 
   if (scrollJustStopped == OneFrameEvent.triggered) {
-    audioPlaySound(SoundEffect.scroll_stop, 0.1);
+    audioPlaySound(SoundEffect.scroll_stop, 0.05);
     scrollJustStopped = OneFrameEvent.already_processed;
   }
 }}}
