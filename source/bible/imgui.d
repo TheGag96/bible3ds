@@ -1244,10 +1244,12 @@ void unloadPage(LoadedPage* page) { with (page) {
 struct UiHashTable {
   UiBox*[] table;
 
-  Arena freePool;  // Persists between frames
+  UiBox[] freePool;  // Persists between frames
+  size_t freePoolPos;
   UiBox* firstFree;
 
-  Arena temp; // Cleared each frame
+  UiBox[] temp;  // Cleared each frame
+  size_t tempPos;
 
   @nogc: nothrow:
   UiBox* opIndex(const(char)[] text) {
@@ -1286,8 +1288,8 @@ UiHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements
   UiHashTable result;
 
   result.table    = arenaPushArray!(UiBox*, true)(arena, tableElements);
-  result.freePool = arenaPushArena(arena, UiBox.sizeof*maxElements);
-  result.temp     = arenaPushArena(arena, UiBox.sizeof*tempElements);
+  result.freePool = arenaPushArray!(UiBox,  true)(arena, maxElements);
+  result.temp     = arenaPushArray!(UiBox,  true)(arena, tempElements);
 
   return result;
 }
@@ -1299,7 +1301,11 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
 
   // If we're passed an empty ID, allocate it on the per-frame temporary box arena
   if (!text.length) {
-    return arenaPush!(UiBox, true)(&hashTable.temp);
+    assert(hashTable.tempPos < hashTable.temp.length);
+    result = &hashTable.temp[hashTable.tempPos];
+    hashTable.tempPos++;
+
+    return result;
   }
 
   auto key      = uiBoxHash(text);
@@ -1334,7 +1340,9 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
       hashTable.firstFree = hashTable.firstFree.freeListNext;
     }
     else {
-      result = arenaPush!(UiBox, true)(&hashTable.freePool);
+      assert(hashTable.freePoolPos < hashTable.freePool.length);
+      result = &hashTable.freePool[hashTable.freePoolPos];
+      hashTable.freePoolPos++;
     }
 
     if (fillingSlot) {
@@ -1352,7 +1360,7 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
 }
 
 void hashTableRemove(UiHashTable* hashTable, UiBox* box) {
-  assert(arenaOwns(&hashTable.freePool, box));
+  assert(box >= hashTable.freePool.ptr && box <= hashTable.freePool.ptr + hashTable.freePool.length);
 
   if (box.hashPrev) {
     box.hashPrev.hashNext = box.hashNext;
@@ -1383,5 +1391,5 @@ void hashTablePrune(UiHashTable* hashTable) {
     }
   }
 
-  arenaClear(&hashTable.temp);
+  hashTable.tempPos = 0;
 }
