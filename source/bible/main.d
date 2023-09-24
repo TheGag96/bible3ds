@@ -269,6 +269,9 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
     readViewPane.scrollInfo.offsetLast = 0;
   }
 
+  loadedPage.scrollInfo.offset     = 0;
+  loadedPage.scrollInfo.offsetLast = 0;
+
   pageId = newPageId;
 }}
 
