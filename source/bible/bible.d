@@ -25,7 +25,7 @@ char[] until(char[] haystack, char needle) {
 OpenBook openBibleBook(Translation translation, Book book) {
   OpenBook result;
 
-  auto bookText = readCompressedTextFile(gTempStorage.printf("romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
+  auto bookText = readCompressedTextFile(arenaPrintf(&gTempStorage, "romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
   result.rawFile = bookText;
 
   int numLines = bookText.representation.count('\n');

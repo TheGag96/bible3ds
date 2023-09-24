@@ -400,8 +400,7 @@ struct UiCommand {
 }
 
 struct UiData {
-  //UiBox[512] boxes;
-  TemporaryStorage!(16*1024) tempAlloc;
+  Arena uiArena, stringArena;  // stringArena is cleared each frame
   UiHashTable boxes;
 
   Input* input;
@@ -420,8 +419,9 @@ struct UiData {
 
 UiData gUiData;
 
+pragma(inline, true)
 const(char)[] tprint(T...)(const(char)[] format, T args) {
-  return gUiData.tempAlloc.printf(format.ptr, args);
+  return arenaPrintf(&gUiData.stringArena, format.ptr, args);
 }
 
 // Returns ID part of string followed by non-ID
@@ -508,8 +508,10 @@ UiSignal popParentAndSignal() {
 
 void uiInit() { with (gUiData) {
   textBuf = C2D_TextBufNew(16384);
-  boxes   = hashTableMake(maxElements: 512, tableElements: 128, tempElements: 256);
-  tempAlloc.init();
+
+  uiArena     = arenaMake(1*1024*1024);
+  boxes       = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
+  stringArena = arenaPushArena(&uiArena, 16*1024);
 }}
 
 void uiFrameStart() { with (gUiData) {
@@ -519,6 +521,9 @@ void uiFrameStart() { with (gUiData) {
   numCommands = 0;
 
   C2D_TextBufClear(textBuf);
+  hashTablePrune(&boxes);
+  arenaClear(&stringArena);
+  frameIndex++;
 }}
 
 void handleInput(Input* newInput) { with (gUiData) {
@@ -538,7 +543,7 @@ void uiFrameEnd() { with (gUiData) {
   //    calculated purely with the information that comes from the single widget that is having its size calculated.
   // 2. (Pre-order) Calculate “upwards-dependent” sizes. These are sizes that strictly depend on an ancestor’s size,
   //    other than ancestors that have “downwards-dependent” sizes on the given axis.
-  // 3. (Post-order) Calculate “2downwards-dependent” sizes. These are sizes that depend on sizes of descendants.
+  // 3. (Post-order) Calculate “downwards-dependent” sizes. These are sizes that depend on sizes of descendants.
   // 4. (Pre-order) Solve violations. For each level in the hierarchy, this will verify that the children do not extend
   //    past the boundaries of a given parent (unless explicitly allowed to do so; for example, in the case of a parent
   //    that is scrollable on the given axis), to the best of the algorithm’s ability. If there is a violation, it will
@@ -687,11 +692,12 @@ void uiFrameEnd() { with (gUiData) {
     box.rect.right  += box.computedSize[Axis2.x];
     box.rect.bottom += box.computedSize[Axis2.y];
 
+
     if (box.parent) {
       if (box.parent.flags & UiFlags.view_scroll) {
-        auto axisOfFlow = (box.parent.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
-        box.rect.min[axisOfFlow] -= box.parent.scrollInfo.offset;
-        box.rect.max[axisOfFlow] -= box.parent.scrollInfo.offset;
+        auto flowAxis = (box.parent.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+        box.rect.min[flowAxis] -= box.parent.scrollInfo.offset;
+        box.rect.max[flowAxis] -= box.parent.scrollInfo.offset;
       }
 
       box.rect.left   += box.parent.rect.left;
@@ -703,9 +709,18 @@ void uiFrameEnd() { with (gUiData) {
     return false;
   });
 
-  hashTablePrune(&gUiData.boxes);
-  gUiData.tempAlloc.reset();
-  frameIndex++;
+  // Extra step: Figure out scroll limits for scrollables, only after computing the size and position of all boxes
+  preOrderApply(root, (box) {
+    if (box.flags & UiFlags.view_scroll && !(box.flags & UiFlags.manual_scroll_limits)) {
+      auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+      box.scrollInfo.limitMin = 0;
+      box.scrollInfo.limitMax = box.last
+                                    ? box.last.computedRelPosition[flowAxis] + box.last.computedSize[flowAxis] - box.computedSize[flowAxis]
+                                    : 0;
+    }
+
+    return false;
+  });
 }}
 
 // If func returns false, then children are skipped.
@@ -990,12 +1005,6 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       scrollDiff = updateScrollDiff(input, allowedMethods);
     }
 
-    if (!(box.flags & UiFlags.manual_scroll_limits)) {
-      box.scrollInfo.limitMin = 0;
-      box.scrollInfo.limitMax = box.last
-                                    ? box.last.computedRelPosition[flowAxis] + box.last.computedSize[flowAxis] - box.computedSize[flowAxis]
-                                    : 0;
-    }
     respondToScroll(box, &result, scrollDiff);
   }
 
@@ -1235,12 +1244,10 @@ void unloadPage(LoadedPage* page) { with (page) {
 struct UiHashTable {
   UiBox*[] table;
 
-  UiBox[] pool;
-  size_t poolPos;
+  Arena freePool;  // Persists between frames
   UiBox* firstFree;
 
-  UiBox[] temp;
-  size_t tempPos;
+  Arena temp; // Cleared each frame
 
   @nogc: nothrow:
   UiBox* opIndex(const(char)[] text) {
@@ -1275,22 +1282,14 @@ ulong uiBoxHash(const(char)[] text) {
   return hash;
 }
 
-UiHashTable hashTableMake(size_t maxElements, size_t tableElements, size_t tempElements) {
+UiHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements, size_t tempElements) {
   UiHashTable result;
 
-  // @TODO: Use arenas instead
-  result.pool  = allocArray!(UiBox,  true)(maxElements);
-  result.table = allocArray!(UiBox*, true)(tableElements);
-  result.temp  = allocArray!(UiBox,  true)(tempElements);
+  result.table    = arenaPushArray!(UiBox*, true)(arena, tableElements);
+  result.freePool = arenaPushArena(arena, UiBox.sizeof*maxElements);
+  result.temp     = arenaPushArena(arena, UiBox.sizeof*tempElements);
 
   return result;
-}
-
-void hashTableFree(UiHashTable* hashTable) {
-  freeArray(hashTable.pool);
-  freeArray(hashTable.table);
-  freeArray(hashTable.temp);
-  *hashTable = UiHashTable.init;
 }
 
 UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
@@ -1300,10 +1299,7 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
 
   // If we're passed an empty ID, allocate it on the per-frame temporary box arena
   if (!text.length) {
-    assert(hashTable.tempPos < hashTable.temp.length);
-    result = &hashTable.temp[hashTable.tempPos];
-    hashTable.tempPos++;
-    return result;
+    return arenaPush!(UiBox, true)(&hashTable.temp);
   }
 
   auto key      = uiBoxHash(text);
@@ -1338,9 +1334,7 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
       hashTable.firstFree = hashTable.firstFree.freeListNext;
     }
     else {
-      assert(hashTable.poolPos < hashTable.pool.length);
-      result = &hashTable.pool[hashTable.poolPos];
-      hashTable.poolPos++;
+      result = arenaPush!(UiBox, true)(&hashTable.freePool);
     }
 
     if (fillingSlot) {
@@ -1358,7 +1352,7 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
 }
 
 void hashTableRemove(UiHashTable* hashTable, UiBox* box) {
-  assert(box >= hashTable.pool.ptr && box < hashTable.pool.ptr + hashTable.pool.length);
+  assert(arenaOwns(&hashTable.freePool, box));
 
   if (box.hashPrev) {
     box.hashPrev.hashNext = box.hashNext;
@@ -1389,5 +1383,5 @@ void hashTablePrune(UiHashTable* hashTable) {
     }
   }
 
-  hashTable.tempPos = 0;
+  arenaClear(&hashTable.temp);
 }

@@ -74,6 +74,8 @@ extern(C) int main(int argc, char** argv) {
                     RUN_HANDLER_ON_FAULTING_STACK,
                     WRITE_DATA_TO_FAULTING_STACK);
 
+  gTempStorage = arenaMake(16*1024);
+
   // Init libs
   romfsInit();
 
@@ -107,7 +109,7 @@ extern(C) int main(int argc, char** argv) {
 
   audioInit();
 
-  gTempStorage.init();
+  gTempStorage = arenaMake(16*1024);
 
   Result saveResult = saveFileInit();
   assert(!saveResult, "file creation failed");
@@ -159,7 +161,7 @@ extern(C) int main(int argc, char** argv) {
     bool  _3DEnabled = slider > 0;
 
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
-    gTempStorage.reset();
+    arenaClear(&gTempStorage);
 
     mainGui(&mainData, &input);
 
@@ -364,6 +366,8 @@ void mainGui(MainData* mainData, Input* input) {
 
           spacer(8);
         }
+
+        int x= 3;
       }
 
       {

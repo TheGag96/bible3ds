@@ -3,7 +3,7 @@ module bible.util;
 public import bible.types;
 public import core.stdc.stdio : printf;
 public import std.algorithm   : min, max;
-public import std.math        : floor, ceil, round;
+public import std.math        : floor, ceil, round, log2;
 
 import ctru, citro3d;
 
@@ -89,138 +89,161 @@ inout(ubyte)[] representation(inout(char)[] s) {
   return cast(typeof(return)) s;
 }
 
-struct TemporaryStorage(size_t maxSize) {
-  nothrow: @nogc:
-
-  ubyte[maxSize] data;
-
+struct Arena {
+  ubyte[] data;
   ubyte* index;
 
   debug size_t watermark, highWatermark;
+}
 
-  void init() {
-    reset();
-    debug highWatermark = 0;
+Arena arenaMake(size_t bytes) {
+  Arena result;
+
+  ubyte* ptr = cast(ubyte*) malloc(bytes);
+  assert(ptr);
+  result.data  = ptr[0..bytes];
+  result.index = ptr;
+
+  return result;
+}
+
+void arenaFree(Arena* arena) {
+  free(arena.data.ptr);
+  *arena = Arena.init;
+}
+
+void arenaClear(Arena* arena) {
+  arena.index = arena.data.ptr;
+  debug arena.watermark = 0;
+}
+
+// Internal.
+// @TODO: Don't use log2 lol?
+enum alignShiftAmount(T) = cast(size_t) log2(cast(float) T.alignof);
+
+// Internal.
+ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignShift) { with (arena) {
+  ubyte* toReturn;
+  if (alignShift != 0) {
+    //align to minimum align of the desired allocation
+    toReturn  = cast(ubyte*) (cast(size_t)index & ~((1 << alignShift) - 1));
+    toReturn += (index != toReturn) * (1 << alignShift);
+  }
+  else {
+    toReturn = index;
   }
 
-  void reset() {
-    index = data.ptr;
-    debug watermark = 0;
-  }
+  ubyte* newIndex = toReturn + amount;
 
-  pragma(inline, true)
-  ubyte* alignBumpIndex(T)(size_t amount) {
-    import std.math : log2;
+  debug {
+    if (newIndex > data.ptr + watermark) {
+      watermark = cast(size_t) (newIndex - data.ptr);
 
-    enum ALIGN_SHIFT_AMOUNT = cast(size_t) log2(T.alignof);
-
-    static if (T.alignof > 1) {
-      //align to minimum align of the desired allocation
-      ubyte* toReturn = cast(ubyte*) (cast(size_t)index & ~((1 << ALIGN_SHIFT_AMOUNT) - 1));
-      toReturn += (index != toReturn) * (1 << ALIGN_SHIFT_AMOUNT);
-    }
-    else {
-      ubyte* toReturn = index;
-    }
-
-    ubyte* newIndex = toReturn + amount;
-
-    debug {
-      if (newIndex > data.ptr + watermark) {
-        watermark = cast(size_t) (newIndex - data.ptr);
-
-        if (watermark > highWatermark) highWatermark = watermark;
-      }
-    }
-
-    if (newIndex > data.ptr + maxSize) {
-      return null;
-    }
-    else {
-      index = newIndex;
-      return toReturn;
-    }
-  }
-
-  void* alloc(size_t bytes) return {
-    ubyte* result = alignBumpIndex!size_t(bytes);
-    if (result != null) {
-      return cast(void*) result;
-    }
-    else {
-      //leak memory if allocation failed
-      assert(0, "temp allocation failed");
-      return malloc(bytes);
+      if (watermark > highWatermark) highWatermark = watermark;
     }
   }
 
-  T* allocInstance(T, bool initialize = true)() return {
-    import core.lifetime : emplace;
-
-    T* result = cast(T*) alignBumpIndex!T(T.sizeof);
-    if (result != null) {
-      static if (initialize && __traits(compiles, () { auto test = T.init; })) {
-        emplace!T(result, T.init);
-      }
-
-      return result;
-    }
-    else {
-      //leak memory if allocation failed
-      assert(0, "temp allocation failed");
-      return cast(T*) malloc(T.sizeof);
-    }
+  if (newIndex > data.ptr + data.length) {
+    return null;
   }
-
-  T[] allocArray(T, bool initialize = true)(size_t size) return {
-    import core.lifetime : emplace;
-
-    T* result = cast(T*) alignBumpIndex!T(size*T.sizeof);
-    if (result != null) {
-      static if (initialize && __traits(compiles, () { auto test = T.init; })) {
-        emplace!T(result, T.init);
-      }
-
-      return result[0..size];
-    }
-    else {
-      //leak memory if allocation failed
-      assert(0, "temp allocation failed");
-      return (cast(T*) malloc(T.sizeof*size))[0..size];
-    }
+  else {
+    index = newIndex;
+    return toReturn;
   }
+}}
 
-  pragma(printf)
-  extern(C) char[] printf(const(char)* spec, ...) {
-    import core.stdc.stdio  : vsnprintf;
-    import core.stdc.stdarg : va_list, va_start, va_end;
-
-    va_list args;
-    va_start(args, spec);
-
-    int spaceRemaining = maxSize - (index-data.ptr);
-
-    int length = vsnprintf(cast(char*) index, spaceRemaining, spec, args);
-
-    assert(length >= 0); //no idea what to do if length comes back negative
-
-    if (length+1 <= spaceRemaining) {
-      ubyte* result = alignBumpIndex!char(length);
-      return (cast(char*) result)[0..length];
-    }
-    else {
-      //leak memory if allocation failed
-      assert(0, "temp allocation failed");
-      auto buf = cast(char*) malloc(length+1);
-      vsnprintf(buf, length+1, spec, args);
-      return buf[0..length];
-    }
-
-    va_end(args);
+ubyte[] arenaPushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
+  ubyte* result = arenaAlignBumpIndex(arena, bytes, aligning);
+  if (result != null) {
+    return (cast(ubyte*) result)[0..bytes];
+  }
+  else {
+    //leak memory if allocation failed
+    assert(0, "temp allocation failed");
+    return (cast(ubyte*) malloc(bytes))[0..bytes];
   }
 }
 
-__gshared TemporaryStorage!(16*1024) gTempStorage;
+T* arenaPush(T, bool initialize = true)(Arena* arena) {
+  import core.lifetime : emplace;
+
+  T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, alignShiftAmount!T);
+  if (result != null) {
+    static if (initialize && __traits(compiles, () { auto test = T.init; })) {
+      emplace!T(result, T.init);
+    }
+
+    return result;
+  }
+  else {
+    //leak memory if allocation failed
+    assert(0, "temp allocation failed");
+    return cast(T*) malloc(T.sizeof);
+  }
+}
+
+T[] arenaPushArray(T, bool initialize = true)(Arena* arena, size_t size) {
+  import core.lifetime : emplace;
+
+  T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, alignShiftAmount!T);
+  if (result != null) {
+    static if (initialize && __traits(compiles, () { auto test = T.init; })) {
+      emplace!T(result, T.init);
+    }
+
+    return result[0..size];
+  }
+  else {
+    //leak memory if allocation failed
+    assert(0, "temp allocation failed");
+    return (cast(T*) malloc(T.sizeof*size))[0..size];
+  }
+}
+
+Arena arenaPushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
+  Arena result;
+
+  result.data  = arenaPushBytes(parent, bytes, aligning);
+  result.index = result.data.ptr;
+
+  return result;
+}
+
+pragma(printf)
+extern(C) char[] arenaPrintf(Arena* arena, const(char)* spec, ...) {
+  import core.stdc.stdio  : vsnprintf;
+  import core.stdc.stdarg : va_list, va_start, va_end;
+
+  va_list args;
+  va_start(args, spec);
+
+  int spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
+
+  int length = vsnprintf(cast(char*) arena.index, spaceRemaining, spec, args);
+
+  assert(length >= 0); //no idea what to do if length comes back negative
+
+  if (length+1 <= spaceRemaining) {
+    ubyte* result = arenaAlignBumpIndex(arena, length, 1);
+    return (cast(char*) result)[0..length];
+  }
+  else {
+    //leak memory if allocation failed
+    assert(0, "temp allocation failed");
+    auto buf = cast(char*) malloc(length+1);
+    vsnprintf(buf, length+1, spec, args);
+    return buf[0..length];
+  }
+
+  va_end(args);
+}
+
+pragma(inline, true)
+bool arenaOwns(Arena* arena, void* thing) {
+  return thing >= arena.data.ptr && thing < arena.data.ptr + arena.data.length;
+}
+
+__gshared Arena gTempStorage;
 
 @trusted
 ubyte[] readFile(alias allocFunc = malloc)(scope const(char)[] filename) {
