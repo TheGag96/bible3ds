@@ -145,6 +145,8 @@ struct UiBox {
   UiBox* related;  // General-purpose field to relate boxes to other boxes.
 }
 
+pragma(msg, "Size of UiBox: ", UiBox.sizeof);
+
 // @Note: Render scroll caches forced me to make the UiBox* parameter non-const. Can/should this be changed?
 alias RenderCallback = void function(UiBox*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
 
@@ -366,8 +368,12 @@ UiBoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Sc
 
   box.scrollInfo.limitMin = 0;
 
-  auto height = box.rect.bottom - box.rect.top;
-  box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphHeight + loadedPage.pageMargin * 2 - height, 0);
+  auto height             = box.rect.bottom - box.rect.top;
+  // Add the size of the box on the bottom screen back to the scroll limit so that you can always scroll all the
+  // content to the top of the screen.
+  auto extraBottomScreen  = size(clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom])).y;
+  box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphHeight
+                                + loadedPage.pageMargin * 2 - height + extraBottomScreen, 0);
 
   return UiBoxAndSignal(box, signalFromBox(box));
 }

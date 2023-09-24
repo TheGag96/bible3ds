@@ -207,6 +207,11 @@ struct Rectangle {
   }
 }
 
+pure nothrow @nogc @safe
+Vec2 size(in Rectangle rect) {
+  return Vec2(rect.right - rect.left, rect.bottom-rect.top);
+}
+
 // By convention, the mins are incusive, and the maxes are exclusive.
 
 pure nothrow @nogc @safe
