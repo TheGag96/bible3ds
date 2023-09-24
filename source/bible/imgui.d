@@ -6,6 +6,7 @@ import bible.input, bible.util, bible.audio, bible.bible;
 import ctru, citro2d, citro3d;
 import std.math;
 import bible.imgui_render;
+import bible.profiling;
 
 @nogc: nothrow:
 
@@ -519,6 +520,8 @@ void handleInput(Input* newInput) { with (gUiData) {
 }}
 
 void uiFrameEnd() { with (gUiData) {
+  mixin(timeBlock("uiFrameEnd"));
+
   if (hot     && hot.lastFrameTouchedIndex      != frameIndex) hot     = null;
   if (active  && active.lastFrameTouchedIndex   != frameIndex) active  = null;
   if (focused && focused .lastFrameTouchedIndex != frameIndex) focused = null;
@@ -1285,6 +1288,8 @@ void hashTableFree(UiHashTable* hashTable) {
 }
 
 UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
+  mixin(timeBlock("hashTableFindOrAlloc"));
+
   UiBox* result;
 
   // If we're passed an empty ID, allocate it on the per-frame temporary box arena
