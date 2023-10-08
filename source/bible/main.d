@@ -354,7 +354,7 @@ void mainGui(MainData* mainData, Input* input) {
       UiBox* scrollLayoutBox;
       UiSignal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout("book_scroll_layout", &scrollLayoutSignal);
+        auto scrollLayout = ScopedSelectScrollLayout("book_scroll_layout", &scrollLayoutSignal, Axis2.y);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
 
         scrollLayoutBox = scrollLayout.box;
@@ -420,7 +420,7 @@ void mainGui(MainData* mainData, Input* input) {
       UiBox* scrollLayoutBox;
       UiSignal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal);
+        auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal, Axis2.y);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
         scrollLayout.box.justification = Justification.min;
 

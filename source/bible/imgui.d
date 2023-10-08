@@ -45,6 +45,7 @@ static immutable BoxStyle BOOK_BUTTON_STYLE = {
 };
 
 enum UiFlags : uint {
+  none                 = 0,
   clickable            = 1 << 0,
   view_scroll          = 1 << 1,
   manual_scroll_limits = 1 << 2,
@@ -163,6 +164,18 @@ struct UiBoxAndSignal {
   UiSignal signal;
 }
 
+UiBox* ancestorWithFlags(UiBox* box, UiFlags flags) {
+  box = box.parent;
+  while (box != null) {
+    if ((box.flags & flags) == flags) {
+      return box;
+    }
+    box = box.parent;
+  }
+
+  return null;
+}
+
 void label(const(char)[] text, Justification justification = Justification.min) {
   UiBox* box = makeBox(UiFlags.draw_text, text);
 
@@ -242,41 +255,20 @@ void scrollIndicator(const(char)[] id, UiBox* source, Justification justificatio
   box.hotT = approach(box.hotT, 1.0f*limitHit, 2*ANIM_T_RATE);
 }
 
-struct ScopedSelectScrollLayout {
-  @nogc: nothrow:
-
-  UiBox* box;
-  UiSignal* signalToWrite;
-
-  @disable this();
-
-  this(const(char)[] id, UiSignal* signalToWrite) {
-    box = pushSelectScrollLayout(id);
-    this.signalToWrite = signalToWrite;
+UiBox* makeLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+  UiBox* box = makeBox(cast(UiFlags) ((flowDirection == Axis2.x) * UiFlags.horizontal_children) | flags, id);
+  if (flowDirection == Axis2.x) {
+    box.semanticSize[] = [UiSize(UiSizeKind.children_sum, 0, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
   }
-
-  ~this() {
-    *signalToWrite = popParentAndSignal();
+  else { // y
+    box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.children_sum, 0, 0)].s;
   }
-}
-
-UiBox* pushSelectScrollLayout(const(char)[] id) {
-  UiBox* box = makeBox(UiFlags.select_children | UiFlags.view_scroll | UiFlags.demand_focus, id);
-  box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
-  box.justification  = Justification.center;
-  pushParent(box);
+  box.justification = justification;
   return box;
 }
 
-UiBox* makeLayout(const(char)[] id, Axis2 flowDirection) {
-  UiBox* box = makeBox(cast(UiFlags) ((flowDirection == Axis2.x) * UiFlags.horizontal_children), id);
-  box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
-  box.justification  = Justification.center;
-  return box;
-}
-
-UiBox* pushLayout(const(char)[] id, Axis2 flowDirection) {
-  auto result = makeLayout(id, flowDirection);
+UiBox* pushLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+  auto result = makeLayout(id, flowDirection, justification, flags);
   pushParent(result);
   return result;
 }
@@ -284,16 +276,46 @@ UiBox* pushLayout(const(char)[] id, Axis2 flowDirection) {
 struct ScopedLayout {
   @nogc: nothrow:
 
+  UiBox* box;
+  alias box this;
+
   @disable this();
 
-  this(const(char)[] id, Axis2 flowDirection) {
-    pushLayout(id, flowDirection);
+  pragma (inline, true)
+  this(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+    box = pushLayout(id, flowDirection, justification, flags);
   }
 
+  pragma (inline, true)
   ~this() {
     popParent();
   }
 }
+
+struct ScopedSignalLayout(UiFlags defaultFlags = UiFlags.init) {
+  @nogc: nothrow:
+
+  UiBox* box;
+  alias box this;
+  UiSignal* signalToWrite;
+
+  @disable this();
+
+  pragma (inline, true)
+  this(const(char)[] id, UiSignal* signalToWrite, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+    box = pushLayout(id, flowDirection, justification, flags | defaultFlags);
+    this.signalToWrite = signalToWrite;
+  }
+
+  pragma (inline, true)
+  ~this() {
+    *signalToWrite = popParentAndSignal();
+  }
+}
+
+alias ScopedScrollLayout       = ScopedSignalLayout!(UiFlags.view_scroll | UiFlags.demand_focus);
+alias ScopedSelectLayout       = ScopedSignalLayout!(UiFlags.select_children);
+alias ScopedSelectScrollLayout = ScopedSignalLayout!(UiFlags.view_scroll | UiFlags.demand_focus | UiFlags.select_children);
 
 // Makes a layout encompassing the bounding box of the top and bottom screens together, splitting into 3 columns with
 // the center one being the width of the bottom screen.
@@ -304,6 +326,7 @@ struct ScopedCombinedScreenSplitLayout {
 
   @disable this();
 
+  pragma (inline, true)
   this(const(char)[] mainId, const(char)[] leftId, const(char)[] centerId, const(char)[] rightId) {
     main   = pushLayout(mainId,   Axis2.x);
     left   = makeLayout(leftId,   Axis2.y);
@@ -320,10 +343,14 @@ struct ScopedCombinedScreenSplitLayout {
     right.semanticSize[Axis2.y]  = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2, 1);
   }
 
+  pragma (inline, true)
   void startLeft()   { gUiData.curBox = left;   }
+  pragma (inline, true)
   void startCenter() { gUiData.curBox = center; }
+  pragma (inline, true)
   void startRight()  { gUiData.curBox = right;  }
 
+  pragma (inline, true)
   ~this() {
     gUiData.curBox = main;
     popParent();
@@ -338,6 +365,7 @@ struct ScopedDoubleScreenSplitLayout {
 
   @disable this();
 
+  pragma (inline, true)
   this(const(char)[] mainId, const(char)[] topId, const(char)[] bottomId) {
     main   = pushLayout(mainId,   Axis2.y);
     top    = makeLayout(topId,    Axis2.x);
@@ -351,9 +379,12 @@ struct ScopedDoubleScreenSplitLayout {
     bottom.semanticSize[Axis2.y] = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT, 1);
   }
 
+  pragma (inline, true)
   void startTop()    { gUiData.curBox = top;    }
+  pragma (inline, true)
   void startBottom() { gUiData.curBox = bottom; }
 
+  pragma (inline, true)
   ~this() {
     gUiData.curBox = main;
     popParent();
@@ -614,13 +645,28 @@ void uiFrameEnd() { with (gUiData) {
     foreach (axis; enumRange!Axis2) {
       final switch (box.semanticSize[axis].kind) {
         case UiSizeKind.children_sum:
-          float sum = 0;
+          if (!!(box.flags & UiFlags.horizontal_children) == (axis == Axis2.x)) {
+            // In the direction of flow, we actually sum the children, as they're arranged one after the other.
+            float sum = 0;
 
-          foreach (child; eachChild(box)) {
-            sum += child.computedSize[axis];
+            foreach (child; eachChild(box)) {
+              sum += child.computedSize[axis];
+            }
+
+            box.computedSize[axis] = sum;
           }
+          else {
+            // Against the direction of flow, children_sum will result in the size of the largest child box.
+            float largest = 0;
 
-          box.computedSize[axis] = sum;
+            foreach (child; eachChild(box)) {
+              if (child.computedSize[axis] > largest) {
+                largest = child.computedSize[axis];
+              }
+            }
+
+            box.computedSize[axis] = largest;
+          }
           break;
 
         case UiSizeKind.none:
@@ -833,16 +879,17 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       focused     = box;
       result.held = true;
 
-      // Allow scrolling the parent to kick in if we drag too far away
-      auto parentFlowAxis = box.parent && (box.parent.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
-      if (box.parent && (box.parent.flags & UiFlags.view_scroll) && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
-        result.held        = false;
-        result.released    = true;
-        box.parent.hotT    = 1;
-        box.parent.activeT = 1;
-        active             = box.parent;
-        hot                = box.parent;
-        focused            = box.parent;
+      // Allow scrolling an ancestor to kick in if we drag too far away
+      auto scrollAncestor = ancestorWithFlags(box, UiFlags.view_scroll);
+      auto parentFlowAxis = scrollAncestor && (scrollAncestor.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+      if (scrollAncestor && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
+        result.held            = false;
+        result.released        = true;
+        scrollAncestor.hotT    = 1;
+        scrollAncestor.activeT = 1;
+        active                 = scrollAncestor;
+        hot                    = scrollAncestor;
+        focused                = scrollAncestor;
       }
       else if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
