@@ -1219,6 +1219,17 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
         C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.top-2 - screenPos.y,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
         C2D_DrawRectSolid(box.rect.right - screenPos.x,   box.rect.top-2 - screenPos.y,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
       }
+
+      if (box.flags & UiFlags.draw_text) {
+        auto rect = box.rect - screenPos;
+
+        float textX = (rect.left + rect.right)/2  - box.text.width/2;
+        float textY = (rect.top  + rect.bottom)/2 - box.textHeight/2;
+
+        C2D_DrawText(
+          &box.text, C2D_WithColor, GFXScreen.top, textX, textY, 0, box.style.textSize, box.style.textSize, box.style.colorText
+        );
+      }
     }
 
     return false;
