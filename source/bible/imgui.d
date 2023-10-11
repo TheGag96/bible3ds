@@ -682,18 +682,28 @@ void uiFrameEnd() { with (gUiData) {
   preOrderApply(root, (box) {
     Axis2 axis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
     if (box.flags & UiFlags.view_scroll) return false;  // Assume there really are no violations if you can scroll
+    if (!box.first)                      return false;  // Assume there really are no violations if there's no children
 
     float sum = 0;
     foreach (child; eachChild(box)) {
       sum += child.computedSize[axis];
     }
 
-    float difference = sum - box.computedSize[axis];
+    // If the children break past the size of parent...
+    float limit = box.computedSize[axis];
+    float difference = sum - limit;
     if (difference > 0) {
+      // Limit the desired total further by subtracting away the space that the child boxes aren't willing to give up
       foreach (child; eachChild(box)) {
-        float partToRemove        = min(difference * (1-child.semanticSize[axis].strictness), child.computedSize[axis]);
-        child.computedSize[axis] -= partToRemove;
-        difference               -= partToRemove;
+        float notWillingToGiveUp = child.computedSize[axis] * child.semanticSize[axis].strictness;
+        sum   -= notWillingToGiveUp;
+        limit -= notWillingToGiveUp;
+      }
+
+      // Downsize all children by taking off from what they're willing to give up, proportional to how much they
+      // contribute to the overage
+      foreach (child; eachChild(box)) {
+        child.computedSize[axis] -= child.computedSize[axis] * (1 - child.semanticSize[axis].strictness) / sum * difference;
       }
     }
 
