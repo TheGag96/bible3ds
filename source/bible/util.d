@@ -117,6 +117,25 @@ void arenaClear(Arena* arena) {
   debug arena.watermark = 0;
 }
 
+struct ScopedArenaRestore {
+  @nogc: nothrow:
+
+  Arena* arena;
+  ubyte* oldIndex;
+  @disable this();
+
+  pragma(inline, true)
+  this(Arena* arena) {
+    this.arena    = arena;
+    this.oldIndex = arena.index;
+  }
+
+  pragma(inline, true)
+  ~this() {
+    arena.index = oldIndex;
+  }
+}
+
 // Internal.
 // @TODO: Don't use log2 lol?
 enum alignShiftAmount(T) = cast(size_t) log2(cast(float) T.alignof);
