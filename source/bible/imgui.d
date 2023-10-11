@@ -176,6 +176,19 @@ UiBox* ancestorWithFlags(UiBox* box, UiFlags flags) {
   return null;
 }
 
+bool touchInsideBoxAndAncestors(UiBox* box, Vec2 touchPoint) {
+  Vec2 touchOnBottom = touchPoint + SCREEN_POS[GFXScreen.bottom];
+
+  while (box != null) {
+    if (!inside(box.rect, touchOnBottom)) {
+      return false;
+    }
+    box = box.parent;
+  }
+
+  return true;
+}
+
 void label(const(char)[] text, Justification justification = Justification.min) {
   UiBox* box = makeBox(UiFlags.draw_text, text);
 
@@ -855,10 +868,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     if (active == null && input.down(Key.touch)) {
       auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
 
-      // @Bug: This second check probably wouldn't work for nested scrollables if they were ever used.
-      //       If you really wanted to make this work generally, you probably have to check this all the way up the UI hierarchy.
-      if ( inside(box.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) &&
-           ( !box.parent || inside(box.parent.rect - SCREEN_POS[GFXScreen.bottom], touchPoint) ) )
+      if (touchInsideBoxAndAncestors(box, touchPoint))
       {
         box.hotT        = 1;
         box.activeT     = 1;
