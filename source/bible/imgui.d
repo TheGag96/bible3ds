@@ -566,6 +566,12 @@ void uiFrameStart() { with (gUiData) {
 
   C2D_TextBufClear(textBuf);
   hashTablePrune(&boxes);
+
+  // hashKey being 0 means that they were anonymous boxes, which just got deleted from the hashTablePrune call.
+  if (hot     && (hot.lastFrameTouchedIndex     != frameIndex || hot.hashKey     == 0)) hot     = null;
+  if (active  && (active.lastFrameTouchedIndex  != frameIndex || active.hashKey  == 0)) active  = null;
+  if (focused && (focused.lastFrameTouchedIndex != frameIndex || focused.hashKey == 0)) focused = null;
+
   arenaClear(&stringArena);
   frameIndex++;
 }}
@@ -576,10 +582,6 @@ void handleInput(Input* newInput) { with (gUiData) {
 
 void uiFrameEnd() { with (gUiData) {
   mixin(timeBlock("uiFrameEnd"));
-
-  if (hot     && hot.lastFrameTouchedIndex      != frameIndex) hot     = null;
-  if (active  && active.lastFrameTouchedIndex   != frameIndex) active  = null;
-  if (focused && focused .lastFrameTouchedIndex != frameIndex) focused = null;
 
   // Ryan Fleury's offline layout algorithm (from https://www.rfleury.com/p/ui-part-2-build-it-every-frame-immediate):
   //
