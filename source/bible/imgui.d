@@ -1,11 +1,10 @@
 module bible.imgui;
 
-alias imgui = bible.imgui;
+public import bible.imgui_render;
 
 import bible.input, bible.util, bible.audio, bible.bible;
 import ctru, citro2d, citro3d;
 import std.math;
-import bible.imgui_render;
 import bible.profiling;
 
 @nogc: nothrow:
@@ -44,7 +43,7 @@ static immutable BoxStyle BOOK_BUTTON_STYLE = {
   textSize      : 0.5f,
 };
 
-enum UiFlags : uint {
+enum BoxFlags : uint {
   none                 = 0,
   clickable            = 1 << 0,
   view_scroll          = 1 << 1,
@@ -56,7 +55,7 @@ enum UiFlags : uint {
   demand_focus         = 1 << 7,
 }
 
-enum UiSizeKind : ubyte {
+enum SizeKind : ubyte {
   none,
   pixels,
   text_content,
@@ -64,8 +63,8 @@ enum UiSizeKind : ubyte {
   children_sum,
 }
 
-struct UiSize {
-  UiSizeKind kind;
+struct Size {
+  SizeKind kind;
   float value      = 0;
   float strictness = 0;
 }
@@ -112,10 +111,10 @@ struct BoxStyle {
 }
 immutable DEFAULT_STYLE = BoxStyle.init;
 
-struct UiBox {
-  UiBox* first, last, next, prev, parent;
-  UiBox* hashNext, hashPrev;
-  UiBox* freeListNext;
+struct Box {
+  Box* first, last, next, prev, parent;
+  Box* hashNext, hashPrev;
+  Box* freeListNext;
 
   ulong hashKey;
 
@@ -128,12 +127,12 @@ struct UiBox {
   ScrollInfo scrollInfo;
   ScrollCache* scrollCache;
 
-  UiFlags flags;
+  BoxFlags flags;
   Justification justification;
   RenderCallback render;
   const(BoxStyle)* style;
 
-  UiSize[Axis2.max+1] semanticSize;
+  Size[Axis2.max+1] semanticSize;
 
   Vec2 computedRelPosition;
   Vec2 computedSize;
@@ -143,28 +142,28 @@ struct UiBox {
 
   float hotT = 0, activeT = 0;
 
-  UiBox* related;  // General-purpose field to relate boxes to other boxes.
+  Box* related;  // General-purpose field to relate boxes to other boxes.
 }
 
-pragma(msg, "Size of UiBox: ", UiBox.sizeof);
+pragma(msg, "Size of Box: ", Box.sizeof);
 
-// @Note: Render scroll caches forced me to make the UiBox* parameter non-const. Can/should this be changed?
-alias RenderCallback = void function(UiBox*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
+// @Note: Render scroll caches forced me to make the Box* parameter non-const. Can/should this be changed?
+alias RenderCallback = void function(Box*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
 
-struct UiSignal {
-  UiBox* box;
+struct Signal {
+  Box* box;
   Vec2 touchPos, dragDelta;
   bool clicked, pressed, held, released, dragging, hovering, selected;
   int hoveredChild, selectedChild;
   bool pushingAgainstScrollLimit;
 }
 
-struct UiBoxAndSignal {
-  UiBox* box;
-  UiSignal signal;
+struct BoxAndSignal {
+  Box* box;
+  Signal signal;
 }
 
-bool isAncestorOf(UiBox* younger, UiBox* older) {
+bool isAncestorOf(Box* younger, Box* older) {
   if (younger == null) return false;
 
   younger = younger.parent;
@@ -178,7 +177,7 @@ bool isAncestorOf(UiBox* younger, UiBox* older) {
   return false;
 }
 
-UiBox* boxOrAncestorWithFlags(UiBox* box, UiFlags flags) {
+Box* boxOrAncestorWithFlags(Box* box, BoxFlags flags) {
   while (box != null) {
     if ((box.flags & flags) == flags) {
       return box;
@@ -189,7 +188,7 @@ UiBox* boxOrAncestorWithFlags(UiBox* box, UiFlags flags) {
   return null;
 }
 
-bool touchInsideBoxAndAncestors(UiBox* box, Vec2 touchPoint) {
+bool touchInsideBoxAndAncestors(Box* box, Vec2 touchPoint) {
   Vec2 touchOnBottom = touchPoint + SCREEN_POS[GFXScreen.bottom];
 
   while (box != null) {
@@ -202,7 +201,7 @@ bool touchInsideBoxAndAncestors(UiBox* box, Vec2 touchPoint) {
   return true;
 }
 
-UiBox* getChild(UiBox* box, int childId) {
+Box* getChild(Box* box, int childId) {
   if (!box || childId >= box.numChildren) return null;
 
   box = box.first;
@@ -214,9 +213,9 @@ UiBox* getChild(UiBox* box, int childId) {
 }
 
 void label(const(char)[] text, Justification justification = Justification.min) {
-  UiBox* box = makeBox(UiFlags.draw_text, text);
+  Box* box = makeBox(BoxFlags.draw_text, text);
 
-  box.semanticSize[] = [UiSize(UiSizeKind.text_content, 0, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
+  box.semanticSize[] = [Size(SizeKind.text_content, 0, 1), Size(SizeKind.text_content, 0, 1)].s;
   box.justification  = justification;
   box.render         = &renderLabel;
 }
@@ -241,17 +240,17 @@ static immutable BoxStyle BACK_BUTTON_STYLE = () {
   return result;
 }();
 
-UiSignal button(const(char)[] text, int size = 0, Justification justification = Justification.center) {
-  UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
+Signal button(const(char)[] text, int size = 0, Justification justification = Justification.center) {
+  Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text | BoxFlags.selectable, text);
 
   if (size == 0) {
-    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.text_content, 0, 1);
+    box.semanticSize[Axis2.x] = Size(SizeKind.text_content, 0, 1);
   }
   else {
-    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, size, 1);
+    box.semanticSize[Axis2.x] = Size(SizeKind.pixels, size, 1);
   }
 
-  box.semanticSize[Axis2.y] = UiSize(UiSizeKind.text_content, 0, 1);
+  box.semanticSize[Axis2.y] = Size(SizeKind.text_content, 0, 1);
 
   box.justification = justification;
   box.render        = &renderNormalButton;
@@ -259,34 +258,34 @@ UiSignal button(const(char)[] text, int size = 0, Justification justification = 
   return signalFromBox(box);
 }
 
-UiSignal bottomButton(const(char)[] text) {
-  UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text, text);
-  box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
+Signal bottomButton(const(char)[] text) {
+  Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text, text);
+  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 1), Size(SizeKind.text_content, 0, 1)].s;
   box.justification = Justification.center;
   box.render = &renderBottomButton;
   return signalFromBox(box);
 }
 
 void spacer(float size) {
-  UiBox* box = makeBox(cast(UiFlags) 0, "");
+  Box* box = makeBox(cast(BoxFlags) 0, "");
 
-  if (box.parent && (box.parent.flags & UiFlags.horizontal_children)) {
-    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, size);
-    box.semanticSize[Axis2.y] = UiSize(UiSizeKind.percent_of_parent, 1, 1);
+  if (box.parent && (box.parent.flags & BoxFlags.horizontal_children)) {
+    box.semanticSize[Axis2.x] = Size(SizeKind.pixels, size);
+    box.semanticSize[Axis2.y] = Size(SizeKind.percent_of_parent, 1, 1);
   }
   else {
-    box.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1, 1);
-    box.semanticSize[Axis2.y] = UiSize(UiSizeKind.pixels, size);
+    box.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 1);
+    box.semanticSize[Axis2.y] = Size(SizeKind.pixels, size);
   }
 }
 
-void scrollIndicator(const(char)[] id, UiBox* source, Justification justification, bool limitHit) {
-  UiBox* box = makeBox(cast(UiFlags) 0, id);
+void scrollIndicator(const(char)[] id, Box* source, Justification justification, bool limitHit) {
+  Box* box = makeBox(cast(BoxFlags) 0, id);
   box.render = &renderScrollIndicator;
 
   // @TODO: Only vertical scroll indicators are supported at the moment.
   // @Note: The widget will fill the parent but will only draw as wide as the indicator texture.
-  box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.percent_of_parent, 1, 0)].s;
 
   box.justification = justification;
   box.related       = source;
@@ -294,19 +293,19 @@ void scrollIndicator(const(char)[] id, UiBox* source, Justification justificatio
   box.hotT = approach(box.hotT, 1.0f*limitHit, 2*ANIM_T_RATE);
 }
 
-UiBox* makeLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
-  UiBox* box = makeBox(cast(UiFlags) ((flowDirection == Axis2.x) * UiFlags.horizontal_children) | flags, id);
+Box* makeLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
+  Box* box = makeBox(cast(BoxFlags) ((flowDirection == Axis2.x) * BoxFlags.horizontal_children) | flags, id);
   if (flowDirection == Axis2.x) {
-    box.semanticSize[] = [UiSize(UiSizeKind.children_sum, 0, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+    box.semanticSize[] = [Size(SizeKind.children_sum, 0, 0), Size(SizeKind.percent_of_parent, 1, 0)].s;
   }
   else { // y
-    box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.children_sum, 0, 0)].s;
+    box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.children_sum, 0, 0)].s;
   }
   box.justification = justification;
   return box;
 }
 
-UiBox* pushLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+Box* pushLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
   auto result = makeLayout(id, flowDirection, justification, flags);
   pushParent(result);
   return result;
@@ -315,13 +314,13 @@ UiBox* pushLayout(const(char)[] id, Axis2 flowDirection, Justification justifica
 struct ScopedLayout {
   @nogc: nothrow:
 
-  UiBox* box;
+  Box* box;
   alias box this;
 
   @disable this();
 
   pragma (inline, true)
-  this(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+  this(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
     box = pushLayout(id, flowDirection, justification, flags);
   }
 
@@ -331,17 +330,17 @@ struct ScopedLayout {
   }
 }
 
-struct ScopedSignalLayout(UiFlags defaultFlags = UiFlags.init) {
+struct ScopedSignalLayout(BoxFlags defaultFlags = BoxFlags.init) {
   @nogc: nothrow:
 
-  UiBox* box;
+  Box* box;
   alias box this;
-  UiSignal* signalToWrite;
+  Signal* signalToWrite;
 
   @disable this();
 
   pragma (inline, true)
-  this(const(char)[] id, UiSignal* signalToWrite, Axis2 flowDirection, Justification justification = Justification.center, UiFlags flags = UiFlags.init) {
+  this(const(char)[] id, Signal* signalToWrite, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
     box = pushLayout(id, flowDirection, justification, flags | defaultFlags);
     this.signalToWrite = signalToWrite;
   }
@@ -352,16 +351,16 @@ struct ScopedSignalLayout(UiFlags defaultFlags = UiFlags.init) {
   }
 }
 
-alias ScopedScrollLayout       = ScopedSignalLayout!(UiFlags.view_scroll | UiFlags.demand_focus);
-alias ScopedSelectLayout       = ScopedSignalLayout!(UiFlags.select_children);
-alias ScopedSelectScrollLayout = ScopedSignalLayout!(UiFlags.view_scroll | UiFlags.demand_focus | UiFlags.select_children);
+alias ScopedScrollLayout       = ScopedSignalLayout!(BoxFlags.view_scroll | BoxFlags.demand_focus);
+alias ScopedSelectLayout       = ScopedSignalLayout!(BoxFlags.select_children);
+alias ScopedSelectScrollLayout = ScopedSignalLayout!(BoxFlags.view_scroll | BoxFlags.demand_focus | BoxFlags.select_children);
 
 // Makes a layout encompassing the bounding box of the top and bottom screens together, splitting into 3 columns with
 // the center one being the width of the bottom screen.
 struct ScopedCombinedScreenSplitLayout {
   @nogc: nothrow:
 
-  UiBox* main, left, center, right;
+  Box* main, left, center, right;
 
   @disable this();
 
@@ -372,14 +371,14 @@ struct ScopedCombinedScreenSplitLayout {
     center = makeLayout(centerId, Axis2.y);
     right  = makeLayout(rightId,  Axis2.y);
     // @TODO: Fix layout violation resolution so that the left and right sizes are figured out automatically...
-    main.semanticSize[Axis2.x]   = UiSize(UiSizeKind.pixels, SCREEN_TOP_WIDTH,  1);
-    main.semanticSize[Axis2.y]   = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2, 1);
-    left.semanticSize[Axis2.x]   = UiSize(UiSizeKind.pixels, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2,  1);
-    left.semanticSize[Axis2.y]   = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2, 1);
-    center.semanticSize[Axis2.x] = UiSize(UiSizeKind.pixels, SCREEN_BOTTOM_WIDTH, 1);
-    center.semanticSize[Axis2.y] = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2,   1);
-    right.semanticSize[Axis2.x]  = UiSize(UiSizeKind.pixels, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2,  1);
-    right.semanticSize[Axis2.y]  = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2, 1);
+    main.semanticSize[Axis2.x]   = Size(SizeKind.pixels, SCREEN_TOP_WIDTH,  1);
+    main.semanticSize[Axis2.y]   = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
+    left.semanticSize[Axis2.x]   = Size(SizeKind.pixels, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2,  1);
+    left.semanticSize[Axis2.y]   = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
+    center.semanticSize[Axis2.x] = Size(SizeKind.pixels, SCREEN_BOTTOM_WIDTH, 1);
+    center.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT * 2,   1);
+    right.semanticSize[Axis2.x]  = Size(SizeKind.pixels, (SCREEN_TOP_WIDTH - SCREEN_BOTTOM_WIDTH)/2,  1);
+    right.semanticSize[Axis2.y]  = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
   }
 
   pragma (inline, true)
@@ -400,7 +399,7 @@ struct ScopedCombinedScreenSplitLayout {
 struct ScopedDoubleScreenSplitLayout {
   @nogc: nothrow:
 
-  UiBox* main, top, bottom;
+  Box* main, top, bottom;
 
   @disable this();
 
@@ -410,12 +409,12 @@ struct ScopedDoubleScreenSplitLayout {
     top    = makeLayout(topId,    Axis2.x);
     bottom = makeLayout(bottomId, Axis2.x);
     // @TODO: Fix layout violation resolution so that the top and bottom sizes are figured out automatically...
-    main.semanticSize[Axis2.x]   = UiSize(UiSizeKind.percent_of_parent, 1, 0);
-    main.semanticSize[Axis2.y]   = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT * 2, 1);
-    top.semanticSize[Axis2.x]    = UiSize(UiSizeKind.percent_of_parent, 1, 0);
-    top.semanticSize[Axis2.y]    = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT, 1);
-    bottom.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1, 0);
-    bottom.semanticSize[Axis2.y] = UiSize(UiSizeKind.pixels, SCREEN_HEIGHT, 1);
+    main.semanticSize[Axis2.x]   = Size(SizeKind.percent_of_parent, 1, 0);
+    main.semanticSize[Axis2.y]   = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
+    top.semanticSize[Axis2.x]    = Size(SizeKind.percent_of_parent, 1, 0);
+    top.semanticSize[Axis2.y]    = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
+    bottom.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 0);
+    bottom.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
   }
 
   pragma (inline, true)
@@ -430,9 +429,9 @@ struct ScopedDoubleScreenSplitLayout {
   }
 }
 
-UiBoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
-  UiBox* box = makeBox(UiFlags.view_scroll | UiFlags.manual_scroll_limits | UiFlags.demand_focus, id);
-  box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 0), UiSize(UiSizeKind.percent_of_parent, 1, 0)].s;
+BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
+  Box* box = makeBox(BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus, id);
+  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.percent_of_parent, 1, 0)].s;
   box.scrollCache    = scrollCache;
   box.render         = &scrollCacheDraw;
 
@@ -445,7 +444,7 @@ UiBoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Sc
   box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphHeight
                                 + loadedPage.pageMargin * 2 - height + extraBottomScreen, 0);
 
-  return UiBoxAndSignal(box, signalFromBox(box));
+  return BoxAndSignal(box, signalFromBox(box));
 }
 
 struct ScopedStyle {
@@ -465,22 +464,22 @@ struct ScopedStyle {
   }
 }
 
-struct UiCommand {
+struct Command {
   uint code, value;
 }
 
 struct UiData {
   Arena uiArena, stringArena;  // stringArena is cleared each frame
-  UiHashTable boxes;
+  BoxHashTable boxes;
 
   Input* input;
-  UiBox* root, curBox;
+  Box* root, curBox;
   uint frameIndex;
 
-  UiCommand[100] commands;
+  Command[100] commands;
   size_t numCommands;
 
-  UiBox* hot, active, focused;
+  Box* hot, active, focused;
 
   const(BoxStyle)* style;
 
@@ -511,11 +510,11 @@ const(char)[][2] parseIdFromString(const(char)[] text) {
   return result;
 }
 
-UiBox* makeBox(UiFlags flags, const(char)[] text) { with (gUiData) {
+Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
   const(char)[][2] idAndNon = parseIdFromString(text);
   const(char)[] id = idAndNon[0], displayText = idAndNon[1];
 
-  UiBox* result = hashTableFindOrAlloc(&boxes, id);
+  Box* result = hashTableFindOrAlloc(&boxes, id);
   result.lastFrameTouchedIndex = frameIndex;
 
   result.first   = null;
@@ -549,7 +548,7 @@ UiBox* makeBox(UiFlags flags, const(char)[] text) { with (gUiData) {
   result.flags       = flags;
   result.style       = gUiData.style;
 
-  if ((flags & UiFlags.draw_text) && displayText.length) {
+  if ((flags & BoxFlags.draw_text) && displayText.length) {
     C2D_TextParse(&result.text, textBuf, displayText);
     float width, height;
     C2D_TextGetDimensions(&result.text, result.style.textSize, result.style.textSize, &width, &height);
@@ -561,24 +560,24 @@ UiBox* makeBox(UiFlags flags, const(char)[] text) { with (gUiData) {
   return result;
 }}
 
-void pushParent(UiBox* box) { with (gUiData) {
+void pushParent(Box* box) { with (gUiData) {
   assert(box, "Parameter shouldn't be null");
   assert(box.parent == curBox || box == curBox, "Parameter should either be the current UI node or one of its children");
   curBox = box;
 }}
 
-UiBox* popParent() { with (gUiData) {
+Box* popParent() { with (gUiData) {
   assert(curBox, "Trying to pop to the current UI node's parent, but it's null!");
   auto result = curBox;
   curBox = curBox.parent;
   return result;
 }}
 
-UiSignal popParentAndSignal() {
+Signal popParentAndSignal() {
   return signalFromBox(popParent());
 }
 
-void uiInit() { with (gUiData) {
+void init() { with (gUiData) {
   textBuf = C2D_TextBufNew(16384);
 
   uiArena     = arenaMake(1*1024*1024);
@@ -586,7 +585,7 @@ void uiInit() { with (gUiData) {
   stringArena = arenaPushArena(&uiArena, 16*1024);
 }}
 
-void uiFrameStart() { with (gUiData) {
+void frameStart() { with (gUiData) {
   curBox      = null;
   root        = null;
   style       = &DEFAULT_STYLE;
@@ -608,8 +607,8 @@ void handleInput(Input* newInput) { with (gUiData) {
   input = newInput;
 }}
 
-void uiFrameEnd() { with (gUiData) {
-  mixin(timeBlock("uiFrameEnd"));
+void frameEnd() { with (gUiData) {
+  mixin(timeBlock("frameEnd"));
 
   // Ryan Fleury's offline layout algorithm (from https://www.rfleury.com/p/ui-part-2-build-it-every-frame-immediate):
   //
@@ -632,13 +631,13 @@ void uiFrameEnd() { with (gUiData) {
   preOrderApply(root, (box) {
     foreach (axis; enumRange!Axis2) {
       final switch (box.semanticSize[axis].kind) {
-        case UiSizeKind.none:
+        case SizeKind.none:
           box.computedSize[axis] = 0;
           break;
-        case UiSizeKind.pixels:
+        case SizeKind.pixels:
           box.computedSize[axis] = box.semanticSize[axis].value;
           break;
-        case UiSizeKind.text_content:
+        case SizeKind.text_content:
           if (axis == Axis2.x) {
             box.computedSize[axis] = box.text.width + 2*box.style.margin;
           }
@@ -646,8 +645,8 @@ void uiFrameEnd() { with (gUiData) {
             box.computedSize[axis] = box.textHeight + 2*box.style.margin;
           }
           break;
-        case UiSizeKind.percent_of_parent:
-        case UiSizeKind.children_sum:
+        case SizeKind.percent_of_parent:
+        case SizeKind.children_sum:
           break;
       }
     }
@@ -659,7 +658,7 @@ void uiFrameEnd() { with (gUiData) {
   preOrderApply(root, (box) {
     foreach (axis; enumRange!Axis2) {
       final switch (box.semanticSize[axis].kind) {
-        case UiSizeKind.percent_of_parent:
+        case SizeKind.percent_of_parent:
           float parentSize;
           if (box.parent) {
             parentSize = box.parent.computedSize[axis];
@@ -671,10 +670,10 @@ void uiFrameEnd() { with (gUiData) {
           box.computedSize[axis] = parentSize * box.semanticSize[axis].value;
           break;
 
-        case UiSizeKind.none:
-        case UiSizeKind.pixels:
-        case UiSizeKind.text_content:
-        case UiSizeKind.children_sum:
+        case SizeKind.none:
+        case SizeKind.pixels:
+        case SizeKind.text_content:
+        case SizeKind.children_sum:
           break;
       }
     }
@@ -687,8 +686,8 @@ void uiFrameEnd() { with (gUiData) {
   postOrderApply(root, (box) {
     foreach (axis; enumRange!Axis2) {
       final switch (box.semanticSize[axis].kind) {
-        case UiSizeKind.children_sum:
-          if (!!(box.flags & UiFlags.horizontal_children) == (axis == Axis2.x)) {
+        case SizeKind.children_sum:
+          if (!!(box.flags & BoxFlags.horizontal_children) == (axis == Axis2.x)) {
             // In the direction of flow, we actually sum the children, as they're arranged one after the other.
             float sum = 0;
 
@@ -712,10 +711,10 @@ void uiFrameEnd() { with (gUiData) {
           }
           break;
 
-        case UiSizeKind.none:
-        case UiSizeKind.pixels:
-        case UiSizeKind.text_content:
-        case UiSizeKind.percent_of_parent:
+        case SizeKind.none:
+        case SizeKind.pixels:
+        case SizeKind.text_content:
+        case SizeKind.percent_of_parent:
           break;
       }
     }
@@ -723,8 +722,8 @@ void uiFrameEnd() { with (gUiData) {
 
   // Step 4 (solve violations)
   preOrderApply(root, (box) {
-    Axis2 axis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
-    if (box.flags & UiFlags.view_scroll) return false;  // Assume there really are no violations if you can scroll
+    Axis2 axis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
+    if (box.flags & BoxFlags.view_scroll) return false;  // Assume there really are no violations if you can scroll
     if (!box.first)                      return false;  // Assume there really are no violations if there's no children
 
     float sum = 0;
@@ -759,7 +758,7 @@ void uiFrameEnd() { with (gUiData) {
       box.computedRelPosition[axis] = 0;
 
       if (box.parent) {
-        if (!!(box.parent.flags & UiFlags.horizontal_children) == (axis == Axis2.x)) {
+        if (!!(box.parent.flags & BoxFlags.horizontal_children) == (axis == Axis2.x)) {
           // Order children one after the other in the axis towards the flow of child nodes
           if (box.prev) {
             // @TODO: Padding
@@ -793,8 +792,8 @@ void uiFrameEnd() { with (gUiData) {
 
 
     if (box.parent) {
-      if (box.parent.flags & UiFlags.view_scroll) {
-        auto flowAxis = (box.parent.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+      if (box.parent.flags & BoxFlags.view_scroll) {
+        auto flowAxis = (box.parent.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
         box.rect.min[flowAxis] -= box.parent.scrollInfo.offset;
         box.rect.max[flowAxis] -= box.parent.scrollInfo.offset;
       }
@@ -810,8 +809,8 @@ void uiFrameEnd() { with (gUiData) {
 
   // Extra step: Figure out scroll limits for scrollables, only after computing the size and position of all boxes
   preOrderApply(root, (box) {
-    if (box.flags & UiFlags.view_scroll && !(box.flags & UiFlags.manual_scroll_limits)) {
-      auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+    if (box.flags & BoxFlags.view_scroll && !(box.flags & BoxFlags.manual_scroll_limits)) {
+      auto flowAxis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
       box.scrollInfo.limitMin = 0;
       box.scrollInfo.limitMax = box.last
                                     ? box.last.computedRelPosition[flowAxis] + box.last.computedSize[flowAxis] - box.computedSize[flowAxis]
@@ -823,7 +822,7 @@ void uiFrameEnd() { with (gUiData) {
 }}
 
 // If func returns false, then children are skipped.
-void preOrderApply(UiBox* box, scope bool delegate(UiBox* box) @nogc nothrow func) {
+void preOrderApply(Box* box, scope bool delegate(Box* box) @nogc nothrow func) {
   auto runner = box;
   while (runner != null) {
     bool skipChildren = func(runner);
@@ -846,7 +845,7 @@ void preOrderApply(UiBox* box, scope bool delegate(UiBox* box) @nogc nothrow fun
   }
 }
 
-void postOrderApply(UiBox* box, scope void delegate(UiBox* box) @nogc nothrow func) {
+void postOrderApply(Box* box, scope void delegate(Box* box) @nogc nothrow func) {
   auto runner = box;
   while (runner != null) {
     if (runner.first) {
@@ -871,36 +870,36 @@ void postOrderApply(UiBox* box, scope void delegate(UiBox* box) @nogc nothrow fu
   }
 }
 
-auto eachChild(UiBox* box) {
+auto eachChild(Box* box) {
   static struct Range {
     @nogc: nothrow:
 
-    UiBox* runner;
+    Box* runner;
 
-    UiBox* front()    { return runner; }
-    bool   empty()    { return runner == null; }
-    void   popFront() { runner = runner.next; }
+    Box* front()    { return runner; }
+    bool empty()    { return runner == null; }
+    void popFront() { runner = runner.next; }
   }
 
   return Range(box.first);
 }
 
-UiSignal signalFromBox(UiBox* box) { with (gUiData) {
-  UiSignal result;
+Signal signalFromBox(Box* box) { with (gUiData) {
+  Signal result;
   result.box = box;
 
   auto local = &gUiData;
 
-  if ((box.flags & UiFlags.demand_focus) && focused == null && active == null) {
+  if ((box.flags & BoxFlags.demand_focus) && focused == null && active == null) {
     focused = box;
   }
 
-  if (box.flags & (UiFlags.clickable | UiFlags.view_scroll)) {
+  if (box.flags & (BoxFlags.clickable | BoxFlags.view_scroll)) {
     if (active == null && input.down(Key.touch)) {
       auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
 
       if (touchInsideBoxAndAncestors(box, touchPoint)) {
-        if (box.flags & (UiFlags.clickable)) {
+        if (box.flags & (BoxFlags.clickable)) {
           box.hotT      = 1;
           hot           = box;
         }
@@ -910,7 +909,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
         result.hovering = true;
         active          = box;
 
-        auto ancestorToFocus = boxOrAncestorWithFlags(box, UiFlags.demand_focus);
+        auto ancestorToFocus = boxOrAncestorWithFlags(box, BoxFlags.demand_focus);
         if (ancestorToFocus) focused = ancestorToFocus;
 
         if (box.parent) {
@@ -920,13 +919,13 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
         }
 
         // @Hack: Check for clickable, in case it's actually only scrollable. Should clickable/scrollable code be separated?
-        if (box.flags & UiFlags.clickable) {
+        if (box.flags & BoxFlags.clickable) {
           audioPlaySound(SoundEffect.button_down, 0.125);
         }
       }
     }
     else if (active == box && input.held(Key.touch)) {
-      if (box.flags & (UiFlags.clickable)) {
+      if (box.flags & (BoxFlags.clickable)) {
         box.hotT  = 1;
         hot       = box;
       }
@@ -935,10 +934,10 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       result.held = true;
 
       // Allow scrolling an ancestor to kick in if we drag too far away
-      auto scrollAncestor = boxOrAncestorWithFlags(box.parent, UiFlags.view_scroll);
-      auto parentFlowAxis = scrollAncestor && (scrollAncestor.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+      auto scrollAncestor = boxOrAncestorWithFlags(box.parent, BoxFlags.view_scroll);
+      auto parentFlowAxis = scrollAncestor && (scrollAncestor.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
       if (scrollAncestor && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
-        if (scrollAncestor.flags & (UiFlags.clickable)) {
+        if (scrollAncestor.flags & (BoxFlags.clickable)) {
           scrollAncestor.hotT = 1;
           hot                 = scrollAncestor;
         }
@@ -951,7 +950,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       else if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
 
-        if ( (box.flags & UiFlags.clickable) &&
+        if ( (box.flags & BoxFlags.clickable) &&
              !inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
         {
           audioPlaySound(SoundEffect.button_down, 0.125);
@@ -960,7 +959,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       else {
         result.released = inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py));
 
-        if (result.released && (box.flags & UiFlags.clickable)) {
+        if (result.released && (box.flags & BoxFlags.clickable)) {
           audioPlaySound(SoundEffect.button_off, 0.125);
         }
       }
@@ -971,33 +970,33 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py))) {
         result.clicked  = true;
 
-        if (box.flags & UiFlags.clickable) {
+        if (box.flags & BoxFlags.clickable) {
           audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
         }
       }
     }
   }
 
-  static UiBox* moveToSelectable(UiBox* box, int dir, scope bool delegate(UiBox*) @nogc nothrow check) {
+  static Box* moveToSelectable(Box* box, int dir, scope bool delegate(Box*) @nogc nothrow check) {
     auto runner = box;
 
     if (dir == 1) {
       do {
         runner = runner.next;
-      } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
+      } while (runner != null && (!(runner.flags & BoxFlags.selectable) || !check(runner)));
     }
     else {
       do {
         runner = runner.prev;
-      } while (runner != null && (!(runner.flags & UiFlags.selectable) || !check(runner)));
+      } while (runner != null && (!(runner.flags & BoxFlags.selectable) || !check(runner)));
     }
 
     return runner == null ? box : runner;
   }
 
-  auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+  auto flowAxis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
 
-  if (UiBox* cursored = ((box.flags & UiFlags.select_children) && hot && hot.parent == box) ? hot : null) {
+  if (Box* cursored = ((box.flags & BoxFlags.select_children) && hot && hot.parent == box) ? hot : null) {
     Key forwardKey  = flowAxis == Axis2.x ? Key.right : Key.down;
     Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
 
@@ -1028,7 +1027,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
-  if ((box.flags & UiFlags.view_scroll) && focused == box) {
+  if ((box.flags & BoxFlags.view_scroll) && focused == box) {
     uint allowedMethods = 0;
 
     if (active == box) {
@@ -1045,7 +1044,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     bool needToScrollTowardsChild = false;
     if (hot && isAncestorOf(hot, box))  {
       // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
-      cursorBounds = flowAxis == Axis2.y && (hot.flags & UiFlags.clickable) ?
+      cursorBounds = flowAxis == Axis2.y && (hot.flags & BoxFlags.clickable) ?
                         clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
 
       auto runner = hot;
@@ -1058,7 +1057,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       needToScrollTowardsChild = // @Hack: Deal with the fact that only part of the clickable area CAN be scrolled to.
                                  //        This kind of sucks.
                                  ( flowAxis != Axis2.y ||
-                                   !(hot.flags & UiFlags.clickable) ||
+                                   !(hot.flags & BoxFlags.clickable) ||
                                    box.scrollInfo.limitMin + SCREEN_POS[GFXScreen.bottom].y <
                                      box.rect.top + relToMe ) &&
                                  ( hot.rect.min[flowAxis] < cursorBounds.min[flowAxis] ||
@@ -1107,7 +1106,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     }
   }
 
-  if ((box.flags & UiFlags.selectable) && hot == box) {
+  if ((box.flags & BoxFlags.selectable) && hot == box) {
     if (input.down(Key.a)) {
       active   = box;
       focused  = box;
@@ -1117,7 +1116,7 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       result.held     = true;
       result.hovering = true;
 
-      if (box.parent && box.parent.flags & UiFlags.select_children) {
+      if (box.parent && box.parent.flags & BoxFlags.select_children) {
         box.parent.hoveredChild  = box.childId;
         box.parent.selectedChild = box.childId;
         result.selected = true;
@@ -1134,10 +1133,10 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   return result;
 }}
 
-void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiData) { with (box.scrollInfo) {
+void respondToScroll(Box* box, Signal* result, Vec2 scrollDiff) { with (gUiData) { with (box.scrollInfo) {
   enum SCROLL_TICK_DISTANCE = 60;
 
-  auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
+  auto flowAxis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
 
   offsetLast = offset;
 
@@ -1211,13 +1210,13 @@ void respondToScroll(UiBox* box, UiSignal* result, Vec2 scrollDiff) { with (gUiD
   }
 }}}
 
-UiCommand[] getCommands() { with (gUiData) {
+Command[] getCommands() { with (gUiData) {
   return commands[0..numCommands];
 }}
 
 void sendCommand(uint code, uint value) { with (gUiData) {
   assert(numCommands < commands.length, "Too many UI commands in one frame!");
-  commands[numCommands] = UiCommand(code, value);
+  commands[numCommands] = Command(code, value);
   numCommands++;
 }}
 
@@ -1244,7 +1243,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
       box.render(box, screen, side, _3DEnabled, slider3DState, screenPos);
     }
     else if (RENDER_DEBUG_BOXES) {
-      if (box.flags & UiFlags.clickable) {
+      if (box.flags & BoxFlags.clickable) {
         C2D_DrawRectSolid(box.rect.left - screenPos.x, box.rect.top - screenPos.y, 0, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
       }
       else {
@@ -1254,7 +1253,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
         C2D_DrawRectSolid(box.rect.right - screenPos.x-1, box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top-1, color);
       }
 
-      if (box.parent && (box.parent.flags & UiFlags.select_children) && (box.flags & UiFlags.selectable) && box.hotT > 0) {
+      if (box.parent && (box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
         auto indicColor = C2D_Color32f(0x00, 0xAA/255.0, 0x11/255.0, box.hotT);
         C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.top-2 - screenPos.y,    0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
         C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.bottom - screenPos.y,   0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
@@ -1262,7 +1261,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
         C2D_DrawRectSolid(box.rect.right - screenPos.x,   box.rect.top-2 - screenPos.y,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
       }
 
-      if (box.flags & UiFlags.draw_text) {
+      if (box.flags & BoxFlags.draw_text) {
         auto rect = box.rect - screenPos;
 
         float textX = (rect.left + rect.right)/2  - box.text.width/2;
@@ -1351,22 +1350,22 @@ void unloadPage(LoadedPage* page) { with (page) {
   if (textBuf) C2D_TextBufClear(textBuf);
 }}
 
-struct UiHashTable {
-  UiBox*[] table;
+struct BoxHashTable {
+  Box*[] table;
 
-  UiBox[] freePool;  // Persists between frames
+  Box[] freePool;  // Persists between frames
   size_t freePoolPos;
-  UiBox* firstFree;
+  Box* firstFree;
 
-  UiBox[] temp;  // Cleared each frame
+  Box[] temp;  // Cleared each frame
   size_t tempPos;
 
   @nogc: nothrow:
-  UiBox* opIndex(const(char)[] text) {
-    auto key   = uiBoxHash(text);
+  Box* opIndex(const(char)[] text) {
+    auto key   = boxHash(text);
     auto index = cast(size_t) (key % this.table.length);
 
-    UiBox* runner = this.table[index];
+    Box* runner = this.table[index];
     while (runner && runner.hashKey != key) {
       runner = runner.hashNext;
     }
@@ -1383,7 +1382,7 @@ struct UiHashTable {
   }
 }
 
-ulong uiBoxHash(const(char)[] text) {
+ulong boxHash(const(char)[] text) {
   // @TODO: This hash sucks!!!! Replace it!
   ulong hash = 5381;
 
@@ -1394,20 +1393,20 @@ ulong uiBoxHash(const(char)[] text) {
   return hash;
 }
 
-UiHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements, size_t tempElements) {
-  UiHashTable result;
+BoxHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements, size_t tempElements) {
+  BoxHashTable result;
 
-  result.table    = arenaPushArray!(UiBox*, true)(arena, tableElements);
-  result.freePool = arenaPushArray!(UiBox,  true)(arena, maxElements);
-  result.temp     = arenaPushArray!(UiBox,  true)(arena, tempElements);
+  result.table    = arenaPushArray!(Box*, true)(arena, tableElements);
+  result.freePool = arenaPushArray!(Box,  true)(arena, maxElements);
+  result.temp     = arenaPushArray!(Box,  true)(arena, tempElements);
 
   return result;
 }
 
-UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
+Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
   mixin(timeBlock("hashTableFindOrAlloc"));
 
-  UiBox* result;
+  Box* result;
 
   // If we're passed an empty ID, allocate it on the per-frame temporary box arena
   if (!text.length) {
@@ -1418,9 +1417,9 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
     return result;
   }
 
-  auto key      = uiBoxHash(text);
-  auto index    = cast(size_t) (key % hashTable.table.length);
-  UiBox* runner = hashTable.table[index], last = null;
+  auto key    = boxHash(text);
+  auto index  = cast(size_t) (key % hashTable.table.length);
+  Box* runner = hashTable.table[index], last = null;
 
   bool fillingSlot = runner == null;
   if (runner) {
@@ -1459,7 +1458,7 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
       hashTable.table[index] = result;
     }
 
-    *result = UiBox.init;
+    *result = Box.init;
     result.hashKey  = key;
     if (last) last.hashNext = result;
     result.hashPrev = last;
@@ -1469,7 +1468,7 @@ UiBox* hashTableFindOrAlloc(UiHashTable* hashTable, const(char)[] text) {
   return result;
 }
 
-void hashTableRemove(UiHashTable* hashTable, UiBox* box) {
+void hashTableRemove(BoxHashTable* hashTable, Box* box) {
   assert(box >= hashTable.freePool.ptr && box <= hashTable.freePool.ptr + hashTable.freePool.length);
 
   if (box.hashPrev) {
@@ -1488,7 +1487,7 @@ void hashTableRemove(UiHashTable* hashTable, UiBox* box) {
   // @Note: Doesn't update the table array - only hashTablePrune knows enough to do that without a loop. Is this a bad API?
 }
 
-void hashTablePrune(UiHashTable* hashTable) {
+void hashTablePrune(BoxHashTable* hashTable) {
   foreach (ref box; hashTable.table) {
     auto runner = box;
 

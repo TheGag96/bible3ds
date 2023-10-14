@@ -10,7 +10,7 @@ import citro3d;
 import citro2d;
 
 import bible.bible, bible.audio, bible.input, bible.util, bible.save;
-import bible.imgui, bible.imgui_render;
+import ui = bible.imgui;
 import bible.profiling;
 
 //debug import bible.debugging;
@@ -49,12 +49,12 @@ struct PageId {
 
 struct MainData {
   View curView = View.book;
-  ScrollCache scrollCache;
+  ui.ScrollCache scrollCache;
 
   float size = 0;
   OpenBook book;
   PageId pageId;
-  LoadedPage loadedPage;
+  ui.LoadedPage loadedPage;
 
   float defaultPageTextSize = 0, defaultPageMargin = 0;
 
@@ -102,8 +102,8 @@ extern(C) int main(int argc, char** argv) {
   //C3D_AlphaTest(true, GPUTestFunc.notequal, 0); //make empty space in sprites properly transparent, even despite using the depth buffer
   //consoleInit(GFXScreen.bottom, null);
 
-  loadUiAssets();
-  uiInit();
+  ui.loadAssets();
+  ui.init();
 
   Input input;
 
@@ -184,38 +184,38 @@ extern(C) int main(int argc, char** argv) {
       if (mainData.curView == View.reading) {
         mixin(timeBlock("render > scroll cache"));
 
-        scrollCacheBeginFrame(&mainData.scrollCache);
-        scrollCacheRenderScrollUpdate(
+        ui.scrollCacheBeginFrame(&mainData.scrollCache);
+        ui.scrollCacheRenderScrollUpdate(
           &mainData.scrollCache,
           mainData.loadedPage.scrollInfo,
-          &renderPage, &mainData.loadedPage,
+          &ui.renderPage, &mainData.loadedPage,
           CLEAR_COLOR,
         );
-        scrollCacheEndFrame(&mainData.scrollCache);
+        ui.scrollCacheEndFrame(&mainData.scrollCache);
       }
 
       {
         mixin(timeBlock("render > left"));
         C2D_TargetClear(topLeft, CLEAR_COLOR);
         C2D_SceneBegin(topLeft);
-        drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-        render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
+        ui.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        ui.render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
       }
 
       if (_3DEnabled) {
         mixin(timeBlock("render > right"));
         C2D_TargetClear(topRight, CLEAR_COLOR);
         C2D_SceneBegin(topRight);
-        drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-        render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
+        ui.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        ui.render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
       }
 
       {
         mixin(timeBlock("render > bottom"));
         C2D_TargetClear(bottom, CLEAR_COLOR);
         C2D_SceneBegin(bottom);
-        drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
-        render(GFXScreen.bottom, GFX3DSide.left, false, 0);
+        ui.drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        ui.render(GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
     }
 
@@ -238,7 +238,7 @@ void initMainData(MainData* mainData) { with (mainData) {
   enum SCROLL_CACHE_WIDTH  = cast(ushort) SCREEN_BOTTOM_WIDTH,
        SCROLL_CACHE_HEIGHT = cast(ushort) (2*SCREEN_HEIGHT);
 
-  scrollCache = scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
+  scrollCache = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   defaultPageTextSize = DEFAULT_PAGE_TEXT_SIZE;
   defaultPageMargin   = DEFAULT_PAGE_MARGIN;
@@ -247,7 +247,7 @@ void initMainData(MainData* mainData) { with (mainData) {
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
   if (newPageId == pageId) return;
 
-  unloadPage(&loadedPage);
+  ui.unloadPage(&loadedPage);
 
   if (!book.rawFile || newPageId.translation != pageId.translation || newPageId.book != pageId.book) {
     closeBibleBook(&book);
@@ -258,12 +258,12 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
     newPageId.chapter = book.chapters.length + newPageId.chapter;
   }
 
-  loadPage(&loadedPage, book.chapters[newPageId.chapter], defaultPageTextSize, defaultPageMargin);
+  ui.loadPage(&loadedPage, book.chapters[newPageId.chapter], defaultPageTextSize, defaultPageMargin);
   scrollCache.needsRepaint = true;
   frameNeedsRender = true;
 
   // @Hack: Is there any better way to do this?
-  auto readViewPane = gUiData.boxes["reading_scroll_read_view"];
+  auto readViewPane = ui.gUiData.boxes["reading_scroll_read_view"];
   if (readViewPane) {
     readViewPane.scrollInfo.offset     = 0;
     readViewPane.scrollInfo.offsetLast = 0;
@@ -317,8 +317,17 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
   loadBiblePage(mainData, newPageId);
 }}
 
+struct UiView {
+  ui.UiData uiData;
+  alias uiData this;
+
+
+}
+
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
 void mainGui(MainData* mainData, Input* input) {
+  import bible.imgui;
+
   mixin(timeBlock("mainGui"));
 
   enum CommandCode {
@@ -343,7 +352,7 @@ void mainGui(MainData* mainData, Input* input) {
     handleChapterSwitchHotkeys(mainData, input);
   }
 
-  uiFrameStart();
+  frameStart();
   handleInput(input);
 
   auto mainLayout = ScopedCombinedScreenSplitLayout("combined_screen_layout_main", "combined_screen_layout_left", "combined_screen_layout_center", "combined_screen_layout_right");
@@ -351,8 +360,8 @@ void mainGui(MainData* mainData, Input* input) {
 
   final switch (mainData.curView) {
     case View.book:
-      UiBox* scrollLayoutBox;
-      UiSignal scrollLayoutSignal;
+      Box* scrollLayoutBox;
+      Signal scrollLayoutSignal;
       bool pushingAgainstScrollLimit = false;
 
       {
@@ -366,14 +375,14 @@ void mainGui(MainData* mainData, Input* input) {
 
         {
           auto horziontalLayout = ScopedLayout("", Axis2.x, justification : Justification.min);
-          horziontalLayout.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1, 0);
-          horziontalLayout.semanticSize[Axis2.y] = UiSize(UiSizeKind.children_sum, 0, 0);
+          horziontalLayout.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 0);
+          horziontalLayout.semanticSize[Axis2.y] = Size(SizeKind.children_sum, 0, 0);
 
-          UiSignal leftColumnSignal;
+          Signal leftColumnSignal;
           {
             auto leftColumn = ScopedSelectLayout("book_left_column", &leftColumnSignal, Axis2.y);
-            leftColumn.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1.0, 0);
-            leftColumn.semanticSize[Axis2.y] = UiSize(UiSizeKind.children_sum, 0, 0);
+            leftColumn.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1.0, 0);
+            leftColumn.semanticSize[Axis2.y] = Size(SizeKind.children_sum, 0, 0);
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 0) {
@@ -392,11 +401,11 @@ void mainGui(MainData* mainData, Input* input) {
           }
           pushingAgainstScrollLimit |= leftColumnSignal.pushingAgainstScrollLimit;
 
-          UiSignal rightColumnSignal;
+          Signal rightColumnSignal;
           {
             auto rightColumn = ScopedSelectLayout("book_right_column", &rightColumnSignal, Axis2.y);
-            rightColumn.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1.0, 0);
-            rightColumn.semanticSize[Axis2.y] = UiSize(UiSizeKind.children_sum, 0, 0);
+            rightColumn.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1.0, 0);
+            rightColumn.semanticSize[Axis2.y] = Size(SizeKind.children_sum, 0, 0);
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 1) {
@@ -412,7 +421,7 @@ void mainGui(MainData* mainData, Input* input) {
           pushingAgainstScrollLimit |= rightColumnSignal.pushingAgainstScrollLimit;
 
           // Allow hopping columns
-          UiBox* oppositeColumn = gUiData.hot.parent == leftColumnSignal.box ? rightColumnSignal.box : leftColumnSignal.box;
+          Box* oppositeColumn = gUiData.hot.parent == leftColumnSignal.box ? rightColumnSignal.box : leftColumnSignal.box;
           if (!touchScrollOcurring(*input, Axis2.y) && input.down(Key.left | Key.right)) {
             gUiData.hot = getChild(oppositeColumn, gUiData.hot.childId);
             audioPlaySound(SoundEffect.button_move, 0.05);
@@ -465,8 +474,8 @@ void mainGui(MainData* mainData, Input* input) {
       break;
 
     case View.options:
-      UiBox* scrollLayoutBox;
-      UiSignal scrollLayoutSignal;
+      Box* scrollLayoutBox;
+      Signal scrollLayoutSignal;
       {
         auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal, Axis2.y);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
@@ -509,7 +518,7 @@ void mainGui(MainData* mainData, Input* input) {
       break;
   }
 
-  uiFrameEnd();
+  frameEnd();
 }
 
 extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {

@@ -6,7 +6,7 @@ import std.math;
 
 @nogc: nothrow:
 
-void renderLabel(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   float z = 0;
 
   auto rect = box.rect - screenPos;
@@ -34,7 +34,7 @@ void renderLabel(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, 
 enum BUTTON_DEPRESS_NORMAL = 3;
 enum BUTTON_DEPRESS_BOTTOM = 1;
 
-void renderNormalButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + Vec2(0, pressed * BUTTON_DEPRESS_NORMAL) - screenPos;
@@ -91,18 +91,18 @@ void renderNormalButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEn
   C2D_Flush();
 
 
-  if (box.flags & UiFlags.draw_text) {
+  if (box.flags & BoxFlags.draw_text) {
     C2D_DrawText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colorText
     );
   }
 
-  if (box.parent && (box.parent.flags & UiFlags.select_children) && (box.flags & UiFlags.selectable) && box.hotT > 0) {
+  if (box.parent && (box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
     renderButtonSelectionIndicator(box, rect, screen, side, _3DEnabled, slider3DState, screenPos);
   }
 }
 
-void renderBottomButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM) - screenPos;
@@ -240,7 +240,7 @@ void renderBottomButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEn
 
   int textBevelOffset = pressed ? 1 : -1;
 
-  if (box.flags & UiFlags.draw_text) {
+  if (box.flags & BoxFlags.draw_text) {
     C2D_DrawText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY + textBevelOffset, z, box.style.textSize, box.style.textSize, bevelTexColor
     );
@@ -251,7 +251,7 @@ void renderBottomButton(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEn
   }
 }
 
-void renderButtonSelectionIndicator(UiBox* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   C2D_Prepare(C2DShader.normal);
@@ -331,16 +331,16 @@ void renderButtonSelectionIndicator(UiBox* box, in Rectangle rect, GFXScreen scr
 }
 
 
-struct UiAssets {
+struct Assets {
   C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
   C3D_Tex selectorTex;
   C3D_Tex buttonTex, bottomButtonTex, bottomButtonAboveFadeTex;
   C3D_Tex indicatorTex;
 }
 
-UiAssets gUiAssets;
+Assets gUiAssets;
 
-void loadUiAssets() {
+void loadAssets() {
   with (gUiAssets) {
     if (!loadTextureFromFile(&vignetteTex, null, "romfs:/gfx/vignette.t3x"))
       svcBreak(UserBreakType.panic);
@@ -475,7 +475,7 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
 // Scroll Indicator
 ////////
 
-void renderScrollIndicator(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
@@ -736,7 +736,7 @@ Tex3DS_SubTexture scrollCacheGetUvs(
   return result;
 }}
 
-void scrollCacheDraw(UiBox* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   auto rect = clipWithinOther(box.rect, SCREEN_RECT[screen]);
 
   Tex3DS_SubTexture subtex = scrollCacheGetUvs(*box.scrollCache, rect.right-rect.left, rect.bottom-rect.top, rect.top, box.scrollInfo.offset);
