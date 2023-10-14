@@ -194,3 +194,7 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
 void resetScrollDiff(Input* input) { with (input) {
   scrollVel = 0;
 }}
+
+bool touchScrollOcurring(in Input input, Axis2 axis) { with (input) {
+  return scrollMethodCur == ScrollMethod.touch || (scrollMethodCur == ScrollMethod.none && scrollVel[axis] != 0);
+}}

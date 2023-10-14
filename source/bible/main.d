@@ -353,8 +353,10 @@ void mainGui(MainData* mainData, Input* input) {
     case View.book:
       UiBox* scrollLayoutBox;
       UiSignal scrollLayoutSignal;
+      bool pushingAgainstScrollLimit = false;
+
       {
-        auto scrollLayout = ScopedSelectScrollLayout("book_scroll_layout", &scrollLayoutSignal, Axis2.y);
+        auto scrollLayout = ScopedScrollLayout("book_scroll_layout", &scrollLayoutSignal, Axis2.y);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
 
         scrollLayoutBox = scrollLayout.box;
@@ -362,16 +364,62 @@ void mainGui(MainData* mainData, Input* input) {
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
         spacer(SCREEN_HEIGHT + 8);
 
-        foreach (i, book; BOOK_NAMES) {
-          if (button(book, 150).clicked) {
-            sendCommand(CommandCode.open_book, i);
+        {
+          auto horziontalLayout = ScopedLayout("", Axis2.x, justification : Justification.min);
+          horziontalLayout.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1, 0);
+          horziontalLayout.semanticSize[Axis2.y] = UiSize(UiSizeKind.children_sum, 0, 0);
+
+          UiSignal leftColumnSignal;
+          {
+            auto leftColumn = ScopedSelectLayout("book_left_column", &leftColumnSignal, Axis2.y);
+            leftColumn.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1.0, 0);
+            leftColumn.semanticSize[Axis2.y] = UiSize(UiSizeKind.children_sum, 0, 0);
+
+            foreach (i, book; BOOK_NAMES) {
+              if (i % 2 == 0) {
+                auto bookButton = button(book, 150);
+
+                // Select the first book button if nothing else is
+                if (i == 0 && !gUiData.hot) gUiData.hot = bookButton.box;
+
+                if (bookButton.clicked) {
+                  sendCommand(CommandCode.open_book, i);
+                }
+
+                spacer(8);
+              }
+            }
           }
+          pushingAgainstScrollLimit |= leftColumnSignal.pushingAgainstScrollLimit;
 
-          spacer(8);
+          UiSignal rightColumnSignal;
+          {
+            auto rightColumn = ScopedSelectLayout("book_right_column", &rightColumnSignal, Axis2.y);
+            rightColumn.semanticSize[Axis2.x] = UiSize(UiSizeKind.percent_of_parent, 1.0, 0);
+            rightColumn.semanticSize[Axis2.y] = UiSize(UiSizeKind.children_sum, 0, 0);
+
+            foreach (i, book; BOOK_NAMES) {
+              if (i % 2 == 1) {
+                auto bookButton = button(book, 150);
+                if (bookButton.clicked) {
+                  sendCommand(CommandCode.open_book, i);
+                }
+
+                spacer(8);
+              }
+            }
+          }
+          pushingAgainstScrollLimit |= rightColumnSignal.pushingAgainstScrollLimit;
+
+          // Allow hopping columns
+          UiBox* oppositeColumn = gUiData.hot.parent == leftColumnSignal.box ? rightColumnSignal.box : leftColumnSignal.box;
+          if (!touchScrollOcurring(*input, Axis2.y) && input.down(Key.left | Key.right)) {
+            gUiData.hot = getChild(oppositeColumn, gUiData.hot.childId);
+            audioPlaySound(SoundEffect.button_move, 0.05);
+          }
         }
-
-        int x= 3;
       }
+      pushingAgainstScrollLimit |= scrollLayoutSignal.pushingAgainstScrollLimit;
 
       {
         auto style = ScopedStyle(&BOTTOM_BUTTON_STYLE);
@@ -387,7 +435,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         rightSplit.startTop();
 
-        scrollIndicator("book_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
+        scrollIndicator("book_scroll_indicator", scrollLayoutBox, Justification.max, pushingAgainstScrollLimit);
       }
 
       break;

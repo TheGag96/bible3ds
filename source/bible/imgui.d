@@ -119,7 +119,7 @@ struct UiBox {
 
   ulong hashKey;
 
-  int childId;
+  ushort childId, numChildren;
 
   C2D_Text text;
   float textHeight = 0;
@@ -164,8 +164,21 @@ struct UiBoxAndSignal {
   UiSignal signal;
 }
 
-UiBox* ancestorWithFlags(UiBox* box, UiFlags flags) {
-  box = box.parent;
+bool isAncestorOf(UiBox* younger, UiBox* older) {
+  if (younger == null) return false;
+
+  younger = younger.parent;
+  while (younger != null) {
+    if (younger == older) {
+      return true;
+    }
+    younger = younger.parent;
+  }
+
+  return false;
+}
+
+UiBox* boxOrAncestorWithFlags(UiBox* box, UiFlags flags) {
   while (box != null) {
     if ((box.flags & flags) == flags) {
       return box;
@@ -187,6 +200,17 @@ bool touchInsideBoxAndAncestors(UiBox* box, Vec2 touchPoint) {
   }
 
   return true;
+}
+
+UiBox* getChild(UiBox* box, int childId) {
+  if (!box || childId >= box.numChildren) return null;
+
+  box = box.first;
+  for (ushort i = 0; i < childId; i++) {
+    box = box.next;
+  }
+
+  return box;
 }
 
 void label(const(char)[] text, Justification justification = Justification.min) {
@@ -217,7 +241,7 @@ static immutable BoxStyle BACK_BUTTON_STYLE = () {
   return result;
 }();
 
-UiSignal button(const(char)[] text, int size = 0) {
+UiSignal button(const(char)[] text, int size = 0, Justification justification = Justification.center) {
   UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text | UiFlags.selectable, text);
 
   if (size == 0) {
@@ -229,7 +253,8 @@ UiSignal button(const(char)[] text, int size = 0) {
 
   box.semanticSize[Axis2.y] = UiSize(UiSizeKind.text_content, 0, 1);
 
-  box.render = &renderNormalButton;
+  box.justification = justification;
+  box.render        = &renderNormalButton;
 
   return signalFromBox(box);
 }
@@ -237,6 +262,7 @@ UiSignal button(const(char)[] text, int size = 0) {
 UiSignal bottomButton(const(char)[] text) {
   UiBox* box = makeBox(UiFlags.clickable | UiFlags.draw_text, text);
   box.semanticSize[] = [UiSize(UiSizeKind.percent_of_parent, 1, 1), UiSize(UiSizeKind.text_content, 0, 1)].s;
+  box.justification = Justification.center;
   box.render = &renderBottomButton;
   return signalFromBox(box);
 }
@@ -508,6 +534,7 @@ UiBox* makeBox(UiFlags flags, const(char)[] text) { with (gUiData) {
       curBox.first = result;
       curBox.last  = result;
     }
+    curBox.numChildren++;
 
     result.parent = curBox;
   }
@@ -517,9 +544,10 @@ UiBox* makeBox(UiFlags flags, const(char)[] text) { with (gUiData) {
     curBox = result;
   }
 
-  result.childId = result.prev == null ? 0 : result.prev.childId + 1;
-  result.flags   = flags;
-  result.style   = gUiData.style;
+  result.childId     = cast(ushort) (result.prev == null ? 0 : result.prev.childId + 1);
+  result.numChildren = 0;
+  result.flags       = flags;
+  result.style       = gUiData.style;
 
   if ((flags & UiFlags.draw_text) && displayText.length) {
     C2D_TextParse(&result.text, textBuf, displayText);
@@ -859,10 +887,11 @@ auto eachChild(UiBox* box) {
 
 UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   UiSignal result;
+  result.box = box;
 
   auto local = &gUiData;
 
-  if ((box.flags & UiFlags.demand_focus) && active == null) {
+  if ((box.flags & UiFlags.demand_focus) && focused == null && active == null) {
     focused = box;
   }
 
@@ -870,18 +899,21 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
     if (active == null && input.down(Key.touch)) {
       auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
 
-      if (touchInsideBoxAndAncestors(box, touchPoint))
-      {
-        box.hotT        = 1;
+      if (touchInsideBoxAndAncestors(box, touchPoint)) {
+        if (box.flags & (UiFlags.clickable)) {
+          box.hotT      = 1;
+          hot           = box;
+        }
         box.activeT     = 1;
         result.held     = true;
         result.pressed  = true;
         result.hovering = true;
-        hot             = box;
         active          = box;
-        focused         = box;
 
-        if (box.parent && box.parent.flags & UiFlags.select_children) {
+        auto ancestorToFocus = boxOrAncestorWithFlags(box, UiFlags.demand_focus);
+        if (ancestorToFocus) focused = ancestorToFocus;
+
+        if (box.parent) {
           box.parent.hoveredChild  = box.childId;
           box.parent.selectedChild = box.childId;
           result.selected          = true;
@@ -894,23 +926,26 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
       }
     }
     else if (active == box && input.held(Key.touch)) {
-      box.hotT    = 1;
+      if (box.flags & (UiFlags.clickable)) {
+        box.hotT  = 1;
+        hot       = box;
+      }
       box.activeT = 1;
-      hot         = box;
       active      = box;
-      focused     = box;
       result.held = true;
 
       // Allow scrolling an ancestor to kick in if we drag too far away
-      auto scrollAncestor = ancestorWithFlags(box, UiFlags.view_scroll);
+      auto scrollAncestor = boxOrAncestorWithFlags(box.parent, UiFlags.view_scroll);
       auto parentFlowAxis = scrollAncestor && (scrollAncestor.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
       if (scrollAncestor && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
+        if (scrollAncestor.flags & (UiFlags.clickable)) {
+          scrollAncestor.hotT = 1;
+          hot                 = scrollAncestor;
+        }
         result.held            = false;
         result.released        = true;
-        scrollAncestor.hotT    = 1;
         scrollAncestor.activeT = 1;
         active                 = scrollAncestor;
-        hot                    = scrollAncestor;
         focused                = scrollAncestor;
       }
       else if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
@@ -961,43 +996,12 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   }
 
   auto flowAxis = (box.flags & UiFlags.horizontal_children) ? Axis2.x : Axis2.y;
-  bool needToScrollTowardsChild = false;
-  UiBox* cursored = null;
-  if ((box.flags & UiFlags.select_children) && box.first != null) {
-    cursored = box.first;
 
-    // Linear search our way to the current hovered child
-    while (cursored && cursored.childId != box.hoveredChild) cursored = cursored.next;
-
-    // If it's not there anymore, fallback to hovering the first selectable child if we can find it
-    if (!cursored && box.first) {
-      moveToSelectable(box.first, 1, a => true);
-    }
-  }
-
-  if (cursored) { // We may not have found any hover target in the checks above
+  if (UiBox* cursored = ((box.flags & UiFlags.select_children) && hot && hot.parent == box) ? hot : null) {
     Key forwardKey  = flowAxis == Axis2.x ? Key.right : Key.down;
     Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
 
-    // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
-    auto cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ?
-                            clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
-
-    bool scrollOccurring = (box.flags & UiFlags.view_scroll) &&
-                           ( input.scrollMethodCur == ScrollMethod.touch ||
-                             ( input.scrollMethodCur == ScrollMethod.none &&
-                               input.scrollVel[flowAxis] != 0 ) );
-    if (scrollOccurring) {
-      // Mimicking how the 3DS UI works, select nearest in-vew child while scrolling
-
-      if (cursored.rect.max[flowAxis] > cursorBounds.max[flowAxis]) {
-        cursored = moveToSelectable(cursored, -1, a => a.rect.max[flowAxis] <= cursorBounds.max[flowAxis]);
-      }
-      else if (cursored.rect.min[flowAxis] < cursorBounds.min[flowAxis]) {
-        cursored = moveToSelectable(cursored, 1, a => a.rect.min[flowAxis] >= cursorBounds.min[flowAxis]);
-      }
-    }
-    else if (input.down(backwardKey | forwardKey)) {
+    if (input.down(backwardKey | forwardKey)) {
       int dir = input.down(backwardKey) ? -1 : 1;
 
       auto newCursored = moveToSelectable(cursored, dir, a => true);
@@ -1008,23 +1012,11 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
         audioPlaySound(SoundEffect.button_move, 0.05);
       }
       cursored = newCursored;
-
-      focused = box;  // @TODO: Is this a good way to solve scrolling to off-screen children?
-
-      needToScrollTowardsChild = (box.flags & UiFlags.view_scroll) &&
-                                 // @Hack: Deal with the fact that only part of the clickable area CAN be scrolled to.
-                                 //        This kind of sucks.
-                                 ( flowAxis != Axis2.y ||
-                                   !(cursored.flags & UiFlags.clickable) ||
-                                   box.scrollInfo.limitMin + SCREEN_POS[GFXScreen.bottom].y <
-                                     box.rect.top + cursored.computedRelPosition[Axis2.y] ) &&
-                                 ( cursored.rect.min[flowAxis] < cursorBounds.min[flowAxis] ||
-                                   cursored.rect.max[flowAxis] > cursorBounds.max[flowAxis] );
     }
 
     box.hoveredChild = cursored.childId;
-    if (!scrollOccurring) cursored.hotT = 1;
-    hot = cursored; // @Note: There can only be one select_children box on screen, or else they conflict...
+    if (!touchScrollOcurring(*input, flowAxis)) cursored.hotT = 1;
+    hot = cursored;
 
     // Signal pushing against scroll limit if we're holding a directional key and can't go any further
     {
@@ -1037,29 +1029,52 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
   }
 
   if ((box.flags & UiFlags.view_scroll) && focused == box) {
-    uint allowedMethods = 1 << ScrollMethod.touch;
+    uint allowedMethods = 0;
+
+    if (active == box) {
+      allowedMethods |= 1 << ScrollMethod.touch;
+    }
 
     // Don't allow scrolling with D-pad/circle-pad if we can select children with either of those
     // @TODO allow holding direction for some time to override this
-    if (!(box.flags & UiFlags.select_children)) {
-      allowedMethods = allowedMethods | (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
+    if (!hot) {
+      allowedMethods |= (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
     }
 
     Rectangle cursorBounds;
-    if (box.flags & UiFlags.select_children) {
+    bool needToScrollTowardsChild = false;
+    if (hot && isAncestorOf(hot, box))  {
       // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
-      cursorBounds = flowAxis == Axis2.y && (cursored.flags & UiFlags.clickable) ?
-                         clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
+      cursorBounds = flowAxis == Axis2.y && (hot.flags & UiFlags.clickable) ?
+                        clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
 
+      auto runner = hot;
+      float relToMe = 0;
+      while (runner != box) {
+        relToMe += runner.computedRelPosition[flowAxis];
+        runner = runner.parent;
+      }
+
+      needToScrollTowardsChild = // @Hack: Deal with the fact that only part of the clickable area CAN be scrolled to.
+                                 //        This kind of sucks.
+                                 ( flowAxis != Axis2.y ||
+                                   !(hot.flags & UiFlags.clickable) ||
+                                   box.scrollInfo.limitMin + SCREEN_POS[GFXScreen.bottom].y <
+                                     box.rect.top + relToMe ) &&
+                                 ( hot.rect.min[flowAxis] < cursorBounds.min[flowAxis] ||
+                                   hot.rect.max[flowAxis] > cursorBounds.max[flowAxis] );
+    }
+
+    if (needToScrollTowardsChild || input.scrollMethodCur == ScrollMethod.custom) {
       // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
-      if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
+      if (input.scrollMethodCur == ScrollMethod.none && input.scrollVel[flowAxis] == 0 && needToScrollTowardsChild) {
         input.scrollMethodCur = ScrollMethod.custom;
         input.scrollVel = 0;
       }
       else if ( input.scrollMethodCur == ScrollMethod.custom ) {
-        if ( !cursored ||
-             ( cursored.rect.min[flowAxis] >= cursorBounds.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
-               cursored.rect.max[flowAxis] <= cursorBounds.max[flowAxis] ) )
+        if ( !hot ||
+             ( hot.rect.min[flowAxis] >= cursorBounds.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
+               hot.rect.max[flowAxis] <= cursorBounds.max[flowAxis] ) )
         {
           input.scrollMethodCur = ScrollMethod.none;
         }
@@ -1068,13 +1083,28 @@ UiSignal signalFromBox(UiBox* box) { with (gUiData) {
 
     Vec2 scrollDiff;
     if (input.scrollMethodCur == ScrollMethod.custom) {
-      scrollDiff[flowAxis] = cursored.rect.min[flowAxis] < cursorBounds.min[flowAxis] ? -5 : 5;
+      scrollDiff[flowAxis] = hot.rect.min[flowAxis] < cursorBounds.min[flowAxis] ? -5 : 5;
     }
     else {
       scrollDiff = updateScrollDiff(input, allowedMethods);
     }
 
     respondToScroll(box, &result, scrollDiff);
+
+    if (input.scrollMethodCur == ScrollMethod.none && input.scrollVel[flowAxis] == 0) {
+      focused = null;
+    }
+
+    if (needToScrollTowardsChild && touchScrollOcurring(*input, flowAxis)) {
+      // Mimicking how the 3DS UI works, select nearest in-view child while scrolling
+
+      if (hot.rect.max[flowAxis] > cursorBounds.max[flowAxis]) {
+        hot = moveToSelectable(hot, -1, a => a.rect.max[flowAxis] <= cursorBounds.max[flowAxis]);
+      }
+      else if (hot.rect.min[flowAxis] < cursorBounds.min[flowAxis]) {
+        hot = moveToSelectable(hot, 1, a => a.rect.min[flowAxis] >= cursorBounds.min[flowAxis]);
+      }
+    }
   }
 
   if ((box.flags & UiFlags.selectable) && hot == box) {
