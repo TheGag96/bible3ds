@@ -243,7 +243,7 @@ extern(C) char[] arenaPrintf(Arena* arena, const(char)* spec, ...) {
   assert(length >= 0); //no idea what to do if length comes back negative
 
   if (length+1 <= spaceRemaining) {
-    ubyte* result = arenaAlignBumpIndex(arena, length, 1);
+    ubyte* result = arenaAlignBumpIndex(arena, length, 0);
     return (cast(char*) result)[0..length];
   }
   else {
