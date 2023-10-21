@@ -144,8 +144,16 @@ struct Box {
 
   Box* related;  // General-purpose field to relate boxes to other boxes.
 }
-
 pragma(msg, "Size of Box: ", Box.sizeof);
+
+__gshared const Box gNullBoxStore = {
+  first: cast(Box*) &gNullBoxStore, last: cast(Box*) &gNullBoxStore, next: cast(Box*) &gNullBoxStore, prev: cast(Box*) &gNullBoxStore, parent: cast(Box*) &gNullBoxStore,
+  hashNext: cast(Box*) &gNullBoxStore, hashPrev: cast(Box*) &gNullBoxStore,
+  freeListNext: cast(Box*) &gNullBoxStore,
+  related: cast(Box*) &gNullBoxStore,
+};
+__gshared Box* gNullBox;
+pragma (inline, true) bool boxIsNull(Box* box) => box is null || box is gNullBox;
 
 // @Note: Render scroll caches forced me to make the Box* parameter non-const. Can/should this be changed?
 alias RenderCallback = void function(Box*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
@@ -164,10 +172,8 @@ struct BoxAndSignal {
 }
 
 bool isAncestorOf(Box* younger, Box* older) {
-  if (younger == null) return false;
-
   younger = younger.parent;
-  while (younger != null) {
+  while (!boxIsNull(younger)) {
     if (younger == older) {
       return true;
     }
@@ -178,20 +184,20 @@ bool isAncestorOf(Box* younger, Box* older) {
 }
 
 Box* boxOrAncestorWithFlags(Box* box, BoxFlags flags) {
-  while (box != null) {
+  while (!boxIsNull(box)) {
     if ((box.flags & flags) == flags) {
       return box;
     }
     box = box.parent;
   }
 
-  return null;
+  return gNullBox;
 }
 
 bool touchInsideBoxAndAncestors(Box* box, Vec2 touchPoint) {
   Vec2 touchOnBottom = touchPoint + SCREEN_POS[GFXScreen.bottom];
 
-  while (box != null) {
+  while (!boxIsNull(box)) {
     if (!inside(box.rect, touchOnBottom)) {
       return false;
     }
@@ -202,7 +208,7 @@ bool touchInsideBoxAndAncestors(Box* box, Vec2 touchPoint) {
 }
 
 Box* getChild(Box* box, int childId) {
-  if (!box || childId >= box.numChildren) return null;
+  if (childId >= box.numChildren) return gNullBox;
 
   box = box.first;
   for (ushort i = 0; i < childId; i++) {
@@ -269,7 +275,7 @@ Signal bottomButton(const(char)[] text) {
 void spacer(float size) {
   Box* box = makeBox(cast(BoxFlags) 0, "");
 
-  if (box.parent && (box.parent.flags & BoxFlags.horizontal_children)) {
+  if (box.parent.flags & BoxFlags.horizontal_children) {
     box.semanticSize[Axis2.x] = Size(SizeKind.pixels, size);
     box.semanticSize[Axis2.y] = Size(SizeKind.percent_of_parent, 1, 1);
   }
@@ -486,7 +492,7 @@ struct UiData {
   C2D_TextBuf textBuf;
 }
 
-UiData gUiData;
+__gshared UiData gUiData;
 
 pragma(inline, true)
 const(char)[] tprint(T...)(const(char)[] format, T args) {
@@ -517,14 +523,15 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
   Box* result = hashTableFindOrAlloc(&boxes, id);
   result.lastFrameTouchedIndex = frameIndex;
 
-  result.first   = null;
-  result.last    = null;
-  result.next    = null;
-  result.prev    = null;
-  result.related = null;
+  result.first   = gNullBox;
+  result.last    = gNullBox;
+  result.next    = gNullBox;
+  result.prev    = gNullBox;
+  result.parent  = gNullBox;
+  result.related = gNullBox;
 
-  if (curBox) {
-    if (curBox.first) {
+  if (!boxIsNull(curBox)) {
+    if (!boxIsNull(curBox.first)) {
       curBox.last.next = result;
       result.prev      = curBox.last;
       curBox.last      = result;
@@ -538,12 +545,12 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
     result.parent = curBox;
   }
   else {
-    assert(!root, "Somehow, a second root is trying to be added to the UI tree. Don't do that!");
+    assert(boxIsNull(root), "Somehow, a second root is trying to be added to the UI tree. Don't do that!");
     root   = result;
     curBox = result;
   }
 
-  result.childId     = cast(ushort) (result.prev == null ? 0 : result.prev.childId + 1);
+  result.childId     = cast(ushort) (boxIsNull(result.prev) ? 0 : result.prev.childId + 1);
   result.numChildren = 0;
   result.flags       = flags;
   result.style       = gUiData.style;
@@ -561,13 +568,13 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
 }}
 
 void pushParent(Box* box) { with (gUiData) {
-  assert(box, "Parameter shouldn't be null");
+  assert(!boxIsNull(box), "Parameter shouldn't be null");
   assert(box.parent == curBox || box == curBox, "Parameter should either be the current UI node or one of its children");
   curBox = box;
 }}
 
 Box* popParent() { with (gUiData) {
-  assert(curBox, "Trying to pop to the current UI node's parent, but it's null!");
+  assert(!boxIsNull(curBox), "Trying to pop to the current UI node's parent, but it's null!");
   auto result = curBox;
   curBox = curBox.parent;
   return result;
@@ -583,11 +590,19 @@ void init() { with (gUiData) {
   uiArena     = arenaMake(1*1024*1024);
   boxes       = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
   stringArena = arenaPushArena(&uiArena, 16*1024);
+
+  if (!gNullBox) {
+    gNullBox = cast(Box*) &gNullBoxStore;
+  }
+
+  hot     = gNullBox;
+  focused = gNullBox;
+  active  = gNullBox;
 }}
 
 void frameStart() { with (gUiData) {
-  curBox      = null;
-  root        = null;
+  curBox      = gNullBox;
+  root        = gNullBox;
   style       = &DEFAULT_STYLE;
   numCommands = 0;
 
@@ -595,9 +610,9 @@ void frameStart() { with (gUiData) {
   hashTablePrune(&boxes);
 
   // hashKey being 0 means that they were anonymous boxes, which just got deleted from the hashTablePrune call.
-  if (hot     && (hot.lastFrameTouchedIndex     != frameIndex || hot.hashKey     == 0)) hot     = null;
-  if (active  && (active.lastFrameTouchedIndex  != frameIndex || active.hashKey  == 0)) active  = null;
-  if (focused && (focused.lastFrameTouchedIndex != frameIndex || focused.hashKey == 0)) focused = null;
+  if (!boxIsNull(hot)     && (hot.lastFrameTouchedIndex     != frameIndex || hot.hashKey     == 0)) hot     = gNullBox;
+  if (!boxIsNull(active)  && (active.lastFrameTouchedIndex  != frameIndex || active.hashKey  == 0)) active  = gNullBox;
+  if (!boxIsNull(focused) && (focused.lastFrameTouchedIndex != frameIndex || focused.hashKey == 0)) focused = gNullBox;
 
   arenaClear(&stringArena);
   frameIndex++;
@@ -660,11 +675,11 @@ void frameEnd() { with (gUiData) {
       final switch (box.semanticSize[axis].kind) {
         case SizeKind.percent_of_parent:
           float parentSize;
-          if (box.parent) {
-            parentSize = box.parent.computedSize[axis];
+          if (boxIsNull(box.parent)) {
+            parentSize = axis == Axis2.x ? SCREEN_BOTTOM_WIDTH : SCREEN_HEIGHT; // @TODO
           }
           else {
-            parentSize = axis == Axis2.x ? SCREEN_BOTTOM_WIDTH : SCREEN_HEIGHT; // @TODO
+            parentSize = box.parent.computedSize[axis];
           }
 
           box.computedSize[axis] = parentSize * box.semanticSize[axis].value;
@@ -724,7 +739,7 @@ void frameEnd() { with (gUiData) {
   preOrderApply(root, (box) {
     Axis2 axis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
     if (box.flags & BoxFlags.view_scroll) return false;  // Assume there really are no violations if you can scroll
-    if (!box.first)                      return false;  // Assume there really are no violations if there's no children
+    if (boxIsNull(box.first))             return false;  // Assume there really are no violations if there's no children
 
     float sum = 0;
     foreach (child; eachChild(box)) {
@@ -757,13 +772,11 @@ void frameEnd() { with (gUiData) {
     foreach (axis; enumRange!Axis2) {
       box.computedRelPosition[axis] = 0;
 
-      if (box.parent) {
+      if (!boxIsNull(box.parent)) {
         if (!!(box.parent.flags & BoxFlags.horizontal_children) == (axis == Axis2.x)) {
           // Order children one after the other in the axis towards the flow of child nodes
-          if (box.prev) {
-            // @TODO: Padding
-            box.computedRelPosition[axis] += box.prev.computedRelPosition[axis] + box.prev.computedSize[axis];
-          }
+          // @TODO: Padding
+          box.computedRelPosition[axis] += box.prev.computedRelPosition[axis] + box.prev.computedSize[axis];
         }
         else {
           // Justify within the parent in the axis against flow of child nodes
@@ -791,18 +804,16 @@ void frameEnd() { with (gUiData) {
     box.rect.bottom += box.computedSize[Axis2.y];
 
 
-    if (box.parent) {
-      if (box.parent.flags & BoxFlags.view_scroll) {
-        auto flowAxis = (box.parent.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
-        box.rect.min[flowAxis] -= box.parent.scrollInfo.offset;
-        box.rect.max[flowAxis] -= box.parent.scrollInfo.offset;
-      }
-
-      box.rect.left   += box.parent.rect.left;
-      box.rect.top    += box.parent.rect.top;
-      box.rect.right  += box.parent.rect.left;
-      box.rect.bottom += box.parent.rect.top;
+    if (box.parent.flags & BoxFlags.view_scroll) {
+      auto flowAxis = (box.parent.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
+      box.rect.min[flowAxis] -= box.parent.scrollInfo.offset;
+      box.rect.max[flowAxis] -= box.parent.scrollInfo.offset;
     }
+
+    box.rect.left   += box.parent.rect.left;
+    box.rect.top    += box.parent.rect.top;
+    box.rect.right  += box.parent.rect.left;
+    box.rect.bottom += box.parent.rect.top;
 
     return false;
   });
@@ -824,19 +835,19 @@ void frameEnd() { with (gUiData) {
 // If func returns false, then children are skipped.
 void preOrderApply(Box* box, scope bool delegate(Box* box) @nogc nothrow func) {
   auto runner = box;
-  while (runner != null) {
+  while (!boxIsNull(runner)) {
     bool skipChildren = func(runner);
-    if (!skipChildren && runner.first) {
+    if (!skipChildren && !boxIsNull(runner.first)) {
       runner = runner.first;
     }
-    else if (runner.next) {
+    else if (!boxIsNull(runner.next)) {
       runner = runner.next;
     }
     else {
       while (true) {
         runner = runner.parent;
-        if (!runner) return;
-        if (runner.next) {
+        if (boxIsNull(runner)) return;
+        if (!boxIsNull(runner.next)) {
           runner = runner.next;
           break;
         }
@@ -847,11 +858,11 @@ void preOrderApply(Box* box, scope bool delegate(Box* box) @nogc nothrow func) {
 
 void postOrderApply(Box* box, scope void delegate(Box* box) @nogc nothrow func) {
   auto runner = box;
-  while (runner != null) {
-    if (runner.first) {
+  while (!boxIsNull(runner)) {
+    if (!boxIsNull(runner.first)) {
       runner = runner.first;
     }
-    else if (runner.next) {
+    else if (!boxIsNull(runner.next)) {
       func(runner);
       runner = runner.next;
     }
@@ -859,9 +870,9 @@ void postOrderApply(Box* box, scope void delegate(Box* box) @nogc nothrow func) 
       func(runner);
       while (true) {
         runner = runner.parent;
-        if (!runner) return;
+        if (boxIsNull(runner)) return;
         func(runner);
-        if (runner.next) {
+        if (!boxIsNull(runner.next)) {
           runner = runner.next;
           break;
         }
@@ -877,7 +888,7 @@ auto eachChild(Box* box) {
     Box* runner;
 
     Box* front()    { return runner; }
-    bool empty()    { return runner == null; }
+    bool empty()    { return boxIsNull(runner); }
     void popFront() { runner = runner.next; }
   }
 
@@ -890,12 +901,12 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
   auto local = &gUiData;
 
-  if ((box.flags & BoxFlags.demand_focus) && focused == null && active == null) {
+  if ((box.flags & BoxFlags.demand_focus) && boxIsNull(focused) && boxIsNull(active)) {
     focused = box;
   }
 
   if (box.flags & (BoxFlags.clickable | BoxFlags.view_scroll)) {
-    if (active == null && input.down(Key.touch)) {
+    if (boxIsNull(active) && input.down(Key.touch)) {
       auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
 
       if (touchInsideBoxAndAncestors(box, touchPoint)) {
@@ -910,9 +921,9 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         active          = box;
 
         auto ancestorToFocus = boxOrAncestorWithFlags(box, BoxFlags.demand_focus);
-        if (ancestorToFocus) focused = ancestorToFocus;
+        if (!boxIsNull(ancestorToFocus)) focused = ancestorToFocus;
 
-        if (box.parent) {
+        if (!boxIsNull(box.parent)) {
           box.parent.hoveredChild  = box.childId;
           box.parent.selectedChild = box.childId;
           result.selected          = true;
@@ -936,7 +947,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       // Allow scrolling an ancestor to kick in if we drag too far away
       auto scrollAncestor = boxOrAncestorWithFlags(box.parent, BoxFlags.view_scroll);
       auto parentFlowAxis = scrollAncestor && (scrollAncestor.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
-      if (scrollAncestor && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
+      if (!boxIsNull(scrollAncestor) && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
         if (scrollAncestor.flags & (BoxFlags.clickable)) {
           scrollAncestor.hotT = 1;
           hot                 = scrollAncestor;
@@ -965,7 +976,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       }
     }
     else if (active == box && input.prevHeld(Key.touch)) {
-      active          = null;
+      active          = gNullBox;
       result.released = true;
       if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py))) {
         result.clicked  = true;
@@ -983,20 +994,20 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     if (dir == 1) {
       do {
         runner = runner.next;
-      } while (runner != null && (!(runner.flags & BoxFlags.selectable) || !check(runner)));
+      } while (!boxIsNull(runner) && (!(runner.flags & BoxFlags.selectable) || !check(runner)));
     }
     else {
       do {
         runner = runner.prev;
-      } while (runner != null && (!(runner.flags & BoxFlags.selectable) || !check(runner)));
+      } while (!boxIsNull(runner) && (!(runner.flags & BoxFlags.selectable) || !check(runner)));
     }
 
-    return runner == null ? box : runner;
+    return boxIsNull(runner) ? box : runner;
   }
 
   auto flowAxis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
 
-  if (Box* cursored = ((box.flags & BoxFlags.select_children) && hot && hot.parent == box) ? hot : null) {
+  if (Box* cursored = ((box.flags & BoxFlags.select_children) && hot.parent == box) ? hot : null) {
     Key forwardKey  = flowAxis == Axis2.x ? Key.right : Key.down;
     Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
 
@@ -1036,13 +1047,13 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
     // Don't allow scrolling with D-pad/circle-pad if we can select children with either of those
     // @TODO allow holding direction for some time to override this
-    if (!hot) {
+    if (boxIsNull(hot)) {
       allowedMethods |= (1 << ScrollMethod.dpad) | (1 << ScrollMethod.circle);
     }
 
     Rectangle cursorBounds;
     bool needToScrollTowardsChild = false;
-    if (hot && isAncestorOf(hot, box))  {
+    if (isAncestorOf(hot, box))  {
       // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
       cursorBounds = flowAxis == Axis2.y && (hot.flags & BoxFlags.clickable) ?
                         clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
@@ -1071,7 +1082,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         input.scrollVel = 0;
       }
       else if ( input.scrollMethodCur == ScrollMethod.custom ) {
-        if ( !hot ||
+        if ( boxIsNull(hot) ||
              ( hot.rect.min[flowAxis] >= cursorBounds.min[flowAxis] &&      // @Bug: Child that's bigger than parent will scroll forever!
                hot.rect.max[flowAxis] <= cursorBounds.max[flowAxis] ) )
         {
@@ -1091,7 +1102,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     respondToScroll(box, &result, scrollDiff);
 
     if (input.scrollMethodCur == ScrollMethod.none && input.scrollVel[flowAxis] == 0) {
-      focused = null;
+      focused = gNullBox;
     }
 
     if (needToScrollTowardsChild && touchScrollOcurring(*input, flowAxis)) {
@@ -1116,7 +1127,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       result.held     = true;
       result.hovering = true;
 
-      if (box.parent && box.parent.flags & BoxFlags.select_children) {
+      if (box.parent.flags & BoxFlags.select_children) {
         box.parent.hoveredChild  = box.childId;
         box.parent.selectedChild = box.childId;
         result.selected = true;
@@ -1125,7 +1136,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
     }
     else if (input.prevDown(Key.a)) {
-      active = null;
+      active = gNullBox;
       result.released = true;
     }
   }
@@ -1231,7 +1242,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
   Vec2 screenPos = SCREEN_POS[screen];
 
   preOrderApply(root, (box) {
-    if ( ( box.parent && !intersects(box.rect, box.parent.rect) ) ||
+    if ( ( !boxIsNull(box.parent) && !intersects(box.rect, box.parent.rect) ) ||
          !intersects(box.rect, SCREEN_RECT[screen]) )
     {
       return true; // children will be skipped
@@ -1253,7 +1264,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
         C2D_DrawRectSolid(box.rect.right - screenPos.x-1, box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top-1, color);
       }
 
-      if (box.parent && (box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
+      if ((box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
         auto indicColor = C2D_Color32f(0x00, 0xAA/255.0, 0x11/255.0, box.hotT);
         C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.top-2 - screenPos.y,    0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
         C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.bottom - screenPos.y,   0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
@@ -1366,7 +1377,7 @@ struct BoxHashTable {
     auto index = cast(size_t) (key % this.table.length);
 
     Box* runner = this.table[index];
-    while (runner && runner.hashKey != key) {
+    while (!boxIsNull(runner) && runner.hashKey != key) {
       runner = runner.hashNext;
     }
 
@@ -1396,9 +1407,12 @@ ulong boxHash(const(char)[] text) {
 BoxHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements, size_t tempElements) {
   BoxHashTable result;
 
-  result.table    = arenaPushArray!(Box*, true)(arena, tableElements);
-  result.freePool = arenaPushArray!(Box,  true)(arena, maxElements);
-  result.temp     = arenaPushArray!(Box,  true)(arena, tempElements);
+  result.table    = arenaPushArray!(Box*, false)(arena, tableElements);
+  result.table[]  = gNullBox;
+  result.freePool = arenaPushArray!(Box,  true) (arena, maxElements);
+  result.temp     = arenaPushArray!(Box,  true) (arena, tempElements);
+
+  result.firstFree = gNullBox;
 
   return result;
 }
@@ -1406,7 +1420,7 @@ BoxHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElement
 Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
   mixin(timeBlock("hashTableFindOrAlloc"));
 
-  Box* result;
+  Box* result = gNullBox;
 
   // If we're passed an empty ID, allocate it on the per-frame temporary box arena
   if (!text.length) {
@@ -1419,15 +1433,15 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
 
   auto key    = boxHash(text);
   auto index  = cast(size_t) (key % hashTable.table.length);
-  Box* runner = hashTable.table[index], last = null;
+  Box* runner = hashTable.table[index], last = gNullBox;
 
-  bool fillingSlot = runner == null;
-  if (runner) {
+  bool fillingSlot = boxIsNull(runner);
+  if (!boxIsNull(runner)) {
     debug hashTable.perfStats.collisions++;
 
     // Look for the end of the chain or a box with our key, if it's there
     debug uint chainLength = 0;
-    while (runner) {
+    while (!boxIsNull(runner)) {
       if (runner.hashKey == key) {
         result = runner;
         break;
@@ -1442,9 +1456,9 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
     }
   }
 
-  if (!result) {
+  if (boxIsNull(result)) {
     // Looks like we must add to the end of the chain, so allocate on the free list
-    if (hashTable.firstFree) {
+    if (!boxIsNull(hashTable.firstFree)) {
       result              = hashTable.firstFree;
       hashTable.firstFree = hashTable.firstFree.freeListNext;
     }
@@ -1459,10 +1473,11 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
     }
 
     *result = Box.init;
-    result.hashKey  = key;
-    if (last) last.hashNext = result;
-    result.hashPrev = last;
-    result.hashNext = null;
+    result.freeListNext = gNullBox;
+    result.hashKey      = key;
+    if (!boxIsNull(last)) last.hashNext = result;
+    result.hashPrev     = last;
+    result.hashNext     = gNullBox;
   }
 
   return result;
@@ -1471,11 +1486,11 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
 void hashTableRemove(BoxHashTable* hashTable, Box* box) {
   assert(box >= hashTable.freePool.ptr && box <= hashTable.freePool.ptr + hashTable.freePool.length);
 
-  if (box.hashPrev) {
+  if (!boxIsNull(box.hashPrev)) {
     box.hashPrev.hashNext = box.hashNext;
   }
 
-  if (box.hashNext) {
+  if (!boxIsNull(box.hashNext)) {
     box.hashNext.hashPrev = box.hashPrev;
   }
 
@@ -1491,7 +1506,7 @@ void hashTablePrune(BoxHashTable* hashTable) {
   foreach (ref box; hashTable.table) {
     auto runner = box;
 
-    while (runner) {
+    while (!boxIsNull(runner)) {
       if (runner.lastFrameTouchedIndex != gUiData.frameIndex) {
         hashTableRemove(hashTable, runner);
         if (box == runner) box = runner.hashNext;

@@ -97,7 +97,7 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
     );
   }
 
-  if (box.parent && (box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
+  if ((box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
     renderButtonSelectionIndicator(box, rect, screen, side, _3DEnabled, slider3DState, screenPos);
   }
 }
