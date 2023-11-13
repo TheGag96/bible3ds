@@ -31,10 +31,12 @@ float s_textScale;
 
 enum C2Di_GlyphFlags : uint {
   none,
-  small    = (1 << 0),
+  small      = (1 << 0),
+  italicized = (1 << 1),
 }
 
-enum float SMALL_SCALE = 0.7;
+enum float SMALL_SCALE        = 0.7;
+enum float ITALICS_SKEW_RATIO = 0.1;
 
 struct C2Di_Glyph
 {
@@ -256,6 +258,7 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
   uint wordNum = 0;
   bool lastWasWhitespace = true;
   bool verseNumActive = false;
+  int  italicsActive = 0;
   int  skipCount = 0;
   bool lineStart = true;
 
@@ -288,6 +291,14 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
       verseNumActive = false;
       skipCount = 1;
     }
+    else if (code == '`') {
+      italicsActive++;
+      skipCount = 1;
+    }
+    else if (italicsActive && code == '\'') {
+      italicsActive--;
+      skipCount = 1;
+    }
 
     p = p[units..$];
 
@@ -315,6 +326,7 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
         glyph.flags           = C2Di_GlyphFlags.none;
 
         if (verseNumActive) glyph.flags |= C2Di_GlyphFlags.small;
+        if (italicsActive)  glyph.flags |= C2Di_GlyphFlags.italicized;
 
         lastWasWhitespace = false;
       }
@@ -662,14 +674,16 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
           continue;
         }
 
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
       break;
     case C2D_AlignRight:
@@ -699,14 +713,16 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
           glyphY = y + dispY*cur.lineNo;
         }
 
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
     }
     break;
@@ -737,14 +753,16 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
           glyphY = y + dispY*cur.lineNo;
         }
 
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
     }
     break;
@@ -818,14 +836,16 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
         float glyphY = y + dispY*words[consecutiveWordNum].newLineNumber;
         float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
 
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
     }
     break;
