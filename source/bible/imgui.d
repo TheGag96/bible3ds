@@ -1319,7 +1319,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, float textScale, float margi
   }
 
   foreach (lineNum; 0..pageLines.length) {
-    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum]);
+    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum], flags : C2D_ParseFlags.bible);
     wrapInfos[lineNum] = C2D_CalcWrapInfo(&textArray[lineNum], textScale, SCREEN_BOTTOM_WIDTH - 2 * margin);
   }
 

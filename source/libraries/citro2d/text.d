@@ -29,6 +29,11 @@ nothrow: @nogc:
 C3D_Tex* s_glyphSheets;
 float s_textScale;
 
+enum C2D_ParseFlags : uint {
+  none,
+  bible      = (1 << 0),  // Whether or not to perform Bible-specific hacks (e.g. verse number, italics)
+}
+
 enum C2Di_GlyphFlags : uint {
   none,
   small      = (1 << 0),
@@ -223,6 +228,7 @@ size_t C2D_TextBufGetNumGlyphs(C2D_TextBuf buf)
  *  @param[in] buf Text buffer handle.
  *  @param[in] str String to parse.
  *  @param[in] lineNo Line number assigned to the text (used to calculate vertical position).
+ *  @param[in] flags String parsing option flags.
  *  @remarks Whitespace doesn't add any glyphs to the text buffer and is thus "free".
  *  @returns On success, a pointer to the character on which string processing stopped, which
  *           can be a newline ('\n'; indicating that's where the line ended), the null character
@@ -230,9 +236,9 @@ size_t C2D_TextBufGetNumGlyphs(C2D_TextBuf buf)
  *           (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)[] C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)[] str, uint lineNo)
+const(char)[] C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)[] str, uint lineNo, C2D_ParseFlags flags = C2D_ParseFlags.none)
 {
-  return C2D_TextFontParseLine(text, null, buf, str, lineNo);
+  return C2D_TextFontParseLine(text, null, buf, str, lineNo, flags);
 }
 
 /** @brief Parses and adds a single line of text to a text buffer.
@@ -240,6 +246,7 @@ const(char)[] C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)[] 
  *  @param[in] font Font to get glyphs from, or null for system font
  *  @param[in] buf Text buffer handle.
  *  @param[in] str String to parse.
+ *  @param[in] flags String parsing option flags.
  *  @param[in] lineNo Line number assigned to the text (used to calculate vertical position).
  *  @remarks Whitespace doesn't add any glyphs to the text buffer and is thus "free".
  *  @returns On success, a pointer to the character on which string processing stopped, which
@@ -248,7 +255,7 @@ const(char)[] C2D_TextParseLine (C2D_Text* text, C2D_TextBuf buf, const(char)[] 
  *           (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)[] str, uint lineNo)
+const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)[] str, uint lineNo, C2D_ParseFlags flags = C2D_ParseFlags.none)
 {
   const(ubyte)[] p = cast(const(ubyte)[])str;
   text.font  = font;
@@ -280,7 +287,7 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
         wordNum++;
       break;
     }
-    else if (lineStart && code == '[') {
+    else if ((flags & C2D_ParseFlags.bible) && lineStart && code == '[') {
       verseNumActive = true;
       skipCount = -1; // Skip chapter number that comes before the ':'
     }
@@ -291,7 +298,7 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
       verseNumActive = false;
       skipCount = 1;
     }
-    else if (code == '`') {
+    else if ((flags & C2D_ParseFlags.bible) && code == '`') {
       italicsActive++;
       skipCount = 1;
     }
@@ -351,15 +358,16 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
  *  @param[out] text Pointer to text object to store information in.
  *  @param[in] buf Text buffer handle.
  *  @param[in] str String to parse.
+ *  @param[in] flags String parsing option flags.
  *  @remarks Whitespace doesn't add any glyphs to the text buffer and is thus "free".
  *  @returns On success, a pointer to the character on which string processing stopped, which
  *           can be the null character ('\0'; indicating the end of the string was reached),
  *           or any other character (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)[] C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, const(char)[] str)
+const(char)[] C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, const(char)[] str, C2D_ParseFlags flags = C2D_ParseFlags.none)
 {
-  return C2D_TextFontParse(text, null, buf, str);
+  return C2D_TextFontParse(text, null, buf, str, flags);
 }
 
 /** @brief Parses and adds arbitrary text (including newlines) to a text buffer.
@@ -367,13 +375,14 @@ const(char)[] C2D_TextParse (C2D_Text* text, C2D_TextBuf buf, const(char)[] str)
  *  @param[in] font Font to get glyphs from, or null for system font
  *  @param[in] buf Text buffer handle.
  *  @param[in] str String to parse.
+ *  @param[in] flags String parsing option flags.
  *  @remarks Whitespace doesn't add any glyphs to the text buffer and is thus "free".
  *  @returns On success, a pointer to the character on which string processing stopped, which
  *           can be the null character ('\0'; indicating the end of the string was reached),
  *           or any other character (indicating the text buffer is full and no more glyphs can be added).
  *           On failure, null.
  */
-const(char)[] C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)[] str)
+const(char)[] C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf, const(char)[] str, C2D_ParseFlags flags = C2D_ParseFlags.none)
 {
   text.font   = font;
   text.buf    = buf;
@@ -385,7 +394,7 @@ const(char)[] C2D_TextFontParse (C2D_Text* text, C2D_Font font, C2D_TextBuf buf,
   for (;;)
   {
     C2D_Text temp;
-    str = C2D_TextFontParseLine(&temp, font, buf, str, text.lines++);
+    str = C2D_TextFontParseLine(&temp, font, buf, str, text.lines++, flags);
     text.words += temp.words;
     if (temp.width > text.width)
       text.width = temp.width;
