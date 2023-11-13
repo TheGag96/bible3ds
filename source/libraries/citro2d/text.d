@@ -29,6 +29,13 @@ nothrow: @nogc:
 C3D_Tex* s_glyphSheets;
 float s_textScale;
 
+enum C2Di_GlyphFlags : uint {
+  none,
+  small    = (1 << 0),
+}
+
+enum float SMALL_SCALE = 0.7;
+
 struct C2Di_Glyph
 {
   uint lineNo;
@@ -43,6 +50,7 @@ struct C2Di_Glyph
 
   _anon texcoord;
   uint wordNo;
+  C2Di_GlyphFlags flags;
 }
 
 struct C2D_TextBuf_s
@@ -247,48 +255,78 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
   text.width = 0.0f;
   uint wordNum = 0;
   bool lastWasWhitespace = true;
+  bool verseNumActive = false;
+  int  skipCount = 0;
+  bool lineStart = true;
+
   while (buf.glyphCount < buf.glyphBufSize)
   {
+    if (skipCount > 0) skipCount--;
+
     uint code;
     ssize_t units = decode_utf8(&code, p);
     if (units == -1)
     {
       code = 0xFFFD;
       units = 1;
-    } else if (code == 0 || code == '\n')
+    }
+    else if (code == 0 || code == '\n')
     {
       // If we last parsed non-whitespace, increment the word counter
       if (!lastWasWhitespace)
         wordNum++;
       break;
     }
+    else if (lineStart && code == '[') {
+      verseNumActive = true;
+      skipCount = -1; // Skip chapter number that comes before the ':'
+    }
+    else if (verseNumActive && code == ':') {
+      skipCount = 1;
+    }
+    else if (verseNumActive && code == ']') {
+      verseNumActive = false;
+      skipCount = 1;
+    }
+
     p = p[units..$];
 
-    fontGlyphPos_s glyphData;
-    C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
-    if (glyphData.width > 0.0f)
-    {
-      C2Di_Glyph* glyph = &buf.glyphs[buf.glyphCount++];
-      if (font)
-        glyph.sheet = &font.glyphSheets[glyphData.sheetIndex];
-      else
-        glyph.sheet = &s_glyphSheets[glyphData.sheetIndex];
-      glyph.xPos            = text.width + glyphData.xOffset;
-      glyph.lineNo          = lineNo;
-      glyph.wordNo          = wordNum;
-      glyph.width           = glyphData.width;
-      glyph.texcoord.left   = glyphData.texcoord.left;
-      glyph.texcoord.top    = glyphData.texcoord.top;
-      glyph.texcoord.right  = glyphData.texcoord.right;
-      glyph.texcoord.bottom = glyphData.texcoord.bottom;
-      lastWasWhitespace = false;
+    if (skipCount == 0) {
+      fontGlyphPos_s glyphData;
+      C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
+      float scaleFactor = verseNumActive ? SMALL_SCALE : 1.0;
+
+      if (glyphData.width > 0.0f)
+      {
+
+        C2Di_Glyph* glyph = &buf.glyphs[buf.glyphCount++];
+        if (font)
+          glyph.sheet = &font.glyphSheets[glyphData.sheetIndex];
+        else
+          glyph.sheet = &s_glyphSheets[glyphData.sheetIndex];
+        glyph.xPos            = text.width + glyphData.xOffset;
+        glyph.lineNo          = lineNo;
+        glyph.wordNo          = wordNum;
+        glyph.width           = glyphData.width * scaleFactor;
+        glyph.texcoord.left   = glyphData.texcoord.left;
+        glyph.texcoord.top    = glyphData.texcoord.top;
+        glyph.texcoord.right  = glyphData.texcoord.right;
+        glyph.texcoord.bottom = glyphData.texcoord.bottom;
+        glyph.flags           = C2Di_GlyphFlags.none;
+
+        if (verseNumActive) glyph.flags |= C2Di_GlyphFlags.small;
+
+        lastWasWhitespace = false;
+      }
+      else if (!lastWasWhitespace)
+      {
+        wordNum++;
+        lastWasWhitespace = true;
+      }
+      text.width += glyphData.xAdvance * scaleFactor;
     }
-    else if (!lastWasWhitespace)
-    {
-      wordNum++;
-      lastWasWhitespace = true;
-    }
-    text.width += glyphData.xAdvance;
+
+    lineStart = false;
   }
   text.end = buf.glyphCount;
   text.width *= s_textScale;
@@ -606,6 +644,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
         float glyphW = scaleX*cur.width;
         float glyphX;
         float glyphY;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
         if (flags & (C2D_WordWrap | C2D_WordWrapPrecalc))
         {
           uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
@@ -624,12 +664,12 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,        glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+glyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
       break;
     case C2D_AlignRight:
@@ -645,6 +685,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
         float glyphW = scaleX*cur.width;
         float glyphX;
         float glyphY;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
         if (flags & C2D_WordWrap)
         {
           uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
@@ -659,12 +701,12 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,        glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+glyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
     }
     break;
@@ -681,6 +723,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
         float glyphW = scaleX*cur.width;
         float glyphX;
         float glyphY;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
         if (flags & C2D_WordWrap)
         {
           uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
@@ -695,12 +739,12 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,        glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+glyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
     }
     break;
@@ -772,15 +816,16 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
         // The given X position, plus the scaled beginning position for this word, plus the offset of this glyph within the word, plus the whitespace width for this line times the word number within the line
         float glyphX = x + scaleX*wordPositions[consecutiveWordNum].xBegin + scaleX*(cur.xPos - words[consecutiveWordNum].start.xPos) + justifiedLineInfo[words[consecutiveWordNum].newLineNumber].whitespaceWidth*(consecutiveWordNum - justifiedLineInfo[words[consecutiveWordNum].newLineNumber].wordStart);
         float glyphY = y + dispY*words[consecutiveWordNum].newLineNumber;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX,        glyphY,        glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY,        glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX,        glyphY+glyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW, glyphY+glyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
+        C2Di_AppendVtx(glyphX+glyphW, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
       }
     }
     break;
