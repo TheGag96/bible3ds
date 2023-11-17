@@ -266,7 +266,7 @@ Signal button(const(char)[] text, int size = 0, Justification justification = Ju
 
 Signal bottomButton(const(char)[] text) {
   Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text, text);
-  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 1), Size(SizeKind.text_content, 0, 1)].s;
+  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.text_content, 0, 1)].s;
   box.justification = Justification.center;
   box.render = &renderBottomButton;
   return signalFromBox(box);
