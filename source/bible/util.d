@@ -207,7 +207,9 @@ T[] arenaPushArray(T, bool initialize = true)(Arena* arena, size_t size) {
   T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, alignShiftAmount!T);
   if (result != null) {
     static if (initialize && __traits(compiles, () { auto test = T.init; })) {
-      emplace!T(result, T.init);
+      foreach (i; 0..size) {
+        emplace!T(result + i, T.init);
+      }
     }
 
     return result[0..size];
