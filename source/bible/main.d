@@ -516,8 +516,15 @@ extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {
   import ctru.console : consoleInit;
   import ctru.gfx     : GFXScreen;
 
+  static immutable string[ERRF_ExceptionType.max+1] string_table = [
+    ERRF_ExceptionType.prefetch_abort : "prefetch abort",
+    ERRF_ExceptionType.data_abort     : "data abort",
+    ERRF_ExceptionType.undefined      : "undefined instruction",
+    ERRF_ExceptionType.vfp            : "vfp (floating point) exception",
+  ];
+
   consoleInit(GFXScreen.bottom, null);
-  printf("\x1b[1;1HException hit!\n");
+  printf("\x1b[1;1HException hit! - %s\n", string_table[excep.type].ptr);
   printf("PC\t= %08X, LR  \t= %08X\n", regs.pc, regs.lr);
   printf("SP\t= %08X, CPSR\t= %08X\n", regs.sp, regs.cpsr);
 
