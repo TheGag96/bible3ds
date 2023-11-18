@@ -161,9 +161,9 @@ struct SWKBDState
     ushort max_text_len;
     ushort dict_word_count;
     ushort max_digits;
-    ushort[1][3] button_text;
+    ushort[3][SWKBD_MAX_BUTTON_TEXT_LEN+1] button_text;
     ushort[2] numpad_keys;
-    ushort[65] hint_text;
+    ushort[SWKBD_MAX_HINT_TEXT_LEN+1] hint_text;
     bool predictive_input;
     bool multiline;
     bool fixed_width;
@@ -186,7 +186,7 @@ struct SWKBDState
     int text_offset;
     ushort text_length;
     int callback_result;
-    ushort[257] callback_msg;
+    ushort[SWKBD_MAX_CALLBACK_MSG_LEN+1] callback_msg;
     bool skip_at_check;
 
     union
