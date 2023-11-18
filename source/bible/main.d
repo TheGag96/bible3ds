@@ -262,7 +262,7 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
 
   // @Hack: Is there any better way to do this?
   auto readViewPane = ui.gUiData.boxes["reading_scroll_read_view"];
-  if (readViewPane) {
+  if (!ui.boxIsNull(readViewPane)) {
     readViewPane.scrollInfo.offset     = 0;
     readViewPane.scrollInfo.offsetLast = 0;
   }
