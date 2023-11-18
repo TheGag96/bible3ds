@@ -109,8 +109,6 @@ extern(C) int main(int argc, char** argv) {
 
   audioInit();
 
-  gTempStorage = arenaMake(16*1024);
-
   Result saveResult = saveFileInit();
   assert(!saveResult, "file creation failed");
 
