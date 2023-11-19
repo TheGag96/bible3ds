@@ -69,6 +69,9 @@ struct Size {
   float strictness = 0;
 }
 
+enum SIZE_FILL_PARENT  = Size(SizeKind.percent_of_parent, 1, 0);
+enum SIZE_CHILDREN_SUM = Size(SizeKind.children_sum,      0, 1);
+
 enum Justification : ubyte { min, center, max }
 
 enum OneFrameEvent {
@@ -266,7 +269,7 @@ Signal button(const(char)[] text, int size = 0, Justification justification = Ju
 
 Signal bottomButton(const(char)[] text) {
   Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text, text);
-  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.text_content, 0, 1)].s;
+  box.semanticSize[] = [SIZE_FILL_PARENT, Size(SizeKind.text_content, 0, 1)].s;
   box.justification = Justification.center;
   box.render = &renderBottomButton;
   return signalFromBox(box);
@@ -291,7 +294,7 @@ void scrollIndicator(const(char)[] id, Box* source, Justification justification,
 
   // @TODO: Only vertical scroll indicators are supported at the moment.
   // @Note: The widget will fill the parent but will only draw as wide as the indicator texture.
-  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.percent_of_parent, 1, 0)].s;
+  box.semanticSize[] = [SIZE_FILL_PARENT, SIZE_FILL_PARENT].s;
 
   box.justification = justification;
   box.related       = source;
@@ -299,20 +302,55 @@ void scrollIndicator(const(char)[] id, Box* source, Justification justification,
   box.hotT = approach(box.hotT, 1.0f*limitHit, 2*ANIM_T_RATE);
 }
 
-Box* makeLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
+enum LayoutKind {
+  grow_children,  // Grows as children are added.
+  fit_children,   // Fits children within the parent in the direction of flow, matches the largest child size in the other.
+  fill_parent,    // Tries to fit to the parent size in both directions.
+}
+
+Box* makeLayout(
+  const(char)[] id,
+  Axis2 flowDirection,
+  Justification justification = Justification.center,
+  LayoutKind layoutKind = LayoutKind.init,
+  BoxFlags flags = BoxFlags.init,
+) {
   Box* box = makeBox(cast(BoxFlags) ((flowDirection == Axis2.x) * BoxFlags.horizontal_children) | flags, id);
+
+  Size flowAxisSize, oppAxisSize;
+  final switch (layoutKind) {
+    case LayoutKind.grow_children:
+      flowAxisSize = SIZE_CHILDREN_SUM;
+      oppAxisSize  = SIZE_FILL_PARENT;
+      break;
+    case LayoutKind.fit_children:
+      flowAxisSize = SIZE_FILL_PARENT;
+      oppAxisSize  = SIZE_CHILDREN_SUM;
+      break;
+    case LayoutKind.fill_parent:
+      flowAxisSize = SIZE_FILL_PARENT;
+      oppAxisSize  = SIZE_FILL_PARENT;
+      break;
+  }
+
   if (flowDirection == Axis2.x) {
-    box.semanticSize[] = [Size(SizeKind.children_sum, 0, 0), Size(SizeKind.percent_of_parent, 1, 0)].s;
+    box.semanticSize[] = [flowAxisSize, oppAxisSize].s;
   }
   else { // y
-    box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.children_sum, 0, 0)].s;
+    box.semanticSize[] = [oppAxisSize, flowAxisSize].s;
   }
   box.justification = justification;
   return box;
 }
 
-Box* pushLayout(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
-  auto result = makeLayout(id, flowDirection, justification, flags);
+Box* pushLayout(
+  const(char)[] id,
+  Axis2 flowDirection,
+  Justification justification = Justification.center,
+  LayoutKind layoutKind = LayoutKind.init,
+  BoxFlags flags = BoxFlags.init,
+) {
+  auto result = makeLayout(id, flowDirection, justification, layoutKind, flags);
   pushParent(result);
   return result;
 }
@@ -326,8 +364,14 @@ struct ScopedLayout {
   @disable this();
 
   pragma (inline, true)
-  this(const(char)[] id, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
-    box = pushLayout(id, flowDirection, justification, flags);
+  this(
+    const(char)[] id,
+    Axis2 flowDirection,
+    Justification justification = Justification.center,
+    LayoutKind layoutKind = LayoutKind.init,
+    BoxFlags flags = BoxFlags.init,
+  ) {
+    box = pushLayout(id, flowDirection, justification, layoutKind, flags);
   }
 
   pragma (inline, true)
@@ -336,7 +380,7 @@ struct ScopedLayout {
   }
 }
 
-struct ScopedSignalLayout(BoxFlags defaultFlags = BoxFlags.init) {
+struct ScopedSignalLayout(BoxFlags defaultFlags = BoxFlags.init, LayoutKind defaultLayoutKind = LayoutKind.init) {
   @nogc: nothrow:
 
   Box* box;
@@ -346,8 +390,15 @@ struct ScopedSignalLayout(BoxFlags defaultFlags = BoxFlags.init) {
   @disable this();
 
   pragma (inline, true)
-  this(const(char)[] id, Signal* signalToWrite, Axis2 flowDirection, Justification justification = Justification.center, BoxFlags flags = BoxFlags.init) {
-    box = pushLayout(id, flowDirection, justification, flags | defaultFlags);
+  this(
+    const(char)[] id,
+    Signal* signalToWrite,
+    Axis2 flowDirection,
+    Justification justification = Justification.center,
+    LayoutKind layoutKind = defaultLayoutKind,
+    BoxFlags flags = BoxFlags.init,
+  ) {
+    box = pushLayout(id, flowDirection, justification, layoutKind, flags | defaultFlags);
     this.signalToWrite = signalToWrite;
   }
 
@@ -357,9 +408,9 @@ struct ScopedSignalLayout(BoxFlags defaultFlags = BoxFlags.init) {
   }
 }
 
-alias ScopedScrollLayout       = ScopedSignalLayout!(BoxFlags.view_scroll | BoxFlags.demand_focus);
-alias ScopedSelectLayout       = ScopedSignalLayout!(BoxFlags.select_children);
-alias ScopedSelectScrollLayout = ScopedSignalLayout!(BoxFlags.view_scroll | BoxFlags.demand_focus | BoxFlags.select_children);
+alias ScopedScrollLayout       = ScopedSignalLayout!(BoxFlags.view_scroll | BoxFlags.demand_focus, LayoutKind.fill_parent);
+alias ScopedSelectLayout       = ScopedSignalLayout!(BoxFlags.select_children, LayoutKind.grow_children);
+alias ScopedSelectScrollLayout = ScopedSignalLayout!(BoxFlags.view_scroll | BoxFlags.demand_focus | BoxFlags.select_children, LayoutKind.fill_parent);
 
 // Makes a layout encompassing the bounding box of the top and bottom screens together, splitting into 3 columns with
 // the center one being the width of the bottom screen.
@@ -415,11 +466,11 @@ struct ScopedDoubleScreenSplitLayout {
     top    = makeLayout(topId,    Axis2.x);
     bottom = makeLayout(bottomId, Axis2.x);
     // @TODO: Fix layout violation resolution so that the top and bottom sizes are figured out automatically...
-    main.semanticSize[Axis2.x]   = Size(SizeKind.percent_of_parent, 1, 0);
+    main.semanticSize[Axis2.x]   = SIZE_FILL_PARENT;
     main.semanticSize[Axis2.y]   = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
-    top.semanticSize[Axis2.x]    = Size(SizeKind.percent_of_parent, 1, 0);
+    top.semanticSize[Axis2.x]    = SIZE_FILL_PARENT;
     top.semanticSize[Axis2.y]    = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
-    bottom.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 0);
+    bottom.semanticSize[Axis2.x] = SIZE_FILL_PARENT;
     bottom.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
   }
 
@@ -437,7 +488,7 @@ struct ScopedDoubleScreenSplitLayout {
 
 BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
   Box* box = makeBox(BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus, id);
-  box.semanticSize[] = [Size(SizeKind.percent_of_parent, 1, 0), Size(SizeKind.percent_of_parent, 1, 0)].s;
+  box.semanticSize[] = [SIZE_FILL_PARENT, SIZE_FILL_PARENT].s;
   box.scrollCache    = scrollCache;
   box.render         = &scrollCacheDraw;
 

@@ -374,15 +374,11 @@ void mainGui(MainData* mainData, Input* input) {
         spacer(SCREEN_HEIGHT + 8);
 
         {
-          auto horziontalLayout = ScopedLayout("", Axis2.x, justification : Justification.min);
-          horziontalLayout.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 0);
-          horziontalLayout.semanticSize[Axis2.y] = Size(SizeKind.children_sum, 0, 0);
+          auto horziontalLayout = ScopedLayout("", Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
 
           Signal leftColumnSignal;
           {
             auto leftColumn = ScopedSelectLayout("book_left_column", &leftColumnSignal, Axis2.y);
-            leftColumn.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1.0, 0);
-            leftColumn.semanticSize[Axis2.y] = Size(SizeKind.children_sum, 0, 0);
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 0) {
@@ -404,8 +400,6 @@ void mainGui(MainData* mainData, Input* input) {
           Signal rightColumnSignal;
           {
             auto rightColumn = ScopedSelectLayout("book_right_column", &rightColumnSignal, Axis2.y);
-            rightColumn.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1.0, 0);
-            rightColumn.semanticSize[Axis2.y] = Size(SizeKind.children_sum, 0, 0);
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 1) {
@@ -477,9 +471,8 @@ void mainGui(MainData* mainData, Input* input) {
       Box* scrollLayoutBox;
       Signal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal, Axis2.y);
+        auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
         auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
-        scrollLayout.box.justification = Justification.min;
 
         scrollLayoutBox = scrollLayout.box;
 
