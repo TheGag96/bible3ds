@@ -264,7 +264,7 @@ bool arenaOwns(Arena* arena, void* thing) {
   return thing >= arena.data.ptr && thing < arena.data.ptr + arena.data.length;
 }
 
-__gshared Arena gTempStorage;
+Arena gTempStorage;
 
 @trusted
 ubyte[] readFile(alias allocFunc = malloc)(scope const(char)[] filename) {
@@ -301,9 +301,10 @@ char[] readTextFile(alias allocFunc = malloc)(scope const(char)[] filename) {
 }
 
 @trusted
-char[] readCompressedTextFile(alias allocFunc = malloc)(scope const(char)[] filename) {
+char[] readCompressedTextFile(Arena* arena, scope const(char)[] filename) {
   import ctru.util.decompress;
 
+  // @Note: Use malloc for temp allocation here. Use an arena instead?
   auto compressed = readFile(filename);
   scope (exit) freeArray(compressed);
 
@@ -320,7 +321,7 @@ char[] readCompressedTextFile(alias allocFunc = malloc)(scope const(char)[] file
 
   assert(bytesForHeader != -1);
 
-  char[] buf = allocArray!(char, false, allocFunc)(decompSize);
+  char[] buf = arenaPushArray!(char, false)(arena, decompSize);
 
   bool success = decompress(
     buf.ptr,

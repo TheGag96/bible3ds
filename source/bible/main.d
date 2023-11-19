@@ -52,13 +52,14 @@ struct MainData {
   ui.ScrollCache scrollCache;
 
   float size = 0;
-  OpenBook book;
+
   PageId pageId;
   ui.LoadedPage loadedPage;
 
   float defaultPageTextSize = 0, defaultPageMargin = 0;
 
   bool frameNeedsRender;
+  BibleLoadData bible;
 }
 MainData mainData;
 
@@ -78,6 +79,12 @@ extern(C) int main(int argc, char** argv) {
 
   // Init libs
   romfsInit();
+
+  Result saveResult = saveFileInit();
+  assert(!saveResult, "file creation failed");
+
+  // Try to start loading the Bible as soon as possible asynchronously
+  startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
 
   static if (PROFILING_ENABLED) {
     int ret;
@@ -109,8 +116,6 @@ extern(C) int main(int argc, char** argv) {
 
   audioInit();
 
-  Result saveResult = saveFileInit();
-  assert(!saveResult, "file creation failed");
 
   // Create screens
   C3D_RenderTarget* topLeft  = C2D_CreateScreenTarget(GFXScreen.top,    GFX3DSide.left);
@@ -247,10 +252,7 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
 
   ui.unloadPage(&loadedPage);
 
-  if (!book.rawFile || newPageId.translation != pageId.translation || newPageId.book != pageId.book) {
-    closeBibleBook(&book);
-    book = openBibleBook(newPageId.translation, newPageId.book);
-  }
+  OpenBook* book = &bible.books[newPageId.book];
 
   if (newPageId.chapter < 0) {
     newPageId.chapter = book.chapters.length + newPageId.chapter;
@@ -286,7 +288,7 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
     }
   }
   else if (input.down(Key.r)) {
-    if (pageId.chapter == book.chapters.length-1) {
+    if (pageId.chapter == bible.books[pageId.book].chapters.length-1) {
       if (pageId.book != Book.max) {
         bookDiff = 1;
       }
@@ -339,6 +341,8 @@ void mainGui(MainData* mainData, Input* input) {
         mainData.curView = cast(View) command.value;
         break;
       case CommandCode.open_book:
+        // @TODO: Do this without blocking UI
+        waitAsyncBibleLoad(&mainData.bible);
         mainData.curView = View.reading;
         loadBiblePage(mainData, PageId(gSaveFile.settings.translation, cast(Book) command.value, 1));
         break;
@@ -491,9 +495,14 @@ void mainGui(MainData* mainData, Input* input) {
       {
         auto style = ScopedStyle(&BACK_BUTTON_STYLE);
         if (bottomButton("Back").clicked || input.down(Key.b)) {
-          sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
+
+          if (mainData.bible.translation != gSaveFile.settings.translation) {
+            startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
+          }
+
+          sendCommand(CommandCode.switch_view, View.book);
         }
       }
 

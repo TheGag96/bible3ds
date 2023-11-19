@@ -5,6 +5,8 @@ module bible.bible;
 import std.algorithm;
 import std.range;
 import bible.util;
+import ctru.thread, ctru.synchronization;
+import core.atomic;
 
 struct OpenBook {
   char[] rawFile;
@@ -22,14 +24,25 @@ char[] until(char[] haystack, char needle) {
   return [];
 }
 
-OpenBook openBibleBook(Translation translation, Book book) {
+OpenBook[Book.max+1] openBibleTranslation(Arena* arena, Translation translation) {
+  OpenBook[Book.max+1] result;
+
+  foreach (book; enumRange!Book) {
+    result[book] = openBibleBook(arena, translation, book);
+  }
+
+  return result;
+}
+
+OpenBook openBibleBook(Arena* arena, Translation translation, Book book) {
   OpenBook result;
 
-  auto bookText = readCompressedTextFile(arenaPrintf(&gTempStorage, "romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
+  auto restore = ScopedArenaRestore(&gTempStorage);
+  auto bookText = readCompressedTextFile(arena, arenaPrintf(&gTempStorage, "romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
   result.rawFile = bookText;
 
   int numLines = bookText.representation.count('\n');
-  char[][] lines = allocArray!(char[])(numLines);
+  char[][] lines = arenaPushArray!(char[])(arena, numLines);
 
   foreach (i, line; bookText.representation.splitter('\n').enumerate) {
     if (i != numLines) lines[i] = cast(char[])line;
@@ -52,7 +65,7 @@ OpenBook openBibleBook(Translation translation, Book book) {
     }
   }
 
-  char[][][] chapters = allocArray!(char[][])(numChapters+1);
+  char[][][] chapters = arenaPushArray!(char[][])(arena, numChapters+1);
 
   lastChapter = [];
   size_t chapterStart = 0;
@@ -75,11 +88,61 @@ OpenBook openBibleBook(Translation translation, Book book) {
   return result;
 }
 
-void closeBibleBook(OpenBook* book) { with (book) {
-  freeArray(rawFile);
-  freeArray(lines);
-  freeArray(chapters);
-}}
+struct BibleLoadData {
+  Thread threadHandle;
+
+  // In
+  LightSemaphore inSync;
+  Translation translation;
+
+  // Out
+  LightSemaphore outSync;
+  bool loadDone;  // Access atomically
+  OpenBook[Book.max+1] books;
+  Arena bibleArena;
+}
+
+extern(C) void bibleLoadThread(void* data) {
+  auto loadData = cast(BibleLoadData*) data;
+
+  gTempStorage        = arenaMake(1*1024);
+  loadData.bibleArena = arenaMake(16*1024*1024);
+
+  while (true) {
+    // Wait for command to start a load
+    LightSemaphore_Acquire(&loadData.inSync,  1);
+    auto translation = atomicLoad!(MemoryOrder.acq)(loadData.translation);
+
+    // Load the entire translation from storage. This can take a long time!
+    arenaClear(&loadData.bibleArena);
+    loadData.books = openBibleTranslation(&loadData.bibleArena, translation);
+
+    // Signal the loaded data is now valid
+    LightSemaphore_Release(&loadData.outSync, 1);
+
+    arenaClear(&gTempStorage);
+  }
+}
+
+void startAsyncBibleLoad(BibleLoadData* bible, Translation translation) {
+  bible.translation = translation;
+
+  if (bible.threadHandle == null) {
+    LightSemaphore_Init(&bible.inSync,  initial_count :  1, max_count : 1);
+    LightSemaphore_Init(&bible.outSync, initial_count : -1, max_count : 1);
+    bible.threadHandle = threadCreate(&bibleLoadThread, bible, 16*1024, 0x31, -2, true);
+  }
+  else {
+    // @Blocking: Last Bible load most complete before we can queue another
+    LightSemaphore_Acquire(&bible.outSync, 0);
+    LightSemaphore_Release(&bible.outSync, -1);
+    LightSemaphore_Release(&bible.inSync,   1);
+  }
+}
+
+void waitAsyncBibleLoad(BibleLoadData* bible) {
+  LightSemaphore_Acquire(&bible.outSync, 0);
+}
 
 enum Translation : ubyte {
   asv,
@@ -88,8 +151,6 @@ enum Translation : ubyte {
   web,
   ylt,
 }
-
-alias blah = arrayOfEnum!(Translation, int);
 
 static immutable string[enumCount!Translation] TRANSLATION_NAMES = arrayOfEnum!(Translation, string)(
   asv : "asv",
