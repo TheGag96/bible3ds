@@ -991,7 +991,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         box.hotT  = 1;
         hot       = box;
       }
-      box.activeT = 1;
       active      = box;
       result.held = true;
 
@@ -1011,6 +1010,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       }
       else if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
+        box.activeT     = 1;
 
         if ( (box.flags & BoxFlags.clickable) &&
              !inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
