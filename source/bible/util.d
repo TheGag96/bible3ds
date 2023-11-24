@@ -413,6 +413,22 @@ template arrayOfEnum(T, V) if (is(T == enum)) {
   }());
 }
 
+bool canFind(T)(T haystack, T needle) {
+  if (needle.length > haystack.length) return false;
+  foreach (a; 0..haystack.length - needle.length) {
+    bool found = true;
+    foreach (b; 0..needle.length) {
+      if (needle[b] != haystack[a+b]) {
+        found = false;
+        break;
+      }
+    }
+    if (found) return true;
+  }
+
+  return false;
+}
+
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;

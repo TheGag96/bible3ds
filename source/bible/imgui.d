@@ -221,12 +221,14 @@ Box* getChild(Box* box, int childId) {
   return box;
 }
 
-void label(const(char)[] text, Justification justification = Justification.min) {
+Box* label(const(char)[] text, Justification justification = Justification.min) {
   Box* box = makeBox(BoxFlags.draw_text, text);
 
   box.semanticSize[] = [Size(SizeKind.text_content, 0, 1), Size(SizeKind.text_content, 0, 1)].s;
   box.justification  = justification;
   box.render         = &renderLabel;
+
+  return box;
 }
 
 enum BOTTOM_BUTTON_MARGIN     = 6.0f;

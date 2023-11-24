@@ -30,6 +30,7 @@ enum View {
   book,
   reading,
   options,
+  search,
 }
 
 enum CLEAR_COLOR = 0xFFEEEEEE;
@@ -59,7 +60,14 @@ struct MainData {
   float defaultPageTextSize = 0, defaultPageMargin = 0;
 
   bool frameNeedsRender;
+
+  char[128] searchStringBuf;
+  char[] searchString;
+
   BibleLoadData bible;
+
+  char[][20] searchResults;
+  Arena searchArena;
 }
 MainData mainData;
 
@@ -115,7 +123,6 @@ extern(C) int main(int argc, char** argv) {
   Input input;
 
   audioInit();
-
 
   // Create screens
   C3D_RenderTarget* topLeft  = C2D_CreateScreenTarget(GFXScreen.top,    GFX3DSide.left);
@@ -245,6 +252,8 @@ void initMainData(MainData* mainData) { with (mainData) {
 
   defaultPageTextSize = DEFAULT_PAGE_TEXT_SIZE;
   defaultPageMargin   = DEFAULT_PAGE_MARGIN;
+
+  searchArena = arenaMake(16*1024);
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
@@ -333,6 +342,7 @@ void mainGui(MainData* mainData, Input* input) {
   enum CommandCode {
     switch_view,
     open_book,
+    start_search,
   }
 
   foreach (command; getCommands()) {
@@ -345,6 +355,29 @@ void mainGui(MainData* mainData, Input* input) {
         waitAsyncBibleLoad(&mainData.bible);
         mainData.curView = View.reading;
         loadBiblePage(mainData, PageId(gSaveFile.settings.translation, cast(Book) command.value, 1));
+        break;
+      case CommandCode.start_search:
+        mainData.searchString = getKeyboardInput(mainData.searchStringBuf);
+        waitAsyncBibleLoad(&mainData.bible);
+
+        int hitCount = 0;
+        search_book:
+        foreach (book; enumRange!Book) {
+          foreach (chapterNum, lines; mainData.bible.books[book].chapters) {
+            foreach (verseNum, line; lines[1..$]) {
+              if (line.representation.canFind(mainData.searchString.representation)) {
+                auto locString = arenaPrintf(&mainData.searchArena, "%s %d:%d", BOOK_NAMES[book].ptr, chapterNum+1, verseNum+1);
+                mainData.searchResults[hitCount] = locString;
+                hitCount++;
+                if (hitCount >= mainData.searchResults.length) {
+                  break search_book;
+                }
+              }
+            }
+          }
+        }
+
+        mainData.curView = View.search;
         break;
     }
   }
@@ -427,9 +460,15 @@ void mainGui(MainData* mainData, Input* input) {
       pushingAgainstScrollLimit |= scrollLayoutSignal.pushingAgainstScrollLimit;
 
       {
+        auto bottomLayout = ScopedLayout("", Axis2.x, Justification.center, LayoutKind.fit_children);
         auto style = ScopedStyle(&BOTTOM_BUTTON_STYLE);
+
         if (bottomButton("Options").clicked) {
           sendCommand(CommandCode.switch_view, View.options);
+        }
+
+        if (bottomButton("Search").clicked) {
+          sendCommand(CommandCode.start_search, 0);
         }
       }
 
@@ -516,9 +555,73 @@ void mainGui(MainData* mainData, Input* input) {
         scrollIndicator("book_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
       }
       break;
+
+    case View.search:
+      Box* scrollLayoutBox;
+      Signal scrollLayoutSignal;
+      {
+        auto scrollLayout = ScopedSelectScrollLayout("search_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
+        auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
+
+        scrollLayoutBox = scrollLayout.box;
+
+        foreach (result; mainData.searchResults) {
+          if (result.length) {
+            label(result);
+          }
+        }
+      }
+
+      {
+        auto style = ScopedStyle(&BACK_BUTTON_STYLE);
+        if (bottomButton("Back").clicked || input.down(Key.b)) {
+          sendCommand(CommandCode.switch_view, View.book);
+          audioPlaySound(SoundEffect.button_back, 0.5);
+        }
+      }
+
+      mainLayout.startRight();
+
+      {
+        auto rightSplit = ScopedDoubleScreenSplitLayout("search_right_split_layout_main", "search_right_split_layout_top", "search_right_split_layout_bottom");
+
+        rightSplit.startTop();
+
+        scrollIndicator("search_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
+      }
+      break;
   }
 
   frameEnd();
+}
+
+char[] getKeyboardInput(char[] buffer) {
+  import core.stdc.string : strlen;
+
+  SWKBDState swkbd;
+  swkbdInit(&swkbd, SWKBDType.western, 2, -1);
+  swkbdSetValidation(&swkbd, SWKBDValidInput.notempty_notblank, 0, 0);
+  swkbdSetFeatures(&swkbd, SWKBD_DARKEN_TOP_SCREEN | SWKBD_ALLOW_HOME | SWKBD_ALLOW_RESET | SWKBD_ALLOW_POWER);
+
+  bool shouldQuit = false;
+  buffer[0] = 0;
+  do {
+    swkbdSetInitialText(&swkbd, "");
+    SWKBDButton button = swkbdInputText(&swkbd, buffer.ptr, buffer.length);
+    if (button != SWKBDButton.none) break;
+
+    SWKBDResult res = swkbdGetResult(&swkbd);
+    if (res == SWKBDResult.resetpressed) {
+      shouldQuit = true;
+      aptSetChainloaderToSelf();
+      break;
+    }
+    else if (res != SWKBDResult.homepressed && res != SWKBDResult.powerpressed) break; // An actual error happened
+
+    shouldQuit = !aptMainLoop();
+  } while (!shouldQuit);
+
+  return buffer[0..strlen(buffer.ptr)];
 }
 
 extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {
