@@ -457,6 +457,10 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
 ////////
 
 void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+  if (boxIsNull(box.related) || box.related.scrollInfo.limitMin == box.related.scrollInfo.limitMax) {
+    return;
+  }
+
   C2Di_Context* ctx = C2Di_GetContext();
 
   void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
