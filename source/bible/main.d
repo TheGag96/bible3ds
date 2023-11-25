@@ -424,7 +424,7 @@ void mainGui(MainData* mainData, Input* input) {
                 auto bookButton = button(book, 150);
 
                 // Select the first book button if nothing else is
-                if (i == 0 && !gUiData.hot) gUiData.hot = bookButton.box;
+                if (i == 0 && boxIsNull(gUiData.hot)) gUiData.hot = bookButton.box;
 
                 if (bookButton.clicked) {
                   sendCommand(CommandCode.open_book, i);
