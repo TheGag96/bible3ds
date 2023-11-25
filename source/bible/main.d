@@ -54,6 +54,7 @@ struct MainData {
   BibleLoadData bible;
 
   ui.ColorTable colorTable;
+  bool fadingBetweenThemes;
   ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack;
 }
 MainData mainData;
@@ -362,6 +363,33 @@ void mainGui(MainData* mainData, Input* input) {
     handleChapterSwitchHotkeys(mainData, input);
   }
 
+  // Do a smooth color fade between color themes
+  if (mainData.fadingBetweenThemes) {
+    bool changed = false;
+    foreach (color; enumRange!(ui.Color)) {
+      auto oldColor8     = mainData.colorTable[color];
+      auto targetColor8  = COLOR_THEMES[gSaveFile.settings.colorTheme][color];
+      auto newColorF     = rgba8ToRgbaF(oldColor8);
+      auto targetColorF  = rgba8ToRgbaF(targetColor8);
+      newColorF         += (targetColorF - newColorF) * 0.25;
+
+      auto newColor8 = C2D_Color32f(newColorF.x, newColorF.y, newColorF.z, newColorF.w);
+
+      if (newColor8 == oldColor8) {
+        // Failsafe, since the fading is converting back and forth between integer and float and therefore may lock
+        // into a point where the easing is too small to make a difference. Kinda crappy.
+        newColor8 = targetColor8;
+      }
+      else {
+        changed = true;
+      }
+
+      mainData.colorTable[color] = newColor8;
+    }
+
+    mainData.fadingBetweenThemes = changed;
+  }
+
   frameStart();
   handleInput(input);
 
@@ -508,7 +536,7 @@ void mainGui(MainData* mainData, Input* input) {
           if (button(COLOR_THEME_NAMES[colorTheme]).clicked) {
             gSaveFile.settings.colorTheme = colorTheme;
 
-            mainData.colorTable = COLOR_THEMES[colorTheme];
+            mainData.fadingBetweenThemes      = true;
             mainData.scrollCache.needsRepaint = true;
           }
         }
@@ -595,14 +623,16 @@ immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
     ui.Color.button_normal                    : C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
     ui.Color.button_sel_indicator             : C2D_Color32(0x00, 0xAA, 0x11, 0xFF),
 
-    ui.Color.button_bottom_top                : C2D_Color32(0xB6, 0xB6, 0xBA, 0xFF),
-    ui.Color.button_bottom_bottom             : C2D_Color32(0x48, 0x48, 0x4C, 0xFF),
-    ui.Color.button_bottom_base               : C2D_Color32(0x66, 0x66, 0x6E, 0xFF),
-    ui.Color.button_bottom_line               : C2D_Color32(0x8B, 0x8B, 0x8C, 0xFF),
-    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6E, 0x6A, 0xFF),
-    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xC0, 0xC0, 0xBC, 0xFF),
-    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA5, 0xA5, 0x9E, 0xFF),
-    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7B, 0x7B, 0x7B, 0xFF),
+    ui.Color.button_bottom_top                : C2D_Color32(0xBA, 0xB6, 0xAD, 0xFF),
+    ui.Color.button_bottom_bottom             : C2D_Color32(0x4D, 0x4A, 0x45, 0xFF),
+    ui.Color.button_bottom_base               : C2D_Color32(0x6E, 0x69, 0x60, 0xFF),
+    ui.Color.button_bottom_line               : C2D_Color32(0x8C, 0x89, 0x84, 0xFF),
+    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6C, 0x64, 0xFF),
+    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xBF, 0xBD, 0xB2, 0xFF),
+    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA6, 0xA3, 0x97, 0xFF),
+    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7A, 0x79, 0x74, 0xFF),
+    ui.Color.button_bottom_text               : C2D_Color32(0xF2, 0xF2, 0xF7, 0xFF),
+    ui.Color.button_bottom_text_bevel         : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
 
     // Health and safety colors
     //ui.Color.button_bottom_top                : C2D_Color32(244, 244, 240, 0xFF),
@@ -616,8 +646,6 @@ immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
     //ui.Color.button_bottom_text               : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
     //ui.Color.button_bottom_text_bevel         : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
 
-    ui.Color.button_bottom_text               : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
-    ui.Color.button_bottom_text_bevel         : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
     ui.Color.button_bottom_above_fade         : C2D_Color32(0xF2, 0xF2, 0xF7, 0x80),
     ui.Color.scroll_indicator                 : C2D_Color32(0x66, 0xAD, 0xC1, 0xFF),
     ui.Color.scroll_indicator_outline         : C2D_Color32(0xE1, 0xED, 0xF1, 0xFF),
