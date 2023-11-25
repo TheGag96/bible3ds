@@ -875,9 +875,12 @@ void frameEnd() { with (gUiData) {
     if (box.flags & BoxFlags.view_scroll && !(box.flags & BoxFlags.manual_scroll_limits)) {
       auto flowAxis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
       box.scrollInfo.limitMin = 0;
-      box.scrollInfo.limitMax = box.last
-                                    ? box.last.computedRelPosition[flowAxis] + box.last.computedSize[flowAxis] - box.computedSize[flowAxis]
-                                    : 0;
+      box.scrollInfo.limitMax = max(
+        boxIsNull(box.last)
+          ? 0
+          : box.last.computedRelPosition[flowAxis] + box.last.computedSize[flowAxis] - box.computedSize[flowAxis],
+        0
+      );
     }
 
     return false;
