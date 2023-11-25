@@ -28,5 +28,6 @@ public import ctru.applets;
 public import ctru.gpu;
 public import ctru.ndsp;
 public import ctru.services;
+public import ctru.synchronization;
 public import ctru.thread;
 public import ctru.util;
