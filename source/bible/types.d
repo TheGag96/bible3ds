@@ -13,6 +13,7 @@ enum Axis2 : ubyte { x, y }
 
 alias Vec2 = Vec!2;
 alias Vec3 = Vec!3;
+alias Vec4 = Vec!4;
 
 struct Vec(size_t n) {
   @nogc: nothrow: @safe:
@@ -280,4 +281,9 @@ struct DimSlice(T, size_t n = 1) {
     //direct pointer read, since if bounds checks are on, we already checked them above
     return arr.ptr[arrIndex];
   }
+}
+
+enum ColorTheme : ubyte {
+  neutral,
+  warm,
 }

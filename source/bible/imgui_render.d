@@ -27,7 +27,7 @@ void renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, fl
   }
 
   C2D_DrawText(
-    &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colorText
+    &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
   );
 }
 
@@ -93,7 +93,7 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
 
   if (box.flags & BoxFlags.draw_text) {
     C2D_DrawText(
-      &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colorText
+      &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
     );
   }
 
@@ -126,42 +126,23 @@ void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
 
   float z = 0;
 
-  //textColor     = box.style.colorText;
-  //bevelTexColor = 0xFFFFFFFF;
-  bevelTexColor = box.style.colorText;
-  textColor     = 0xFFFFFFFF;
+  bevelTexColor = box.style.colors[Color.button_bottom_text_bevel];
+  textColor     = box.style.colors[Color.button_bottom_text];
 
-  /* //health and safety colors
   if (pressed) {
-    topColor      = C2D_Color32(0x6a, 0x6a, 0x6e, 255);
-    bottomColor   = C2D_Color32(0xbe, 0xbe, 0xc2, 255);
-    baseColor     = C2D_Color32(0x8d, 0x8d, 0x96, 255);
-    lineColor     = C2D_Color32(0x81, 0x81, 0x82, 255);
+    topColor      = box.style.colors[Color.button_bottom_pressed_top];
+    bottomColor   = box.style.colors[Color.button_bottom_pressed_bottom];
+    baseColor     = box.style.colors[Color.button_bottom_pressed_base];
+    lineColor     = box.style.colors[Color.button_bottom_pressed_line];
     uint tmp = textColor;
     textColor = bevelTexColor;
     bevelTexColor = tmp;
   }
   else {
-    topColor      = C2D_Color32(244, 244, 240, 255);
-    bottomColor   = C2D_Color32(199, 199, 195, 255);
-    baseColor     = C2D_Color32(228, 228, 220, 255);
-    lineColor     = C2D_Color32(158, 158, 157, 255);
-  }*/
-
-  if (pressed) {
-    topColor      = C2D_Color32(0x6e, 0x6e, 0x6a, 255);
-    bottomColor   = C2D_Color32(0xc0, 0xc0, 0xbc, 255);
-    baseColor     = C2D_Color32(0xa5, 0xa5, 0x9e, 255);
-    lineColor     = C2D_Color32(0x7b, 0x7b, 0x7b, 255);
-    uint tmp = textColor;
-    textColor = bevelTexColor;
-    bevelTexColor = tmp;
-  }
-  else {
-    topColor      = C2D_Color32(0xb6, 0xb6, 0xba, 255);
-    bottomColor   = C2D_Color32(0x48, 0x48, 0x4c, 255);
-    baseColor     = C2D_Color32(0x66, 0x66, 0x6e, 255);
-    lineColor     = C2D_Color32(0x8b, 0x8b, 0x8c, 255);
+    topColor      = box.style.colors[Color.button_bottom_top];
+    bottomColor   = box.style.colors[Color.button_bottom_bottom];
+    baseColor     = box.style.colors[Color.button_bottom_base];
+    lineColor     = box.style.colors[Color.button_bottom_line];
   }
 
   // light fade above bottom button
@@ -177,7 +158,7 @@ void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
     C3D_TexEnvInit(env);
     C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
     C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, C2D_Color32(0xf2, 0xf2, 0xf7, 128));
+    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
 
     C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
     C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
@@ -277,7 +258,7 @@ void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
   C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.texture0);
   C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.modulate);
   C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
-  C3D_TexEnvColor(env, C2D_Color32(0x00, 0xAA, 0x11, 0xFF));
+  C3D_TexEnvColor(env, box.style.colors[Color.button_sel_indicator]);
 
   //used to apply dynamic fade alpha
   env = C3D_GetTexEnv(2);
@@ -495,16 +476,16 @@ void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
     ctx.vtxBufPos += vertexList.length;
   }
 
-  enum COLOR_NORMAL          = Vec3(0x66, 0xAD, 0xC1)/255;
-  enum COLOR_NORMAL_OUTLINE  = Vec3(0xE1, 0xED, 0xF1)/255;
-  enum COLOR_PUSHING         = Vec3(0xDD, 0x80, 0x20)/255;
-  enum COLOR_PUSHING_OUTLINE = Vec3(0xE3, 0xAE, 0x78)/255;
+  auto colorNormal         = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator]);
+  auto colorNormalOutline  = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_outline]);
+  auto colorPushing        = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_pushing]);
+  auto colorPushingOutline = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_pushing_outline]);
 
   auto rect = box.rect - screenPos;
   float viewHeight = box.related.computedSize[Axis2.y];
 
-  auto colorLerp        = lerp(COLOR_NORMAL,         COLOR_PUSHING,         box.hotT);
-  auto colorOutlineLerp = lerp(COLOR_NORMAL_OUTLINE, COLOR_PUSHING_OUTLINE, box.hotT);
+  auto colorLerp        = lerp(colorNormal,        colorPushing,        box.hotT);
+  auto colorOutlineLerp = lerp(colorNormalOutline, colorPushingOutline, box.hotT);
 
   auto colorC2d        = C2D_Color32f(colorLerp.x,        colorLerp.y,        colorLerp.z,        0);
   auto colorOutlineC2d = C2D_Color32f(colorOutlineLerp.x, colorOutlineLerp.y, colorOutlineLerp.z, 1);

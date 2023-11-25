@@ -9,7 +9,8 @@ nothrow: @nogc:
 
 struct Settings {
   Translation translation;
-  ubyte[63] spare;
+  ColorTheme colorTheme;
+  ubyte[62] spare;
 }
 
 struct Progress {

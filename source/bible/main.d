@@ -32,15 +32,6 @@ enum View {
   options,
 }
 
-enum CLEAR_COLOR = 0xFFEEEEEE;
-
-enum BACKGROUND_COLOR_BG            = C2D_Color32(0xF5, 0xF5, 0xF5, 255);
-enum BACKGROUND_COLOR_STRIPES_DARK  = C2D_Color32(208,  208,  212,  255);
-enum BACKGROUND_COLOR_STRIPES_LIGHT = C2D_Color32(197,  197,  189,  255);
-
-enum DEFAULT_PAGE_TEXT_SIZE = 0.5;
-enum DEFAULT_PAGE_MARGIN    = 8;
-
 struct PageId {
   Translation translation;
   Book book;
@@ -59,7 +50,11 @@ struct MainData {
   float defaultPageTextSize = 0, defaultPageMargin = 0;
 
   bool frameNeedsRender;
+
   BibleLoadData bible;
+
+  ui.ColorTable colorTable;
+  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack;
 }
 MainData mainData;
 
@@ -115,7 +110,6 @@ extern(C) int main(int argc, char** argv) {
   Input input;
 
   audioInit();
-
 
   // Create screens
   C3D_RenderTarget* topLeft  = C2D_CreateScreenTarget(GFXScreen.top,    GFX3DSide.left);
@@ -192,32 +186,32 @@ extern(C) int main(int argc, char** argv) {
           &mainData.scrollCache,
           mainData.loadedPage.scrollInfo,
           &ui.renderPage, &mainData.loadedPage,
-          CLEAR_COLOR,
+          mainData.colorTable[ui.Color.clear_color],
         );
         ui.scrollCacheEndFrame(&mainData.scrollCache);
       }
 
       {
         mixin(timeBlock("render > left"));
-        C2D_TargetClear(topLeft, CLEAR_COLOR);
+        C2D_TargetClear(topLeft, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topLeft);
-        ui.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
       }
 
       if (_3DEnabled) {
         mixin(timeBlock("render > right"));
-        C2D_TargetClear(topRight, CLEAR_COLOR);
+        C2D_TargetClear(topRight, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topRight);
-        ui.drawBackground(GFXScreen.top, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
       }
 
       {
         mixin(timeBlock("render > bottom"));
-        C2D_TargetClear(bottom, CLEAR_COLOR);
+        C2D_TargetClear(bottom, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(bottom);
-        ui.drawBackground(GFXScreen.bottom, BACKGROUND_COLOR_BG, BACKGROUND_COLOR_STRIPES_DARK, BACKGROUND_COLOR_STRIPES_LIGHT);
+        ui.drawBackground(GFXScreen.bottom, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
     }
@@ -245,6 +239,22 @@ void initMainData(MainData* mainData) { with (mainData) {
 
   defaultPageTextSize = DEFAULT_PAGE_TEXT_SIZE;
   defaultPageMargin   = DEFAULT_PAGE_MARGIN;
+
+  colorTable = COLOR_THEMES[gSaveFile.settings.colorTheme];
+
+  styleButtonBook                 = ui.BoxStyle.init;
+  styleButtonBook.colors          = colorTable;
+  styleButtonBook.margin          = BOOK_BUTTON_MARGIN;
+  styleButtonBook.textSize        = 0.5f;
+
+  styleButtonBottom               = styleButtonBook;
+  styleButtonBottom.margin        = BOTTOM_BUTTON_MARGIN;
+  styleButtonBottom.textSize      = 0.6f;
+
+  // @Hack: Gets played manually by builder code so that it plays on pressing B. Consider revising...
+  styleButtonBack                 = styleButtonBottom;
+  styleButtonBack.pressedSound    = SoundEffect.none;
+  styleButtonBack.pressedSoundVol = 0.0;
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
@@ -355,6 +365,8 @@ void mainGui(MainData* mainData, Input* input) {
   frameStart();
   handleInput(input);
 
+  auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
+
   auto mainLayout = ScopedCombinedScreenSplitLayout("combined_screen_layout_main", "combined_screen_layout_left", "combined_screen_layout_center", "combined_screen_layout_right");
   mainLayout.startCenter();
 
@@ -366,7 +378,6 @@ void mainGui(MainData* mainData, Input* input) {
 
       {
         auto scrollLayout = ScopedScrollLayout("book_scroll_layout", &scrollLayoutSignal, Axis2.y);
-        auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
 
         scrollLayoutBox = scrollLayout.box;
 
@@ -425,7 +436,9 @@ void mainGui(MainData* mainData, Input* input) {
       pushingAgainstScrollLimit |= scrollLayoutSignal.pushingAgainstScrollLimit;
 
       {
-        auto style = ScopedStyle(&BOTTOM_BUTTON_STYLE);
+        auto bottomLayout = ScopedLayout("", Axis2.x, Justification.center, LayoutKind.fit_children);
+        auto style = ScopedStyle(&mainData.styleButtonBottom);
+
         if (bottomButton("Options").clicked) {
           sendCommand(CommandCode.switch_view, View.options);
         }
@@ -448,7 +461,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainData.loadedPage.scrollInfo = readPane.box.scrollInfo;
 
       {
-        auto style = ScopedStyle(&BACK_BUTTON_STYLE);
+        auto style = ScopedStyle(&mainData.styleButtonBack);
         if (bottomButton("Back").clicked || input.down(Key.b)) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
@@ -472,7 +485,7 @@ void mainGui(MainData* mainData, Input* input) {
       Signal scrollLayoutSignal;
       {
         auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
-        auto style        = ScopedStyle(&BOOK_BUTTON_STYLE);
+        auto style        = ScopedStyle(&mainData.styleButtonBook);
 
         scrollLayoutBox = scrollLayout.box;
 
@@ -488,10 +501,21 @@ void mainGui(MainData* mainData, Input* input) {
 
           spacer(8);
         }
+
+        label("Color Theme");
+
+        foreach (colorTheme; enumRange!ColorTheme) {
+          if (button(COLOR_THEME_NAMES[colorTheme]).clicked) {
+            gSaveFile.settings.colorTheme = colorTheme;
+
+            mainData.colorTable = COLOR_THEMES[colorTheme];
+            mainData.scrollCache.needsRepaint = true;
+          }
+        }
       }
 
       {
-        auto style = ScopedStyle(&BACK_BUTTON_STYLE);
+        auto style = ScopedStyle(&mainData.styleButtonBack);
         if (bottomButton("Back").clicked || input.down(Key.b)) {
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
@@ -550,3 +574,85 @@ extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {
     }
   }
 }
+
+
+/////////////////////////////////////
+// Constants
+/////////////////////////////////////
+
+immutable string[ColorTheme.max+1] COLOR_THEME_NAMES = [
+  ColorTheme.warm    : "Warm",
+  ColorTheme.neutral : "Neutral",
+];
+
+immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
+  ColorTheme.warm : [
+    ui.Color.clear_color                      : C2D_Color32(0xED, 0xEA, 0xE1, 0xFF),
+    ui.Color.text                             : C2D_Color32(0x00, 0x00, 0x00, 0xFF),
+    ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xF2, 0xE9, 0xFF),
+    ui.Color.bg_stripes_dark                  : C2D_Color32(0xD4, 0xD2, 0xCF, 0xFF),
+    ui.Color.bg_stripes_light                 : C2D_Color32(0xBF, 0xBE, 0xBB, 0xFF),
+    ui.Color.button_normal                    : C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
+    ui.Color.button_sel_indicator             : C2D_Color32(0x00, 0xAA, 0x11, 0xFF),
+
+    ui.Color.button_bottom_top                : C2D_Color32(0xB6, 0xB6, 0xBA, 0xFF),
+    ui.Color.button_bottom_bottom             : C2D_Color32(0x48, 0x48, 0x4C, 0xFF),
+    ui.Color.button_bottom_base               : C2D_Color32(0x66, 0x66, 0x6E, 0xFF),
+    ui.Color.button_bottom_line               : C2D_Color32(0x8B, 0x8B, 0x8C, 0xFF),
+    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6E, 0x6A, 0xFF),
+    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xC0, 0xC0, 0xBC, 0xFF),
+    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA5, 0xA5, 0x9E, 0xFF),
+    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7B, 0x7B, 0x7B, 0xFF),
+
+    // Health and safety colors
+    //ui.Color.button_bottom_top                : C2D_Color32(244, 244, 240, 0xFF),
+    //ui.Color.button_bottom_bottom             : C2D_Color32(199, 199, 195, 0xFF),
+    //ui.Color.button_bottom_base               : C2D_Color32(228, 228, 220, 0xFF),
+    //ui.Color.button_bottom_line               : C2D_Color32(158, 158, 157, 0xFF),
+    //ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6A, 0x6A, 0x6E, 0xFF),
+    //ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xBE, 0xBE, 0xC2, 0xFF),
+    //ui.Color.button_bottom_pressed_base       : C2D_Color32(0x8D, 0x8D, 0x96, 0xFF),
+    //ui.Color.button_bottom_pressed_line       : C2D_Color32(0x81, 0x81, 0x82, 0xFF),
+    //ui.Color.button_bottom_text               : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
+    //ui.Color.button_bottom_text_bevel         : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
+
+    ui.Color.button_bottom_text               : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
+    ui.Color.button_bottom_text_bevel         : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
+    ui.Color.button_bottom_above_fade         : C2D_Color32(0xF2, 0xF2, 0xF7, 0x80),
+    ui.Color.scroll_indicator                 : C2D_Color32(0x66, 0xAD, 0xC1, 0xFF),
+    ui.Color.scroll_indicator_outline         : C2D_Color32(0xE1, 0xED, 0xF1, 0xFF),
+    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x80, 0x20, 0xFF),
+    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xAE, 0x78, 0xFF),
+  ],
+  ColorTheme.neutral : [
+    ui.Color.clear_color                      : C2D_Color32(0xEE, 0xEE, 0xEE, 0xFF),
+    ui.Color.text                             : C2D_Color32(0x00, 0x00, 0x00, 0xFF),
+    ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xF5, 0xF5, 0xFF),
+    ui.Color.bg_stripes_dark                  : C2D_Color32(0xD0, 0xD0, 0xD4, 0xFF),
+    ui.Color.bg_stripes_light                 : C2D_Color32(0xC5, 0xC5, 0xBD, 0xFF),
+    ui.Color.button_normal                    : C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
+    ui.Color.button_sel_indicator             : C2D_Color32(0x00, 0xAA, 0x11, 0xFF),
+    ui.Color.button_bottom_top                : C2D_Color32(0xB6, 0xB6, 0xBA, 0xFF),
+    ui.Color.button_bottom_bottom             : C2D_Color32(0x48, 0x48, 0x4C, 0xFF),
+    ui.Color.button_bottom_base               : C2D_Color32(0x66, 0x66, 0x6E, 0xFF),
+    ui.Color.button_bottom_line               : C2D_Color32(0x8B, 0x8B, 0x8C, 0xFF),
+    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6E, 0x6A, 0xFF),
+    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xC0, 0xC0, 0xBC, 0xFF),
+    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA5, 0xA5, 0x9E, 0xFF),
+    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7B, 0x7B, 0x7B, 0xFF),
+    ui.Color.button_bottom_text               : C2D_Color32(0xF2, 0xF2, 0xF7, 0xFF),
+    ui.Color.button_bottom_text_bevel         : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
+    ui.Color.button_bottom_above_fade         : C2D_Color32(0xF2, 0xF2, 0xF7, 0x80),
+    ui.Color.scroll_indicator                 : C2D_Color32(0x66, 0xAD, 0xC1, 0xFF),
+    ui.Color.scroll_indicator_outline         : C2D_Color32(0xE1, 0xED, 0xF1, 0xFF),
+    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x80, 0x20, 0xFF),
+    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xAE, 0x78, 0xFF),
+  ],
+];
+
+enum DEFAULT_PAGE_TEXT_SIZE = 0.5;
+enum DEFAULT_PAGE_MARGIN    = 8;
+
+enum BOOK_BUTTON_WIDTH      = 200.0f;
+enum BOOK_BUTTON_MARGIN     = 8.0f;
+enum BOTTOM_BUTTON_MARGIN   = 6.0f;

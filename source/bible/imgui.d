@@ -30,19 +30,6 @@ static immutable Rectangle[GFXScreen.max+1] SCREEN_RECT = [
   ),
 ];
 
-enum MARGIN = 8.0f;
-enum BOOK_BUTTON_WIDTH      = 200.0f;
-enum BOOK_BUTTON_MARGIN     = 8.0f;
-enum BOOK_BUTTON_COLOR      = C2D_Color32(0x00, 0x00, 0xFF, 0xFF);
-enum BOOK_BUTTON_DOWN_COLOR = C2D_Color32(0x55, 0x55, 0xFF, 0xFF);
-static immutable BoxStyle BOOK_BUTTON_STYLE = {
-  colorText     : C2D_Color32(0, 0, 0, 255),
-  colorBg       : BOOK_BUTTON_COLOR,
-  colorBgHeld   : BOOK_BUTTON_DOWN_COLOR,
-  margin        : BOOK_BUTTON_MARGIN,
-  textSize      : 0.5f,
-};
-
 enum BoxFlags : uint {
   none                 = 0,
   clickable            = 1 << 0,
@@ -108,9 +95,38 @@ struct ScrollInfo {
   OneFrameEvent scrollJustStopped;
 }
 
+enum Color : ubyte {
+  clear_color,
+  text,
+  bg_bg,
+  bg_stripes_dark,
+  bg_stripes_light,
+  button_normal,
+  button_sel_indicator,
+  button_bottom_top,
+  button_bottom_base,
+  button_bottom_bottom,
+  button_bottom_line,
+  button_bottom_pressed_top,
+  button_bottom_pressed_base,
+  button_bottom_pressed_bottom,
+  button_bottom_pressed_line,
+  button_bottom_text,
+  button_bottom_text_bevel,
+  button_bottom_above_fade,
+  scroll_indicator,
+  scroll_indicator_outline,
+  scroll_indicator_pushing,
+  scroll_indicator_pushing_outline,
+}
+alias ColorTable = uint[Color.max+1];
+
 struct BoxStyle {
-  uint colorText, colorBg, colorBgHeld;
-  float margin;
+  // Must be the length of ColorTable.
+  // Not making it ColorTable* because it's easy to screw up access by indexing the pointer instead of the table.
+  uint[] colors;
+
+  float margin = 0;
   float textSize = 0;
   SoundEffect pressedSound = SoundEffect.button_confirm;
   float pressedSoundVol = 0.5;
@@ -224,33 +240,15 @@ Box* getChild(Box* box, int childId) {
   return box;
 }
 
-void label(const(char)[] text, Justification justification = Justification.min) {
+Box* label(const(char)[] text, Justification justification = Justification.min) {
   Box* box = makeBox(BoxFlags.draw_text, text);
 
   box.semanticSize[] = [Size(SizeKind.text_content, 0, 1), Size(SizeKind.text_content, 0, 1)].s;
   box.justification  = justification;
   box.render         = &renderLabel;
+
+  return box;
 }
-
-enum BOTTOM_BUTTON_MARGIN     = 6.0f;
-enum BOTTOM_BUTTON_COLOR      = C2D_Color32(0xCC, 0xCC, 0xCC, 0xFF);
-enum BOTTOM_BUTTON_DOWN_COLOR = C2D_Color32(0x8C, 0x8C, 0x8C, 0xFF);
-
-static immutable BoxStyle BOTTOM_BUTTON_STYLE = {
-  colorText     : C2D_Color32(0x11, 0x11, 0x11, 255),
-  colorBg       : BOTTOM_BUTTON_COLOR,
-  colorBgHeld   : BOTTOM_BUTTON_DOWN_COLOR,
-  margin        : BOTTOM_BUTTON_MARGIN,
-  textSize      : 0.6f,
-};
-
-static immutable BoxStyle BACK_BUTTON_STYLE = () {
-  BoxStyle result = BOTTOM_BUTTON_STYLE;
-  // @Hack: Gets played manually by builder code so that it plays on pressing B. Consider revising...
-  result.pressedSound    = SoundEffect.none;
-  result.pressedSoundVol = 0.0;
-  return result;
-}();
 
 Signal button(const(char)[] text, int size = 0, Justification justification = Justification.center) {
   Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text | BoxFlags.selectable, text);
@@ -1333,7 +1331,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
         float textY = (rect.top  + rect.bottom)/2 - box.textHeight/2;
 
         C2D_DrawText(
-          &box.text, C2D_WithColor, GFXScreen.top, textX, textY, 0, box.style.textSize, box.style.textSize, box.style.colorText
+          &box.text, C2D_WithColor, GFXScreen.top, textX, textY, 0, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
         );
       }
     }

@@ -421,6 +421,10 @@ template arrayOfEnum(T, V) if (is(T == enum)) {
   }());
 }
 
+Vec4 rgba8ToRgbaF(uint color) {
+  return Vec4(color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, color >> 24) / 255;
+}
+
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;
