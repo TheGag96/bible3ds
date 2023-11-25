@@ -5,7 +5,7 @@ public import core.stdc.stdio : printf;
 public import std.algorithm   : min, max;
 public import std.math        : floor, ceil, round, log2;
 
-import ctru, citro3d;
+import ctru, citro2d, citro3d;
 
 nothrow: @nogc:
 
@@ -183,12 +183,20 @@ ubyte[] arenaPushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
   }
 }
 
-T* arenaPush(T, bool initialize = true)(Arena* arena) {
+ubyte[] arenaPushBytesZero(Arena* arena, size_t bytes, size_t aligning = 1) {
+  import core.stdc.string : memset;
+
+  auto result = arenaPushBytes(arena, bytes, aligning);
+  memset(result.ptr, 0, result.length);
+  return result;
+}
+
+T* arenaPush(T, bool init = true)(Arena* arena) {
   import core.lifetime : emplace;
 
   T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, alignShiftAmount!T);
   if (result != null) {
-    static if (initialize && __traits(compiles, () { auto test = T.init; })) {
+    static if (init && __traits(compiles, () { auto test = T.init; })) {
       emplace!T(result, T.init);
     }
 
@@ -201,12 +209,12 @@ T* arenaPush(T, bool initialize = true)(Arena* arena) {
   }
 }
 
-T[] arenaPushArray(T, bool initialize = true)(Arena* arena, size_t size) {
+T[] arenaPushArray(T, bool init = true)(Arena* arena, size_t size) {
   import core.lifetime : emplace;
 
   T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, alignShiftAmount!T);
   if (result != null) {
-    static if (initialize && __traits(compiles, () { auto test = T.init; })) {
+    static if (init && __traits(compiles, () { auto test = T.init; })) {
       foreach (i; 0..size) {
         emplace!T(result + i, T.init);
       }

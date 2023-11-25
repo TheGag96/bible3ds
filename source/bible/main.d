@@ -250,15 +250,13 @@ void initMainData(MainData* mainData) { with (mainData) {
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
   if (newPageId == pageId) return;
 
-  ui.unloadPage(&loadedPage);
-
   OpenBook* book = &bible.books[newPageId.book];
 
   if (newPageId.chapter < 0) {
     newPageId.chapter = book.chapters.length + newPageId.chapter;
   }
 
-  ui.loadPage(&loadedPage, book.chapters[newPageId.chapter], defaultPageTextSize, defaultPageMargin);
+  ui.loadPage(&loadedPage, book.chapters[newPageId.chapter], newPageId.chapter, defaultPageTextSize, Vec2(defaultPageMargin));
   scrollCache.needsRepaint = true;
   frameNeedsRender = true;
 

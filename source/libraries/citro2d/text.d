@@ -24,6 +24,8 @@ import core.stdc.stdlib;
 
 import std.math : ceil;
 
+import bible.util;
+
 nothrow: @nogc:
 
 C3D_Tex* s_glyphSheets;
@@ -173,6 +175,15 @@ C2D_TextBuf C2D_TextBufNew(size_t maxGlyphs)
   C2D_TextBuf buf = cast(C2D_TextBuf)malloc(C2Di_TextBufBufferSize(maxGlyphs));
   if (!buf) return null;
   memset(buf, 0, C2D_TextBuf_s.sizeof);
+  buf.glyphBufSize = maxGlyphs;
+  return buf;
+}
+
+C2D_TextBuf C2D_TextBufNew(Arena* arena, size_t maxGlyphs)
+{
+  C2Di_TextEnsureLoad();
+
+  C2D_TextBuf buf = cast(C2D_TextBuf) arenaPushBytesZero(arena, C2Di_TextBufBufferSize(maxGlyphs)).ptr;
   buf.glyphBufSize = maxGlyphs;
   return buf;
 }
@@ -515,14 +526,14 @@ struct C2D_WrapInfo {
 
 __gshared uint biggerBytes = 0, lesserBytes = 0;
 
-C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, float scaleX, float maxWidth) {
+C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX, float maxWidth) {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
 
   C2Di_LineInfo[] lines = null;
   C2Di_WordInfo[] words = null;
 
-  lines = (cast(C2Di_LineInfo*) malloc(C2Di_LineInfo.sizeof*text.lines))[0..text.lines];
-  words = (cast(C2Di_WordInfo*) malloc(C2Di_WordInfo.sizeof*text.words))[0..text.words];
+  lines = arenaPushArray!(C2Di_LineInfo, false)(arena, text.lines);
+  words = arenaPushArray!(C2Di_WordInfo, false)(arena, text.words);
   biggerBytes += C2D_WrapInfo.sizeof;
   lesserBytes += (C2Di_LineInfo*).sizeof * 2;
 

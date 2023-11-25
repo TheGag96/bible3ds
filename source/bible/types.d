@@ -36,6 +36,12 @@ struct Vec(size_t n) {
 
   pragma(inline, true)
   pure
+  this(float val) {
+    this.vals = val;
+  }
+
+  pragma(inline, true)
+  pure
   Vec!n opBinary(string op)(const Vec!n other) const
   if (op == "+" || op == "-") {
     Vec!n result = void;

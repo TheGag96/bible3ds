@@ -79,6 +79,8 @@ enum OneFrameEvent {
 }
 
 struct LoadedPage {
+  Arena arena;
+
   C2D_TextBuf textBuf;
   C2D_Text[] textArray;
 
@@ -94,8 +96,9 @@ struct LoadedPage {
 
   int linesInPage;
 
-  float textSize = 0, pageMargin = 0;
-  float glyphWidth = 0, glyphHeight = 0;
+  float textSize = 0;
+  Vec2 pageMargin;
+  Vec2 glyphSize;
 }
 
 struct ScrollInfo {
@@ -498,8 +501,8 @@ BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Scro
   // Add the size of the box on the bottom screen back to the scroll limit so that you can always scroll all the
   // content to the top of the screen.
   auto extraBottomScreen  = size(clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom])).y;
-  box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphHeight
-                                + loadedPage.pageMargin * 2 - height + extraBottomScreen, 0);
+  box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphSize.y
+                                + loadedPage.pageMargin.y * 2 - height + extraBottomScreen, 0);
 
   return BoxAndSignal(box, signalFromBox(box));
 }
@@ -1352,64 +1355,63 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
   }
 }}
 
-void loadPage(LoadedPage* page, char[][] pageLines, float textScale, float margin) { with (page) {
-  if (!textArray.length) textArray = allocArray!C2D_Text(512);
-  if (!textBuf)          textBuf   = C2D_TextBufNew(16384);
+void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, float textScale, Vec2 margin) { with (page) {
+  if (page.arena.data.ptr) {
+    arenaClear(&page.arena);
+  }
+  else {
+    page.arena = arenaMake(1*1024*1024);
+  }
 
-  page.linesInPage = pageLines.length;
+  // Extra lines for the chapter heading
+  // @HACK: Doing this here, but is there a better way this should work?
+  auto numLines = pageLines.length+1;
+
+  textArray = arenaPushArray!(C2D_Text, false)(&page.arena, numLines);
+  textBuf   = C2D_TextBufNew(&page.arena, 16384);
+
+  page.linesInPage = numLines;
   page.textSize    = textScale;
   page.pageMargin  = margin;
 
-  if (wrapInfos.length < pageLines.length) {
-    freeArray(wrapInfos);
-    wrapInfos = allocArray!C2D_WrapInfo(pageLines.length);
-  }
-  else {
-    //reuse memory if possible
-    wrapInfos = wrapInfos[0..pageLines.length];
-  }
+  wrapInfos = arenaPushArray!(C2D_WrapInfo, false)(&page.arena, numLines);
+
+  // Chapter heading
+  C2D_TextParse(&textArray[0], textBuf, arenaPrintf(&page.arena, "Chapter %d", chapterNum), flags : C2D_ParseFlags.bible);
+  wrapInfos[0] = C2D_CalcWrapInfo(&textArray[0], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * margin.x);
 
   foreach (lineNum; 0..pageLines.length) {
-    C2D_TextParse(&textArray[lineNum], textBuf, pageLines[lineNum], flags : C2D_ParseFlags.bible);
-    wrapInfos[lineNum] = C2D_CalcWrapInfo(&textArray[lineNum], textScale, SCREEN_BOTTOM_WIDTH - 2 * margin);
+    C2D_TextParse(&textArray[lineNum+1], textBuf, pageLines[lineNum], flags : C2D_ParseFlags.bible);
+    wrapInfos[lineNum+1] = C2D_CalcWrapInfo(&textArray[lineNum+1], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * margin.x);
   }
 
-  auto actualNumLines = pageLines.length;
+  auto actualNumLines = numLines;
   foreach (ref wrapInfo; wrapInfos) {
-    actualNumLines += wrapInfo.words[$-1].newLineNumber;
+    if (wrapInfo.words.length) {
+      actualNumLines += wrapInfo.words[$-1].newLineNumber;
+    }
   }
 
-  C2D_TextGetDimensions(&textArray[0], textScale, textScale, &glyphWidth, &glyphHeight);
+  C2D_TextGetDimensions(&textArray[0], textScale, textScale, &glyphSize.x, &glyphSize.y);
 
-  if (actualLineNumberTable.length < actualNumLines) {
-    freeArray(actualLineNumberTable);
-    actualLineNumberTable = allocArray!(LoadedPage.LineTableEntry)(actualNumLines);
-  }
-  else {
-    //reuse memory if possible
-    actualLineNumberTable = actualLineNumberTable[0..actualNumLines];
-  }
+  actualLineNumberTable = arenaPushArray!(LoadedPage.LineTableEntry, false)(&page.arena, actualNumLines);
 
   size_t runner = 0;
   foreach (i, ref wrapInfo; wrapInfos) {
-    auto realLines = wrapInfo.words[$-1].newLineNumber + 1;
+    auto realLines = (wrapInfo.words.length ? wrapInfo.words[$-1].newLineNumber : 0) + 1;
 
-    actualLineNumberTable[runner..runner+realLines] = LoadedPage.LineTableEntry(i, runner * glyphHeight);
+    actualLineNumberTable[runner..runner+realLines] = LoadedPage.LineTableEntry(i, runner * glyphSize.y);
 
     runner += realLines;
   }
 
-  foreach (lineNum; 0..pageLines.length) {
+  foreach (lineNum; 0..textArray.length) {
     C2D_TextOptimize(&textArray[lineNum]);
   }
 
   page.scrollInfo = ScrollInfo.init;
 
   //mainData.scrollCache.needsRepaint = true;
-}}
-
-void unloadPage(LoadedPage* page) { with (page) {
-  if (textBuf) C2D_TextBufClear(textBuf);
 }}
 
 struct BoxHashTable {

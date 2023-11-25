@@ -760,17 +760,17 @@ void renderPage(
 ) { with (loadedPage) {
   float width, height;
 
-  float startX = pageMargin;
+  float startX = pageMargin.x;
 
   C2D_TextGetDimensions(&loadedPage.textArray[0], textSize, textSize, &width, &height);
 
   //float renderStartOffset = round(loadedPage.scrollInfo.offset +
   //                                loadedPage.actualLineNumberTable[virtualLine].realPos +
-  //                                pageMargin);
+  //                                pageMargin.y);
 
-  int virtualLine = min(max(cast(int) floor((round(from-pageMargin))/glyphHeight), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
+  int virtualLine = min(max(cast(int) floor((round(from-pageMargin.y))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
   int startLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
-  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + pageMargin;
+  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + pageMargin.y;
 
   float extra = 0;
   int i = startLine; //max(startLine, 0);
@@ -779,7 +779,7 @@ void renderPage(
       &loadedPage.textArray[i], C2D_WordWrapPrecalc, GFXScreen.bottom, startX, offsetY, 0.5f, textSize, textSize,
       &loadedPage.wrapInfos[i]
     );
-    extra = height * (1 + loadedPage.wrapInfos[i].words[loadedPage.textArray[i].words-1].newLineNumber);
+    extra = height * (1 + (loadedPage.wrapInfos[i].words.length ? loadedPage.wrapInfos[i].words[loadedPage.textArray[i].words-1].newLineNumber : 0));
     offsetY += extra;
     i++;
   }
