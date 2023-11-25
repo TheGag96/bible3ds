@@ -542,9 +542,11 @@ struct UiData {
   const(BoxStyle)* style;
 
   C2D_TextBuf textBuf;
+
+  float drawZ = 0;
 }
 
-__gshared UiData gUiData;
+__gshared UiData* gUiData;
 
 pragma(inline, true)
 const(char)[] tprint(T...)(const(char)[] format, T args) {
@@ -636,10 +638,9 @@ Signal popParentAndSignal() {
   return signalFromBox(popParent());
 }
 
-void init() { with (gUiData) {
-  textBuf = C2D_TextBufNew(16384);
-
-  uiArena     = arenaMake(1*1024*1024);
+void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
+  uiArena     = arenaMake(arenaSize);
+  textBuf     = C2D_TextBufNew(&uiArena, 16384);
   boxes       = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
   stringArena = arenaPushArena(&uiArena, 16*1024);
 
@@ -652,26 +653,31 @@ void init() { with (gUiData) {
   active  = gNullBox;
 }}
 
-void frameStart() { with (gUiData) {
-  curBox      = gNullBox;
-  root        = gNullBox;
-  style       = &DEFAULT_STYLE;
-  numCommands = 0;
+void frameStart(UiData* uiData, Input* input, float z = 0) {
+  gUiData = uiData;
+  uiData.input   = input;
+  uiData.drawZ   = z;
 
-  C2D_TextBufClear(textBuf);
-  hashTablePrune(&boxes);
+  with (uiData) {
+    curBox      = gNullBox;
+    root        = gNullBox;
+    style       = &DEFAULT_STYLE;
+    numCommands = 0;
 
-  // hashKey being 0 means that they were anonymous boxes, which just got deleted from the hashTablePrune call.
-  if (!boxIsNull(hot)     && (hot.lastFrameTouchedIndex     != frameIndex || hot.hashKey     == 0)) hot     = gNullBox;
-  if (!boxIsNull(active)  && (active.lastFrameTouchedIndex  != frameIndex || active.hashKey  == 0)) active  = gNullBox;
-  if (!boxIsNull(focused) && (focused.lastFrameTouchedIndex != frameIndex || focused.hashKey == 0)) focused = gNullBox;
+    C2D_TextBufClear(textBuf);
+    hashTablePrune(&boxes);
 
-  arenaClear(&stringArena);
-  frameIndex++;
-}}
+    // hashKey being 0 means that they were anonymous boxes, which just got deleted from the hashTablePrune call.
+    if (!boxIsNull(hot)     && (hot.lastFrameTouchedIndex     != frameIndex || hot.hashKey     == 0)) hot     = gNullBox;
+    if (!boxIsNull(active)  && (active.lastFrameTouchedIndex  != frameIndex || active.hashKey  == 0)) active  = gNullBox;
+    if (!boxIsNull(focused) && (focused.lastFrameTouchedIndex != frameIndex || focused.hashKey == 0)) focused = gNullBox;
+
+    arenaClear(&stringArena);
+    frameIndex++;
+  }
+}
 
 void handleInput(Input* newInput) { with (gUiData) {
-  input = newInput;
 }}
 
 void frameEnd() { with (gUiData) {
@@ -1276,8 +1282,13 @@ void respondToScroll(Box* box, Signal* result, Vec2 scrollDiff) { with (gUiData)
   }
 }}}
 
-Command[] getCommands() { with (gUiData) {
-  return commands[0..numCommands];
+Command[] getCommands(UiData* uiData = gUiData) { with (uiData) {
+  if (uiData) {
+    return commands[0..numCommands];
+  }
+  else {
+    return [];
+  }
 }}
 
 void sendCommand(uint code, uint value) { with (gUiData) {

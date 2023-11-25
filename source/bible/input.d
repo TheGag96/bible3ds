@@ -65,6 +65,8 @@ struct Input {
   }
 }
 
+immutable Input gNullInput;
+
 void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, circlePosition _circle) { with (input) {
   //prevent left+right and up+down
   if (_down & Key.left) _down = _down & ~(Key.right);

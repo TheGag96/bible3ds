@@ -38,8 +38,16 @@ struct PageId {
   int chapter;
 }
 
+struct UiView {
+  ui.UiData uiData;
+  alias uiData this;
+
+  Rectangle rect;
+}
+
 struct MainData {
   View curView = View.book;
+  UiView[View.max+1] views;
   ui.ScrollCache scrollCache;
 
   float size = 0;
@@ -106,7 +114,6 @@ extern(C) int main(int argc, char** argv) {
   //consoleInit(GFXScreen.bottom, null);
 
   ui.loadAssets();
-  ui.init();
 
   Input input;
 
@@ -231,10 +238,13 @@ extern(C) int main(int argc, char** argv) {
   return 0;
 }
 
-
 void initMainData(MainData* mainData) { with (mainData) {
   enum SCROLL_CACHE_WIDTH  = cast(ushort) SCREEN_BOTTOM_WIDTH,
        SCROLL_CACHE_HEIGHT = cast(ushort) (2*SCREEN_HEIGHT);
+
+  foreach (ref view; views) {
+    ui.init(&view.uiData);
+  }
 
   scrollCache = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
@@ -272,7 +282,7 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
   frameNeedsRender = true;
 
   // @Hack: Is there any better way to do this?
-  auto readViewPane = ui.gUiData.boxes["reading_scroll_read_view"];
+  auto readViewPane = mainData.views[View.reading].boxes["reading_scroll_read_view"];
   if (!ui.boxIsNull(readViewPane)) {
     readViewPane.scrollInfo.offset     = 0;
     readViewPane.scrollInfo.offsetLast = 0;
@@ -325,13 +335,6 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
 
   loadBiblePage(mainData, newPageId);
 }}
-
-struct UiView {
-  ui.UiData uiData;
-  alias uiData this;
-
-
-}
 
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
 void mainGui(MainData* mainData, Input* input) {
@@ -390,8 +393,7 @@ void mainGui(MainData* mainData, Input* input) {
     mainData.fadingBetweenThemes = changed;
   }
 
-  frameStart();
-  handleInput(input);
+  frameStart(&mainData.views[mainData.curView].uiData, input);
 
   auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 

@@ -7,7 +7,7 @@ import std.math;
 @nogc: nothrow:
 
 void renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
-  float z = 0;
+  float z = gUiData.drawZ;
 
   auto rect = box.rect - screenPos;
   rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
@@ -75,7 +75,7 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   float brX = trX;
   float brY = blY;
 
-  float z = 0;
+  float z = gUiData.drawZ;
 
   pushQuad(tlX, tlY, tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, 0, 1, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height); // top-left
   pushQuad(trX, tlY, trX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), 1, 0, 1-CORNER_HEIGHT/tex.height); // top-right
@@ -124,7 +124,7 @@ void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
 
   uint topColor, bottomColor, baseColor, textColor, bevelTexColor, lineColor;
 
-  float z = 0;
+  float z = gUiData.drawZ;
 
   bevelTexColor = box.style.colors[Color.button_bottom_text_bevel];
   textColor     = box.style.colors[Color.button_bottom_text];
@@ -290,7 +290,7 @@ void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
   float brX = trX;
   float brY = blY;
 
-  float z = 0; // 0.3; @TODO: Do we need to use different z-values here?
+  float z = gUiData.drawZ; // 0.3; @TODO: Do we need to use different z-values here?
 
   pushQuad(tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0); // top-left
   pushQuad(trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0); // top-right
@@ -488,6 +488,8 @@ void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   auto rect = box.rect - screenPos;
   float viewHeight = box.related.computedSize[Axis2.y];
 
+  float z = gUiData.drawZ;
+
   auto colorLerp        = lerp(colorNormal,        colorPushing,        box.hotT);
   auto colorOutlineLerp = lerp(colorNormalOutline, colorPushingOutline, box.hotT);
 
@@ -532,9 +534,9 @@ void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
 
   bool rightJustified = box.justification == Justification.max;
   float realX = round(rect.left - rightJustified*indicatorTex.width), realY = round(rect.top + box.related.scrollInfo.offset * scale);
-  pushQuadUvSwap(realX, realY,                                realX + indicatorTex.width, realY + indicatorTex.width,           0,  0, 0,   1, 1);
-  pushQuadUvSwap(realX, realY + indicatorTex.height,          realX + indicatorTex.width, realY + height - indicatorTex.height, 0,  0, 0.5, 1, 1);
-  pushQuadUvSwap(realX, realY + height - indicatorTex.height, realX + indicatorTex.width, realY + height,                       0,  1, 1,   0, 0);
+  pushQuadUvSwap(realX, realY,                                realX + indicatorTex.width, realY + indicatorTex.width,           z,  0, 0,   1, 1);
+  pushQuadUvSwap(realX, realY + indicatorTex.height,          realX + indicatorTex.width, realY + height - indicatorTex.height, z,  0, 0.5, 1, 1);
+  pushQuadUvSwap(realX, realY + height - indicatorTex.height, realX + indicatorTex.width, realY + height,                       z,  1, 1,   0, 0);
 
   //Cleanup, resetting things to how C2D normally expects
   C2D_Prepare(C2DShader.normal, true);
@@ -724,6 +726,8 @@ Tex3DS_SubTexture scrollCacheGetUvs(
 void scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
   auto rect = clipWithinOther(box.rect, SCREEN_RECT[screen]);
 
+  float z = gUiData.drawZ;
+
   Tex3DS_SubTexture subtex = scrollCacheGetUvs(*box.scrollCache, rect.right-rect.left, rect.bottom-rect.top, rect.top, box.scrollInfo.offset);
 
   C2D_Image cacheImage = { &box.scrollCache.scrollTex, &subtex };
@@ -732,6 +736,7 @@ void scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled
 
   auto drawPos = Vec2(rect.left, rect.top) - screenPos;
   C2D_SpriteSetPos(&sprite, drawPos.x, drawPos.y);
+  C2D_SpriteSetDepth(&sprite, z);
   C2D_DrawSprite(&sprite);
 }
 
