@@ -53,11 +53,30 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   }
 
   C2Di_Context* ctx = C2Di_GetContext();
+  C2D_Prepare(C2DShader.normal);
 
   auto tex = &gUiAssets.buttonTex;
 
   C2Di_SetTex(tex);
   C2Di_Update();
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  // Apply dynamic color
+  auto env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.texture0, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.modulate);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
+  C3D_TexEnvColor(env, box.style.colors[Color.button_normal]);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
 
   enum CORNER_WIDTH = 6.0f, CORNER_HEIGHT = 4.0f;
 
@@ -87,6 +106,11 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   pushQuad(tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, brX,                brY,                 z, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height,          1, (16.0f+CORNER_HEIGHT)/tex.height); //center
   C2D_Flush();
 
+  //Cleanup, resetting things to how C2D normally expects
+  C2D_Prepare(C2DShader.normal, true);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
 
   if (box.flags & BoxFlags.draw_text) {
     C2D_DrawText(

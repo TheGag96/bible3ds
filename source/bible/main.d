@@ -715,23 +715,23 @@ immutable string[ColorTheme.max+1] COLOR_THEME_NAMES = [
 
 immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
   ColorTheme.warm : [
-    ui.Color.clear_color                      : C2D_Color32(0xED, 0xEA, 0xE1, 0xFF),
+    ui.Color.clear_color                      : C2D_Color32(0xED, 0xE7, 0xD5, 0xFF),
     ui.Color.text                             : C2D_Color32(0x00, 0x00, 0x00, 0xFF),
-    ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xF2, 0xE9, 0xFF),
-    ui.Color.bg_stripes_dark                  : C2D_Color32(0xD4, 0xD2, 0xCF, 0xFF),
-    ui.Color.bg_stripes_light                 : C2D_Color32(0xBF, 0xBE, 0xBB, 0xFF),
-    ui.Color.button_normal                    : C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
+    ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xEF, 0xDD, 0xFF),
+    ui.Color.bg_stripes_dark                  : C2D_Color32(0xD4, 0xCC, 0xBF, 0xFF),
+    ui.Color.bg_stripes_light                 : C2D_Color32(0xBF, 0xBA, 0xAC, 0xFF),
+    ui.Color.button_normal                    : C2D_Color32(0xFB, 0xF7, 0xE9, 0xFF),
     ui.Color.button_sel_indicator             : C2D_Color32(0x00, 0xAA, 0x11, 0xFF),
 
-    ui.Color.button_bottom_top                : C2D_Color32(0xBA, 0xB6, 0xAD, 0xFF),
-    ui.Color.button_bottom_bottom             : C2D_Color32(0x4D, 0x4A, 0x45, 0xFF),
-    ui.Color.button_bottom_base               : C2D_Color32(0x6E, 0x69, 0x60, 0xFF),
-    ui.Color.button_bottom_line               : C2D_Color32(0x8C, 0x89, 0x84, 0xFF),
+    ui.Color.button_bottom_top                : C2D_Color32(0xBA, 0xB3, 0xA4, 0xFF),
+    ui.Color.button_bottom_bottom             : C2D_Color32(0x4D, 0x49, 0x41, 0xFF),
+    ui.Color.button_bottom_base               : C2D_Color32(0x6E, 0x67, 0x5B, 0xFF),
+    ui.Color.button_bottom_line               : C2D_Color32(0x8C, 0x87, 0x7E, 0xFF),
     ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6C, 0x64, 0xFF),
     ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xBF, 0xBD, 0xB2, 0xFF),
     ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA6, 0xA3, 0x97, 0xFF),
     ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7A, 0x79, 0x74, 0xFF),
-    ui.Color.button_bottom_text               : C2D_Color32(0xF2, 0xF2, 0xF7, 0xFF),
+    ui.Color.button_bottom_text               : C2D_Color32(0xF7, 0xF6, 0xF2, 0xFF),
     ui.Color.button_bottom_text_bevel         : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
 
     // Health and safety colors
@@ -747,10 +747,10 @@ immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
     //ui.Color.button_bottom_text_bevel         : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
 
     ui.Color.button_bottom_above_fade         : C2D_Color32(0xF2, 0xF2, 0xF7, 0x80),
-    ui.Color.scroll_indicator                 : C2D_Color32(0x66, 0xAD, 0xC1, 0xFF),
-    ui.Color.scroll_indicator_outline         : C2D_Color32(0xE1, 0xED, 0xF1, 0xFF),
-    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x80, 0x20, 0xFF),
-    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xAE, 0x78, 0xFF),
+    ui.Color.scroll_indicator                 : C2D_Color32(0xC1, 0xBF, 0x66, 0xFF),
+    ui.Color.scroll_indicator_outline         : C2D_Color32(0xEF, 0xF1, 0xE1, 0xFF),
+    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x9A, 0x20, 0xFF),
+    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xBD, 0x78, 0xFF),
   ],
   ColorTheme.neutral : [
     ui.Color.clear_color                      : C2D_Color32(0xEE, 0xEE, 0xEE, 0xFF),
@@ -758,7 +758,7 @@ immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
     ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xF5, 0xF5, 0xFF),
     ui.Color.bg_stripes_dark                  : C2D_Color32(0xD0, 0xD0, 0xD4, 0xFF),
     ui.Color.bg_stripes_light                 : C2D_Color32(0xC5, 0xC5, 0xBD, 0xFF),
-    ui.Color.button_normal                    : C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
+    ui.Color.button_normal                    : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
     ui.Color.button_sel_indicator             : C2D_Color32(0x00, 0xAA, 0x11, 0xFF),
     ui.Color.button_bottom_top                : C2D_Color32(0xB6, 0xB6, 0xBA, 0xFF),
     ui.Color.button_bottom_bottom             : C2D_Color32(0x48, 0x48, 0x4C, 0xFF),
