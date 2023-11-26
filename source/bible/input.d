@@ -163,7 +163,11 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
   final switch (scrollMethodCur) {
     case ScrollMethod.none:
       foreach (axis; enumRange!Axis2) {
-        if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
+        if (held(Key.touch)) {
+          // This can happen if touch is disallowed as an input method
+          scrollVel[axis] = 0;
+        }
+        else if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
           if (axis == Axis2.x) {
             scrollVel[axis] = max(min(prevPrevTouchRaw.px - prevTouchRaw.px, 40), -40);
           }

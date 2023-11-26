@@ -1012,6 +1012,11 @@ Signal signalFromBox(Box* box) { with (gUiData) {
           scrollAncestor.hotT = 1;
           hot                 = scrollAncestor;
         }
+
+        if (box.flags & BoxFlags.clickable) {
+          audioPlaySound(SoundEffect.button_off, 0.125);
+        }
+
         result.held            = false;
         result.released        = true;
         scrollAncestor.activeT = 1;
@@ -1162,10 +1167,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
     respondToScroll(box, &result, scrollDiff);
 
-    if (input.scrollMethodCur == ScrollMethod.none && input.scrollVel[flowAxis] == 0) {
-      focused = gNullBox;
-    }
-
     if (needToScrollTowardsChild && touchScrollOcurring(*input, flowAxis)) {
       // Mimicking how the 3DS UI works, select nearest in-view child while scrolling
 
@@ -1180,9 +1181,8 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
   if ((box.flags & BoxFlags.selectable) && hot == box) {
     if (input.down(Key.a)) {
-      active   = box;
-      focused  = box;
-      box.activeT = 1;
+      active          = box;
+      box.activeT     = 1;
       result.clicked  = true;
       result.pressed  = true;
       result.held     = true;
@@ -1196,7 +1196,10 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
       audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
     }
-    else if (input.prevDown(Key.a)) {
+    // @HACK: Checking for prevDown is unreliable if selecting the button caused us to switch views, which means we
+    //        would have missed processing that input frame. We have to just force the box off of active unless we
+    //        check all other cases that could make it need to stay active (right now, touch screen is the only other one).
+    else if (active == box && !result.held) {
       active = gNullBox;
       result.released = true;
     }
