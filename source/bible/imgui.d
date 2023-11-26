@@ -1007,7 +1007,8 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       // Allow scrolling an ancestor to kick in if we drag too far away
       auto scrollAncestor = boxOrAncestorWithFlags(box.parent, BoxFlags.view_scroll);
       auto parentFlowAxis = (scrollAncestor.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
-      if (!boxIsNull(scrollAncestor) && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
+      bool scrollInPlay   = scrollAncestor.scrollInfo.limitMin != scrollAncestor.scrollInfo.limitMax;
+      if (!boxIsNull(scrollAncestor) && scrollInPlay && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
         if (scrollAncestor.flags & (BoxFlags.clickable)) {
           scrollAncestor.hotT = 1;
           hot                 = scrollAncestor;
