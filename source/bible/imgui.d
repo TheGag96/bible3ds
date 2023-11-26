@@ -178,7 +178,7 @@ __gshared Box* gNullBox;
 pragma (inline, true) bool boxIsNull(Box* box) => box is null || box is gNullBox;
 
 // @Note: Render scroll caches forced me to make the Box* parameter non-const. Can/should this be changed?
-alias RenderCallback = void function(Box*, GFXScreen, GFX3DSide, bool, float, Vec2) @nogc nothrow;
+alias RenderCallback = void function(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) @nogc nothrow;
 
 struct Signal {
   Box* box;
@@ -276,16 +276,18 @@ Signal bottomButton(const(char)[] text) {
   return signalFromBox(box);
 }
 
-void spacer(float size) {
+void spacer(float size = 0) {
   Box* box = makeBox(cast(BoxFlags) 0, "");
 
+  auto flowSize = size == 0 ? SIZE_FILL_PARENT : Size(SizeKind.pixels, size);
+
   if (box.parent.flags & BoxFlags.horizontal_children) {
-    box.semanticSize[Axis2.x] = Size(SizeKind.pixels, size);
+    box.semanticSize[Axis2.x] = flowSize;
     box.semanticSize[Axis2.y] = Size(SizeKind.percent_of_parent, 1, 1);
   }
   else {
     box.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 1);
-    box.semanticSize[Axis2.y] = Size(SizeKind.pixels, size);
+    box.semanticSize[Axis2.y] = flowSize;
   }
 }
 
@@ -542,8 +544,6 @@ struct UiData {
   const(BoxStyle)* style;
 
   C2D_TextBuf textBuf;
-
-  float drawZ = 0;
 }
 
 __gshared UiData* gUiData;
@@ -653,10 +653,9 @@ void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
   active  = gNullBox;
 }}
 
-void frameStart(UiData* uiData, Input* input, float z = 0) {
+void frameStart(UiData* uiData, Input* input) {
   gUiData = uiData;
   uiData.input   = input;
-  uiData.drawZ   = z;
 
   with (uiData) {
     curBox      = gNullBox;
@@ -1137,7 +1136,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
                                    hot.rect.max[flowAxis] > cursorBounds.max[flowAxis] );
     }
 
-    if (needToScrollTowardsChild || input.scrollMethodCur == ScrollMethod.custom) {
+    if (!inputIsNull(input) && (needToScrollTowardsChild || input.scrollMethodCur == ScrollMethod.custom)) {
       // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
       if (input.scrollMethodCur == ScrollMethod.none && input.scrollVel[flowAxis] == 0 && needToScrollTowardsChild) {
         input.scrollMethodCur = ScrollMethod.custom;
@@ -1157,7 +1156,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     if (input.scrollMethodCur == ScrollMethod.custom) {
       scrollDiff[flowAxis] = hot.rect.min[flowAxis] < cursorBounds.min[flowAxis] ? -5 : 5;
     }
-    else {
+    else if (!inputIsNull(input)) {
       scrollDiff = updateScrollDiff(input, allowedMethods);
     }
 
@@ -1208,6 +1207,8 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
 void respondToScroll(Box* box, Signal* result, Vec2 scrollDiff) { with (gUiData) { with (box.scrollInfo) {
   enum SCROLL_TICK_DISTANCE = 60;
+
+  if (inputIsNull(input)) return;
 
   auto flowAxis = (box.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
 
@@ -1298,13 +1299,15 @@ void sendCommand(uint code, uint value) { with (gUiData) {
   numCommands++;
 }}
 
-void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState) { with (gUiData) {
+void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, float z = 0) { with (uiData) {
   static immutable uint[] COLORS = [
     C2D_Color32(0xFF, 0x00, 0x00, 0xFF),
     C2D_Color32(0x00, 0xFF, 0x00, 0xFF),
     C2D_Color32(0x00, 0x00, 0xFF, 0xFF),
     C2D_Color32(0x88, 0x00, 0xAA, 0xFF),
   ];
+
+  gUiData = uiData;
 
   Vec2 screenPos = SCREEN_POS[screen];
 
@@ -1318,7 +1321,7 @@ void render(GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DSta
     auto color = COLORS[box.hashKey % COLORS.length];
 
     if (box.render) {
-      box.render(box, screen, side, _3DEnabled, slider3DState, screenPos);
+      box.render(box, screen, side, _3DEnabled, slider3DState, screenPos, z);
     }
     else if (RENDER_DEBUG_BOXES) {
       if (box.flags & BoxFlags.clickable) {

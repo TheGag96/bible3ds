@@ -6,9 +6,7 @@ import std.math;
 
 @nogc: nothrow:
 
-void renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
-  float z = gUiData.drawZ;
-
+void renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
   auto rect = box.rect - screenPos;
   rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
 
@@ -34,7 +32,7 @@ void renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, fl
 enum BUTTON_DEPRESS_NORMAL = 3;
 enum BUTTON_DEPRESS_BOTTOM = 1;
 
-void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + Vec2(0, pressed * BUTTON_DEPRESS_NORMAL) - screenPos;
@@ -75,7 +73,6 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   float brX = trX;
   float brY = blY;
 
-  float z = gUiData.drawZ;
 
   pushQuad(tlX, tlY, tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, 0, 1, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height); // top-left
   pushQuad(trX, tlY, trX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), 1, 0, 1-CORNER_HEIGHT/tex.height); // top-right
@@ -98,11 +95,11 @@ void renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   }
 
   if ((box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
-    renderButtonSelectionIndicator(box, rect, screen, side, _3DEnabled, slider3DState, screenPos);
+    renderButtonSelectionIndicator(box, rect, screen, side, _3DEnabled, slider3DState, screenPos, z);
   }
 }
 
-void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM) - screenPos;
@@ -124,7 +121,6 @@ void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
 
   uint topColor, bottomColor, baseColor, textColor, bevelTexColor, lineColor;
 
-  float z = gUiData.drawZ;
 
   bevelTexColor = box.style.colors[Color.button_bottom_text_bevel];
   textColor     = box.style.colors[Color.button_bottom_text];
@@ -232,7 +228,7 @@ void renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   }
 }
 
-void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   C2D_Prepare(C2DShader.normal);
@@ -290,7 +286,6 @@ void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
   float brX = trX;
   float brY = blY;
 
-  float z = gUiData.drawZ; // 0.3; @TODO: Do we need to use different z-values here?
 
   pushQuad(tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0); // top-left
   pushQuad(trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0); // top-right
@@ -309,6 +304,11 @@ void renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
 
   env = C3D_GetTexEnv(2);
   C3D_TexEnvInit(env);
+}
+
+void renderModalBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
+  auto rect = box.rect - screenPos;
+  C2D_DrawRectSolid(rect.left, rect.top, z, rect.right - rect.left, rect.bottom - rect.top, box.style.colors[Color.clear_color]);
 }
 
 
@@ -456,7 +456,7 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
 // Scroll Indicator
 ////////
 
-void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
   if (boxIsNull(box.related) || box.related.scrollInfo.limitMin == box.related.scrollInfo.limitMax) {
     return;
   }
@@ -488,7 +488,6 @@ void renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   auto rect = box.rect - screenPos;
   float viewHeight = box.related.computedSize[Axis2.y];
 
-  float z = gUiData.drawZ;
 
   auto colorLerp        = lerp(colorNormal,        colorPushing,        box.hotT);
   auto colorOutlineLerp = lerp(colorNormalOutline, colorPushingOutline, box.hotT);
@@ -723,10 +722,9 @@ Tex3DS_SubTexture scrollCacheGetUvs(
   return result;
 }}
 
-void scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos) {
+void scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) {
   auto rect = clipWithinOther(box.rect, SCREEN_RECT[screen]);
 
-  float z = gUiData.drawZ;
 
   Tex3DS_SubTexture subtex = scrollCacheGetUvs(*box.scrollCache, rect.right-rect.left, rect.bottom-rect.top, rect.top, box.scrollInfo.offset);
 

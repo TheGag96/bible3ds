@@ -45,9 +45,13 @@ struct UiView {
   Rectangle rect;
 }
 
+alias ModalCallback = bool function(MainData* mainData, UiView* uiView);
+
 struct MainData {
-  View curView = View.book;
+  View curView;
   UiView[View.max+1] views;
+  UiView modal;
+  ModalCallback modalCallback;
   ui.ScrollCache scrollCache;
 
   float size = 0;
@@ -78,6 +82,8 @@ extern(C) int main(int argc, char** argv) {
   threadOnException(&crashHandler,
                     RUN_HANDLER_ON_FAULTING_STACK,
                     WRITE_DATA_TO_FAULTING_STACK);
+
+  gNullInput = cast(Input*) &gNullInputStore;
 
   gTempStorage = arenaMake(16*1024);
 
@@ -199,28 +205,34 @@ extern(C) int main(int argc, char** argv) {
         ui.scrollCacheEndFrame(&mainData.scrollCache);
       }
 
+      auto mainUiData  = &mainData.views[mainData.curView].uiData;
+      auto modalUiData = &mainData.modal.uiData;
+
       {
         mixin(timeBlock("render > left"));
         C2D_TargetClear(topLeft, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topLeft);
+        if (mainData.modalCallback) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
         ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
-        ui.render(GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
+        ui.render(mainUiData,  GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
       }
 
       if (_3DEnabled) {
         mixin(timeBlock("render > right"));
         C2D_TargetClear(topRight, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topRight);
+        if (mainData.modalCallback) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
         ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
-        ui.render(GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
+        ui.render(mainUiData,  GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
       }
 
       {
         mixin(timeBlock("render > bottom"));
         C2D_TargetClear(bottom, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(bottom);
+        if (mainData.modalCallback) ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
         ui.drawBackground(GFXScreen.bottom, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
-        ui.render(GFXScreen.bottom, GFX3DSide.left, false, 0);
+        ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
     }
 
@@ -245,6 +257,7 @@ void initMainData(MainData* mainData) { with (mainData) {
   foreach (ref view; views) {
     ui.init(&view.uiData);
   }
+  ui.init(&modal.uiData);
 
   scrollCache = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
@@ -336,6 +349,10 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
   loadBiblePage(mainData, newPageId);
 }}
 
+void openModal(MainData* mainData, ModalCallback modalCallback) {
+  mainData.modalCallback = modalCallback;
+}
+
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
 void mainGui(MainData* mainData, Input* input) {
   import bible.imgui;
@@ -393,7 +410,42 @@ void mainGui(MainData* mainData, Input* input) {
     mainData.fadingBetweenThemes = changed;
   }
 
-  frameStart(&mainData.views[mainData.curView].uiData, input);
+  Input* mainInput = input;
+  if (mainData.modalCallback) {
+    frameStart(&mainData.modal.uiData, input);
+
+    bool result;
+    {
+      // Set up some nice defaults, including being on the bottom screen with a background
+      auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
+
+      auto mainLayout = ScopedCombinedScreenSplitLayout("", "", "", "");
+      mainLayout.startCenter();
+
+      auto split = ScopedDoubleScreenSplitLayout("", "", "");
+      split.startBottom();
+      split.bottom.justification = Justification.center;
+
+      spacer();
+      {
+        auto modalLayout = ScopedLayout("", Axis2.y);
+        modalLayout.render = &renderModalBackground;
+        modalLayout.semanticSize[Axis2.x] = Size(SizeKind.pixels, SCREEN_BOTTOM_WIDTH - 2*10, 1);
+        modalLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT       - 2*10, 1);
+
+        result = mainData.modalCallback(mainData, &mainData.modal);
+      }
+      spacer();
+    }
+
+    frameEnd();
+
+    if (result) mainData.modalCallback = null;
+
+    mainInput = gNullInput;
+  }
+
+  frameStart(&mainData.views[mainData.curView].uiData, mainInput);
 
   auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 
@@ -522,26 +574,76 @@ void mainGui(MainData* mainData, Input* input) {
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
         spacer(SCREEN_HEIGHT + 8);
 
-        label("Translation");
+        void settingsListEntry(const(char)[] labelText, const(char)[] valueText, ModalCallback callback) {
+          {
+            auto layout = ScopedLayout("", Axis2.x, Justification.min, LayoutKind.fit_children);
 
-        foreach (i, translation; TRANSLATION_NAMES_LONG) {
-          if (button(translation).clicked) {
-            gSaveFile.settings.translation = cast(Translation) i;
+            auto settingLabel = label(labelText);
+            settingLabel.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 0.4, 1);
+
+            auto settingButton = button(tprint("%s##%s_setting_btn", valueText.ptr, labelText.ptr));
+            settingButton.box.semanticSize[Axis2.x] = SIZE_FILL_PARENT;
+            settingButton.box.justification = Justification.min;
+
+            if (settingButton.clicked) {
+              openModal(mainData, callback);
+            }
+
+            spacer(8);
           }
 
-          spacer(8);
+          spacer(4);
         }
 
-        label("Color Theme");
+        settingsListEntry("Translation", TRANSLATION_NAMES_LONG[gSaveFile.settings.translation], (mainData, uiView) {
+          bool result = false;
 
-        foreach (colorTheme; enumRange!ColorTheme) {
-          if (button(COLOR_THEME_NAMES[colorTheme]).clicked) {
-            gSaveFile.settings.colorTheme = colorTheme;
+          foreach (i, translation; TRANSLATION_NAMES_LONG) {
+            if (button(translation).clicked) {
+              gSaveFile.settings.translation = cast(Translation) i;
+            }
 
-            mainData.fadingBetweenThemes      = true;
-            mainData.scrollCache.needsRepaint = true;
+            spacer(4);
           }
-        }
+
+          auto style = ScopedStyle(&mainData.styleButtonBack);
+          if (button("Close").clicked || gUiData.input.down(Key.b)) {
+            result = true;
+            audioPlaySound(SoundEffect.button_back, 0.5);
+
+            if (mainData.bible.translation != gSaveFile.settings.translation) {
+              startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
+            }
+          }
+
+          return result;
+        });
+
+        settingsListEntry("Color Theme", COLOR_THEME_NAMES[gSaveFile.settings.colorTheme], (mainData, uiView) {
+          bool result = false;
+
+          foreach (colorTheme; enumRange!ColorTheme) {
+            if (button(COLOR_THEME_NAMES[colorTheme]).clicked) {
+              gSaveFile.settings.colorTheme = colorTheme;
+
+              mainData.fadingBetweenThemes      = true;
+              mainData.scrollCache.needsRepaint = true;
+            }
+            spacer(8);
+          }
+
+          auto style = ScopedStyle(&mainData.styleButtonBack);
+          if (button("Close").clicked || gUiData.input.down(Key.b)) {
+            result = true;
+            audioPlaySound(SoundEffect.button_back, 0.5);
+
+            if (mainData.bible.translation != gSaveFile.settings.translation) {
+              startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
+            }
+          }
+
+          return result;
+        });
       }
 
       {
@@ -549,10 +651,6 @@ void mainGui(MainData* mainData, Input* input) {
         if (bottomButton("Back").clicked || input.down(Key.b)) {
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
-
-          if (mainData.bible.translation != gSaveFile.settings.translation) {
-            startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
-          }
 
           sendCommand(CommandCode.switch_view, View.book);
         }

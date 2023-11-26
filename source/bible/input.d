@@ -65,7 +65,12 @@ struct Input {
   }
 }
 
-immutable Input gNullInput;
+__gshared const Input gNullInputStore;
+__gshared Input* gNullInput;
+
+bool inputIsNull(Input* input) {
+  return input == gNullInput || input == null;
+}
 
 void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, circlePosition _circle) { with (input) {
   //prevent left+right and up+down
