@@ -970,7 +970,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
 
       if (touchInsideBoxAndAncestors(box, touchPoint)) {
-        if (box.flags & (BoxFlags.clickable)) {
+        if (box.flags & (BoxFlags.selectable)) {
           box.hotT      = 1;
           hot           = box;
         }
@@ -996,7 +996,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       }
     }
     else if (active == box && input.held(Key.touch)) {
-      if (box.flags & (BoxFlags.clickable)) {
+      if (box.flags & (BoxFlags.selectable)) {
         box.hotT  = 1;
         hot       = box;
       }
@@ -1008,7 +1008,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       auto parentFlowAxis = (scrollAncestor.flags & BoxFlags.horizontal_children) ? Axis2.x : Axis2.y;
       bool scrollInPlay   = scrollAncestor.scrollInfo.limitMin != scrollAncestor.scrollInfo.limitMax;
       if (!boxIsNull(scrollAncestor) && scrollInPlay && abs(input.touchDiff()[parentFlowAxis]) >= TOUCH_DRAG_THRESHOLD) {
-        if (scrollAncestor.flags & (BoxFlags.clickable)) {
+        if (scrollAncestor.flags & (BoxFlags.selectable)) {
           scrollAncestor.hotT = 1;
           hot                 = scrollAncestor;
         }
