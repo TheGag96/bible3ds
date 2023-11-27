@@ -653,6 +653,23 @@ void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
   active  = gNullBox;
 }}
 
+void clear(UiData* uiData) { with (uiData) {
+  curBox      = gNullBox;
+  root        = gNullBox;
+  style       = &DEFAULT_STYLE;
+  numCommands = 0;
+
+  hot     = gNullBox;
+  focused = gNullBox;
+  active  = gNullBox;
+
+  hashTableClear(&boxes);
+  arenaClear(&stringArena);
+  C2D_TextBufClear(textBuf);
+
+  frameIndex = 0;
+}}
+
 void frameStart(UiData* uiData, Input* input) {
   gUiData = uiData;
   uiData.input   = input;
@@ -1588,4 +1605,11 @@ void hashTablePrune(BoxHashTable* hashTable) {
   }
 
   hashTable.tempPos = 0;
+}
+
+void hashTableClear(BoxHashTable* hashTable) {
+  hashTable.table[]     = gNullBox;
+  hashTable.firstFree   = gNullBox;
+  hashTable.freePoolPos = 0;
+  hashTable.tempPos     = 0;
 }

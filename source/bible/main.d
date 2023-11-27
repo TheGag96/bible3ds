@@ -52,6 +52,7 @@ struct MainData {
   UiView[View.max+1] views;
   UiView modal;
   ModalCallback modalCallback;
+  bool renderModal;
   ui.ScrollCache scrollCache;
 
   float size = 0;
@@ -212,7 +213,7 @@ extern(C) int main(int argc, char** argv) {
         mixin(timeBlock("render > left"));
         C2D_TargetClear(topLeft, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topLeft);
-        if (mainData.modalCallback) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
+        if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
         ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
       }
@@ -221,7 +222,7 @@ extern(C) int main(int argc, char** argv) {
         mixin(timeBlock("render > right"));
         C2D_TargetClear(topRight, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topRight);
-        if (mainData.modalCallback) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
+        if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
         ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
       }
@@ -230,7 +231,7 @@ extern(C) int main(int argc, char** argv) {
         mixin(timeBlock("render > bottom"));
         C2D_TargetClear(bottom, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(bottom);
-        if (mainData.modalCallback) ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
+        if (mainData.renderModal) ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
         ui.drawBackground(GFXScreen.bottom, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
@@ -351,6 +352,7 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
 
 void openModal(MainData* mainData, ModalCallback modalCallback) {
   mainData.modalCallback = modalCallback;
+  ui.clear(&mainData.modal.uiData);
 }
 
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
@@ -412,6 +414,8 @@ void mainGui(MainData* mainData, Input* input) {
 
   Input* mainInput = input;
   if (mainData.modalCallback) {
+    mainData.renderModal = true;
+
     frameStart(&mainData.modal.uiData, input);
 
     bool result;
@@ -440,9 +444,15 @@ void mainGui(MainData* mainData, Input* input) {
 
     frameEnd();
 
-    if (result) mainData.modalCallback = null;
+    if (result) {
+      // Don't set renderModal to false here so that we get one more frame to render
+      mainData.modalCallback = null;
+    }
 
     mainInput = gNullInput;
+  }
+  else {
+    mainData.renderModal   = false;
   }
 
   frameStart(&mainData.views[mainData.curView].uiData, mainInput);
