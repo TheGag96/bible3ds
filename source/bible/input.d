@@ -7,6 +7,8 @@ import bible.util;
 
 nothrow: @nogc:
 
+enum CIRCLE_DEADZONE = 18;
+
 enum ScrollMethod {
   none, dpad, circle, touch, custom
 }
@@ -23,6 +25,8 @@ struct Input {
 
   ScrollMethod scrollMethodCur;
   Vec2 scrollVel;
+
+  uint framesNoInput;
 
   bool down(Key k) const {
     return cast(bool)(downRaw & k);
@@ -97,12 +101,19 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   if (down(Key.touch)) {
     firstTouchRaw = touchRaw;
   }
+
+  if ( !heldRaw && scrollVel == Vec2(0) && scrollMethodCur == ScrollMethod.none &&
+       circleRaw.dy * circleRaw.dy + circleRaw.dx * circleRaw.dx <= CIRCLE_DEADZONE * CIRCLE_DEADZONE )
+  {
+    framesNoInput++;
+  }
+  else {
+    framesNoInput = 0;
+  }
 }}
 
 Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (input) {
   Vec2 result;
-
-  enum CIRCLE_DEADZONE = 18;
 
   final switch (scrollMethodCur) {
     case ScrollMethod.none: break;

@@ -175,24 +175,35 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     arenaClear(&gTempStorage);
 
-    mainGui(&mainData, &input);
+    if (mainData.curView == View.reading && input.framesNoInput > 60) {
+      ////
+      // Dormant frame
+      ////
 
-    audioUpdate();
+      // In attempt to save battery life, do basically nothing if we're reading and have received no input for a while.
+      C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+      C3D_FrameEnd(0);
+    }
+    else {
+      ////
+      // Normal frame
+      ////
 
-    //debug printf("\x1b[3;1HCPU:     %6.2f%%\x1b[K", C3D_GetProcessingTime()*6.0f);
-    //debug printf("\x1b[4;1HGPU:     %6.2f%%\x1b[K", C3D_GetDrawingTime()*6.0f);
-    //debug printf("\x1b[5;1HCmdBuf:  %6.2f%%\x1b[K", C3D_GetCmdBufUsage()*100.0f);
+      mainGui(&mainData, &input);
 
-    {
+      audioUpdate();
+
+      //debug printf("\x1b[3;1HCPU:     %6.2f%%\x1b[K", C3D_GetProcessingTime()*6.0f);
+      //debug printf("\x1b[4;1HGPU:     %6.2f%%\x1b[K", C3D_GetDrawingTime()*6.0f);
+      //debug printf("\x1b[5;1HCmdBuf:  %6.2f%%\x1b[K", C3D_GetCmdBufUsage()*100.0f);
+
       mixin(timeBlock("render"));
 
-
-    // Render the scene
-    {
-      mixin(timeBlock("beginFrame"));
-      C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-    }
-    {
+      // Render the scene
+      {
+        mixin(timeBlock("beginFrame"));
+        C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+      }
       if (mainData.curView == View.reading) {
         mixin(timeBlock("render > scroll cache"));
 
@@ -235,8 +246,6 @@ extern(C) int main(int argc, char** argv) {
         ui.drawBackground(GFXScreen.bottom, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
-    }
-
     }
     C3D_FrameEnd(0);
     endProfileAndLog();
