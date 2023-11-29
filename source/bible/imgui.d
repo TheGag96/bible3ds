@@ -280,13 +280,14 @@ void spacer(float size = 0) {
   Box* box = makeBox(cast(BoxFlags) 0, "");
 
   auto flowSize = size == 0 ? SIZE_FILL_PARENT : Size(SizeKind.pixels, size);
+  auto oppSze   = SIZE_FILL_PARENT;
 
   if (box.parent.flags & BoxFlags.horizontal_children) {
     box.semanticSize[Axis2.x] = flowSize;
-    box.semanticSize[Axis2.y] = Size(SizeKind.percent_of_parent, 1, 1);
+    box.semanticSize[Axis2.y] = oppSze;
   }
   else {
-    box.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 1, 1);
+    box.semanticSize[Axis2.x] = oppSze;
     box.semanticSize[Axis2.y] = flowSize;
   }
 }
