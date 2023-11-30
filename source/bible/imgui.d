@@ -1115,8 +1115,8 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     Key forwardKey  = flowAxis == Axis2.x ? Key.right : Key.down;
     Key backwardKey = flowAxis == Axis2.x ? Key.left  : Key.up;
 
-    if (input.down(backwardKey | forwardKey)) {
-      int dir = input.down(backwardKey) ? -1 : 1;
+    if (input.downOrRepeat(backwardKey | forwardKey)) {
+      int dir = input.downOrRepeat(backwardKey) ? -1 : 1;
 
       auto newCursored = moveToSelectable(cursored, dir, a => true);
       if (newCursored == cursored) {

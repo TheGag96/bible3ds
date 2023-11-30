@@ -528,7 +528,7 @@ void mainGui(MainData* mainData, Input* input) {
 
           // Allow hopping columns
           Box* oppositeColumn = gUiData.hot.parent == leftColumnSignal.box ? rightColumnSignal.box : leftColumnSignal.box;
-          if (!touchScrollOcurring(*input, Axis2.y) && input.down(Key.left | Key.right)) {
+          if (!touchScrollOcurring(*input, Axis2.y) && input.downOrRepeat(Key.left | Key.right)) {
             gUiData.hot = getChild(oppositeColumn, gUiData.hot.childId);
             audioPlaySound(SoundEffect.button_move, 0.05);
           }

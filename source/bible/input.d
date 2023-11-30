@@ -8,6 +8,8 @@ import bible.util;
 nothrow: @nogc:
 
 enum CIRCLE_DEADZONE = 18;
+enum REPEAT_DELAY    = 20;
+enum REPEAT_RATE     = 5;
 
 enum ScrollMethod {
   none, dpad, circle, touch, custom
@@ -27,6 +29,10 @@ struct Input {
   Vec2 scrollVel;
 
   uint framesNoInput;
+
+  uint repeatRaw;
+  uint repeatTimer;
+  uint repeatCount;
 
   bool down(Key k) const {
     return cast(bool)(downRaw & k);
@@ -62,6 +68,14 @@ struct Input {
 
   bool allNewlyHeld(Key k) const {
     return allHeld(k) && !allPrevHeld(k);
+  }
+
+  bool repeat(Key k) const {
+    return cast(bool)(repeatRaw & k);
+  }
+
+  bool downOrRepeat(Key k) const {
+    return down(k) || repeat(k);
   }
 
   Vec2 touchDiff() const {
@@ -109,6 +123,21 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   }
   else {
     framesNoInput = 0;
+  }
+
+  repeatRaw = 0;
+  if (heldRaw == prevHeldRaw) {
+    repeatTimer++;
+
+    // @TODO: Make the repeat() function take these parameters instead of federating a specific style?
+    if (repeatTimer > REPEAT_DELAY && (repeatTimer - REPEAT_DELAY) % REPEAT_RATE == 0) {
+      repeatRaw = heldRaw;
+      repeatCount++;
+    }
+  }
+  else {
+    repeatTimer = 0;
+    repeatCount = 0;
   }
 }}
 
