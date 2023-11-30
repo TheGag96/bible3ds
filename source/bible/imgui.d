@@ -12,6 +12,8 @@ import bible.profiling;
 enum float ANIM_T_RATE          = 0.1;
 enum       TOUCH_DRAG_THRESHOLD = 8;
 
+enum float SCROLL_EASE_RATE = 0.3;
+
 enum RENDER_DEBUG_BOXES = false;
 
 static immutable Vec2[GFXScreen.max+1] SCREEN_POS = [
@@ -1197,7 +1199,10 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
     Vec2 scrollDiff;
     if (input.scrollMethodCur == ScrollMethod.custom) {
-      scrollDiff[flowAxis] = hot.rect.min[flowAxis] < cursorBounds.min[flowAxis] ? -5 : 5;
+      // Scroll (with easing) towards off-box child
+      scrollDiff[flowAxis] = SCROLL_EASE_RATE * ( (hot.rect.min[flowAxis] < cursorBounds.min[flowAxis])
+                                                    ? (hot.rect.min[flowAxis] - cursorBounds.min[flowAxis])
+                                                    : (hot.rect.max[flowAxis] - cursorBounds.max[flowAxis]) );
     }
     else if (!inputIsNull(input)) {
       scrollDiff = updateScrollDiff(input, allowedMethods);
