@@ -144,6 +144,7 @@ struct Box {
 
   ushort childId, numChildren;
 
+  debug const(char)[] debugString;  // Only valid during the frame it's set!
   C2D_Text text;
   float textHeight = 0;
   int hoveredChild, selectedChild;
@@ -579,6 +580,7 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
 
   Box* result = hashTableFindOrAlloc(&boxes, id);
   result.lastFrameTouchedIndex = frameIndex;
+  debug result.debugString = text;
 
   result.first   = gNullBox;
   result.last    = gNullBox;
