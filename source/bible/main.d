@@ -390,7 +390,7 @@ void mainGui(MainData* mainData, Input* input) {
   }
 
   // @TODO: Should this be handled as a UI command?
-  if (mainData.curView == View.reading) {
+  if (!mainData.modalCallback && mainData.curView == View.reading) {
     handleChapterSwitchHotkeys(mainData, input);
   }
 
@@ -532,7 +532,7 @@ void mainGui(MainData* mainData, Input* input) {
 
           // Allow hopping columns
           Box* oppositeColumn = gUiData.hot.parent == leftColumnSignal.box ? rightColumnSignal.box : leftColumnSignal.box;
-          if (!touchScrollOcurring(*input, Axis2.y) && input.downOrRepeat(Key.left | Key.right)) {
+          if (!touchScrollOcurring(*gUiData.input, Axis2.y) && gUiData.input.downOrRepeat(Key.left | Key.right)) {
             gUiData.hot = getChild(oppositeColumn, gUiData.hot.childId);
             audioPlaySound(SoundEffect.button_move, 0.05);
           }
@@ -569,7 +569,7 @@ void mainGui(MainData* mainData, Input* input) {
 
       {
         auto style = ScopedStyle(&mainData.styleButtonBack);
-        if (bottomButton("Back").clicked || input.down(Key.b)) {
+        if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
         }
@@ -632,7 +632,7 @@ void mainGui(MainData* mainData, Input* input) {
           }
 
           auto style = ScopedStyle(&mainData.styleButtonBack);
-          if (button("Close").clicked || gUiData.input.down(Key.b)) {
+          if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
 
@@ -658,7 +658,7 @@ void mainGui(MainData* mainData, Input* input) {
           }
 
           auto style = ScopedStyle(&mainData.styleButtonBack);
-          if (button("Close").clicked || gUiData.input.down(Key.b)) {
+          if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
 
@@ -673,7 +673,7 @@ void mainGui(MainData* mainData, Input* input) {
 
       {
         auto style = ScopedStyle(&mainData.styleButtonBack);
-        if (bottomButton("Back").clicked || input.down(Key.b)) {
+        if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
 

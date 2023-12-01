@@ -1228,7 +1228,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     }
   }
 
-  if ((box.flags & BoxFlags.selectable) && hot == box) {
+  if ((box.flags & BoxFlags.selectable) && hot == box && (boxIsNull(active) || active == box)) {
     if (input.down(Key.a)) {
       active          = box;
       box.activeT     = 1;
