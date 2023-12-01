@@ -432,16 +432,20 @@ void mainGui(MainData* mainData, Input* input) {
       // Set up some nice defaults, including being on the bottom screen with a background
       auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 
-      auto mainLayout = ScopedCombinedScreenSplitLayout("", "", "", "");
+      auto mainLayout = ScopedCombinedScreenSplitLayout(
+        "lt_modal_main", "lt_modal_left", "lt_modal_center", "lt_modal_right"
+      );
       mainLayout.startCenter();
 
-      auto split = ScopedDoubleScreenSplitLayout("", "", "");
+      auto split = ScopedDoubleScreenSplitLayout(
+        "lt_modal_split_main", "lt_modal_split_top", "lt_modal_split_bottom"
+      );
       split.startBottom();
       split.bottom.justification = Justification.center;
 
       spacer();
       {
-        auto modalLayout = ScopedLayout("", Axis2.y);
+        auto modalLayout = ScopedLayout("lt_modal_container", Axis2.y);
         modalLayout.render = &renderModalBackground;
         modalLayout.semanticSize[Axis2.x] = Size(SizeKind.pixels, SCREEN_BOTTOM_WIDTH - 2*10, 1);
         modalLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT       - 2*10, 1);
@@ -468,7 +472,7 @@ void mainGui(MainData* mainData, Input* input) {
 
   auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 
-  auto mainLayout = ScopedCombinedScreenSplitLayout("combined_screen_layout_main", "combined_screen_layout_left", "combined_screen_layout_center", "combined_screen_layout_right");
+  auto mainLayout = ScopedCombinedScreenSplitLayout("lt_main", "lt_left", "lt_center", "lt_right");
   mainLayout.startCenter();
 
   final switch (mainData.curView) {
@@ -478,7 +482,7 @@ void mainGui(MainData* mainData, Input* input) {
       bool pushingAgainstScrollLimit = false;
 
       {
-        auto scrollLayout = ScopedScrollLayout("book_scroll_layout", &scrollLayoutSignal, Axis2.y);
+        auto scrollLayout = ScopedScrollLayout("lt_book_scroll", &scrollLayoutSignal, Axis2.y);
 
         scrollLayoutBox = scrollLayout.box;
 
@@ -486,11 +490,11 @@ void mainGui(MainData* mainData, Input* input) {
         spacer(SCREEN_HEIGHT + 8);
 
         {
-          auto horziontalLayout = ScopedLayout("", Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
+          auto horziontalLayout = ScopedLayout("lt_book_grid_horiz", Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
 
           Signal leftColumnSignal;
           {
-            auto leftColumn = ScopedSelectLayout("book_left_column", &leftColumnSignal, Axis2.y);
+            auto leftColumn = ScopedSelectLayout("lt_book_grid_left", &leftColumnSignal, Axis2.y);
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 0) {
@@ -511,7 +515,7 @@ void mainGui(MainData* mainData, Input* input) {
 
           Signal rightColumnSignal;
           {
-            auto rightColumn = ScopedSelectLayout("book_right_column", &rightColumnSignal, Axis2.y);
+            auto rightColumn = ScopedSelectLayout("lt_book_grid_right", &rightColumnSignal, Axis2.y);
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 1) {
@@ -537,7 +541,9 @@ void mainGui(MainData* mainData, Input* input) {
       pushingAgainstScrollLimit |= scrollLayoutSignal.pushingAgainstScrollLimit;
 
       {
-        auto bottomLayout = ScopedLayout("", Axis2.x, Justification.center, LayoutKind.fit_children);
+        auto bottomLayout = ScopedLayout(
+          "lt_book_bottom", Axis2.x, Justification.center, LayoutKind.fit_children
+        );
         auto style = ScopedStyle(&mainData.styleButtonBottom);
 
         if (bottomButton("Options").clicked) {
@@ -548,7 +554,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("book_right_split_layout_main", "book_right_split_layout_top", "book_right_split_layout_bottom");
+        auto rightSplit = ScopedDoubleScreenSplitLayout("lt_book_right_split_main", "lt_book_right_split_top", "lt_book_split_bottom");
 
         rightSplit.startTop();
 
@@ -572,7 +578,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("reading_right_split_layout_main", "reading_right_split_layout_top", "reading_right_split_layout_bottom");
+        auto rightSplit = ScopedDoubleScreenSplitLayout("lt_reading_right_split_main", "lt_reading_right_split_top", "lt_reading_right_split_bottom");
 
         rightSplit.startTop();
 
@@ -585,7 +591,7 @@ void mainGui(MainData* mainData, Input* input) {
       Box* scrollLayoutBox;
       Signal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout("options_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
+        auto scrollLayout = ScopedSelectScrollLayout("lt_options_scroll", &scrollLayoutSignal, Axis2.y, Justification.min);
         auto style        = ScopedStyle(&mainData.styleButtonBook);
 
         scrollLayoutBox = scrollLayout.box;
@@ -595,7 +601,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         void settingsListEntry(const(char)[] labelText, const(char)[] valueText, ModalCallback callback) {
           {
-            auto layout = ScopedLayout("", Axis2.x, Justification.min, LayoutKind.fit_children);
+            auto layout = ScopedLayout(tprint("lt_settings_entry_%s", labelText.ptr), Axis2.x, Justification.min, LayoutKind.fit_children);
 
             auto settingLabel = label(labelText);
             settingLabel.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 0.4, 1);
@@ -678,7 +684,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("options_right_split_layout_main", "options_right_split_layout_top", "options_right_split_layout_bottom");
+        auto rightSplit = ScopedDoubleScreenSplitLayout("lt_options_right_split_main", "lt_options_right_split_top", "lt_options_right_split_bottom");
 
         rightSplit.startTop();
 

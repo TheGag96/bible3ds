@@ -589,6 +589,8 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
   result.parent  = gNullBox;
   result.related = gNullBox;
 
+  result.render  = null;
+
   if (!boxIsNull(curBox)) {
     if (!boxIsNull(curBox.first)) {
       curBox.last.next = result;
@@ -622,13 +624,15 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
     result.textHeight = height;
   }
 
-
   return result;
 }}
 
 void pushParent(Box* box) { with (gUiData) {
   assert(!boxIsNull(box), "Parameter shouldn't be null");
   assert(box.parent == curBox || box == curBox, "Parameter should either be the current UI node or one of its children");
+  assert(box.hashKey, "Anonymous box attempted to be pushed as parent! It's not a good idea to contain other boxes " ~
+                      "within an anonymous one because the calculated size doesn't carry from frame to frame, and " ~
+                      "so interactable boxes underneath it might not work properly.");
   curBox = box;
 }}
 
@@ -1561,6 +1565,7 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
     while (!boxIsNull(runner)) {
       if (runner.hashKey == key) {
         result = runner;
+        assert(result.lastFrameTouchedIndex != gUiData.frameIndex, "Duplicate key or hash collision detected!");
         break;
       }
       last   = runner;
@@ -1589,7 +1594,6 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
       hashTable.table[index] = result;
     }
 
-    *result = Box.init;
     result.freeListNext = gNullBox;
     result.hashKey      = key;
     if (!boxIsNull(last)) last.hashNext = result;
