@@ -533,7 +533,7 @@ struct Command {
 }
 
 struct UiData {
-  Arena uiArena, stringArena;  // stringArena is cleared each frame
+  Arena uiArena, frameArena;  // frameArena is cleared each frame
   BoxHashTable boxes;
 
   Input* input;
@@ -554,7 +554,7 @@ __gshared UiData* gUiData;
 
 pragma(inline, true)
 const(char)[] tprint(T...)(const(char)[] format, T args) {
-  return arenaPrintf(&gUiData.stringArena, format.ptr, args);
+  return arenaPrintf(&gUiData.frameArena, format.ptr, args);
 }
 
 // Returns ID part of string followed by non-ID
@@ -651,7 +651,7 @@ void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
   uiArena     = arenaMake(arenaSize);
   textBuf     = C2D_TextBufNew(&uiArena, 16384);
   boxes       = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
-  stringArena = arenaPushArena(&uiArena, 16*1024);
+  frameArena = arenaPushArena(&uiArena, 16*1024);
 
   if (!gNullBox) {
     gNullBox = cast(Box*) &gNullBoxStore;
@@ -673,7 +673,7 @@ void clear(UiData* uiData) { with (uiData) {
   active  = gNullBox;
 
   hashTableClear(&boxes);
-  arenaClear(&stringArena);
+  arenaClear(&frameArena);
   C2D_TextBufClear(textBuf);
 
   frameIndex = 0;
@@ -697,7 +697,7 @@ void frameStart(UiData* uiData, Input* input) {
     if (!boxIsNull(active)  && (active.lastFrameTouchedIndex  != frameIndex || active.hashKey  == 0)) active  = gNullBox;
     if (!boxIsNull(focused) && (focused.lastFrameTouchedIndex != frameIndex || focused.hashKey == 0)) focused = gNullBox;
 
-    arenaClear(&stringArena);
+    arenaClear(&frameArena);
     frameIndex++;
   }
 }
