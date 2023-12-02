@@ -647,15 +647,15 @@ void mainGui(MainData* mainData, Input* input) {
         settingsListEntry("Color Theme", COLOR_THEME_NAMES[gSaveFile.settings.colorTheme], (mainData, uiView) {
           bool result = false;
 
-          foreach (colorTheme; enumRange!ColorTheme) {
-            if (button(COLOR_THEME_NAMES[colorTheme]).clicked) {
+          nColumnGrid("lt_color_theme_", 2, enumRange!ColorTheme, (ColorTheme colorTheme) {
+            if (colorThemePreviewButton(colorTheme).clicked) {
               gSaveFile.settings.colorTheme = colorTheme;
 
               mainData.fadingBetweenThemes      = true;
               mainData.scrollCache.needsRepaint = true;
             }
             spacer(8);
-          }
+          });
 
           auto style = ScopedStyle(&mainData.styleButtonBack);
           if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
@@ -694,6 +694,104 @@ void mainGui(MainData* mainData, Input* input) {
   }
 
   frameEnd();
+}
+
+ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
+  import bible.imgui;
+
+  void fakeBottomButton(const(char)[] text) {
+    Box* box = makeBox(BoxFlags.draw_text, text);
+
+    box.semanticSize[] = [SIZE_FILL_PARENT, Size(SizeKind.text_content, 0, 1)].s;
+    box.justification = Justification.center;
+    box.render = &renderBottomButton;
+  }
+
+  static Vec2 renderPlainBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
+    auto rect = box.rect + drawOffset;
+    C2D_DrawRectSolid(rect.left, rect.top, z, rect.right - rect.left, rect.bottom - rect.top, box.style.colors[Color.clear_color]);
+    return Vec2(0);
+  }
+
+  Box* layoutBox;
+  {
+    auto previewStyle = arenaPush!BoxStyle(&gUiData.frameArena);
+    *previewStyle = mainData.styleButtonBook;
+    previewStyle.colors = COLOR_THEMES[colorTheme];
+
+    auto previewStyleBottom = arenaPush!BoxStyle(&gUiData.frameArena);
+    *previewStyleBottom = mainData.styleButtonBottom;
+    previewStyleBottom.colors = COLOR_THEMES[colorTheme];
+
+    auto style = ScopedStyle(previewStyle);
+
+    auto layout = ScopedButtonLayout(
+      tnum("btn_lt_color_theme_preview_", colorTheme),
+      Axis2.y, Justification.center, LayoutKind.grow_children
+    );
+    layoutBox = layout.box;
+
+    spacer(8);
+
+    {
+      auto innerLayout1 = ScopedLayout(
+        tnum("lt_color_theme_preview_inner_1_", colorTheme),
+        Axis2.x, Justification.center, LayoutKind.fit_children
+      );
+
+      spacer(8);
+      {
+        auto innerLayout2 = ScopedLayout(
+          tnum("lt_color_theme_preview_inner_2_", colorTheme),
+          Axis2.y, Justification.min, LayoutKind.grow_children
+        );
+        innerLayout2.render = &renderPlainBackground;
+
+        {
+          auto innerLayout3 = ScopedLayout(
+            tnum("lt_color_theme_preview_inner_3_", colorTheme),
+            Axis2.x, Justification.min, LayoutKind.fit_children
+          );
+          innerLayout3.scrollInfo.limitMin = 0;
+          innerLayout3.scrollInfo.limitMax = 1;
+
+          label("In the beginning...##").semanticSize[Axis2.x] = SIZE_FILL_PARENT;
+
+          scrollIndicator("", innerLayout3.box, Justification.max, false).semanticSize[Axis2.x] = Size(SizeKind.pixels, 1, 1);
+        }
+
+        {
+          auto bottomStyle = ScopedStyle(previewStyleBottom);
+          fakeBottomButton("Options##");
+        }
+      }
+      spacer(8);
+    }
+
+    label(COLOR_THEME_NAMES[colorTheme]);
+  }
+
+  return signalFromBox(layoutBox);
+}
+
+// @TODO: Consider not doing the range looping here and making the caller do it?
+void nColumnGrid(Range, Value)(const(char)[] idPrefix, int numCols, Range range, scope void delegate(Value value) @nogc nothrow func) {
+  import bible.imgui;
+
+  auto horziontalLayout = ScopedLayout(tconcat(idPrefix, "grid"), Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
+
+  foreach (a; 0..numCols) {
+    auto inner = ScopedLayout(tprint("%sgrid_inner_%d", idPrefix.ptr, a), Axis2.y);
+
+    int b = 0;
+    foreach (value; range) {
+      if (b % numCols == a) {
+        func(value);
+      }
+
+      b++;
+    }
+  }
 }
 
 extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {

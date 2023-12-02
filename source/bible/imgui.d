@@ -128,7 +128,7 @@ alias ColorTable = uint[Color.max+1];
 struct BoxStyle {
   // Must be the length of ColorTable.
   // Not making it ColorTable* because it's easy to screw up access by indexing the pointer instead of the table.
-  uint[] colors;
+  const(uint)[] colors;
 
   float margin = 0;
   float textSize = 0;
@@ -297,7 +297,7 @@ void spacer(float size = 0) {
   }
 }
 
-void scrollIndicator(const(char)[] id, Box* source, Justification justification, bool limitHit) {
+Box* scrollIndicator(const(char)[] id, Box* source, Justification justification, bool limitHit) {
   Box* box = makeBox(cast(BoxFlags) 0, id);
   box.render = &renderScrollIndicator;
 
@@ -309,6 +309,8 @@ void scrollIndicator(const(char)[] id, Box* source, Justification justification,
   box.related       = source;
 
   box.hotT = approach(box.hotT, 1.0f*limitHit, 2*ANIM_T_RATE);
+
+  return box;
 }
 
 enum LayoutKind {
@@ -493,6 +495,19 @@ struct ScopedDoubleScreenSplitLayout {
     gUiData.curBox = main;
     popParent();
   }
+}
+
+ScopedLayout ScopedButtonLayout(
+  const(char)[] id,
+  Axis2 flowDirection,
+  Justification justification = Justification.center,
+  LayoutKind layoutKind = LayoutKind.init,
+  BoxFlags flags = BoxFlags.init,
+) {
+  auto result = ScopedLayout(id, flowDirection, justification, layoutKind, flags | BoxFlags.clickable);
+  result.render = &renderNormalButton;
+
+  return result;
 }
 
 BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
@@ -697,9 +712,9 @@ Signal popParentAndSignal() {
 }
 
 void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
-  uiArena     = arenaMake(arenaSize);
-  textBuf     = C2D_TextBufNew(&uiArena, 16384);
-  boxes       = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
+  uiArena    = arenaMake(arenaSize);
+  textBuf    = C2D_TextBufNew(&uiArena, 16384);
+  boxes      = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
   frameArena = arenaPushArena(&uiArena, 16*1024);
 
   if (!gNullBox) {
