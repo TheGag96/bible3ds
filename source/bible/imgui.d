@@ -553,9 +553,56 @@ struct UiData {
 __gshared UiData* gUiData;
 
 pragma(inline, true)
-const(char)[] tprint(T...)(const(char)[] format, T args) {
+char[] tprint(T...)(const(char)[] format, T args) {
   return arenaPrintf(&gUiData.frameArena, format.ptr, args);
 }
+
+// newlib's snprintf is dog slow... So, make these specialized temp-allocated string functions for common use cases.
+
+char[] tconcat(const(char)[] a, const(char)[] b) {
+  auto result = arenaPushArray!(char, false)(&gUiData.frameArena, a.length + b.length + 1);
+  result[0..a.length]                 = a;
+  result[a.length..a.length+b.length] = b;
+
+  // Null-termination... sigh...
+  result[$-1] = '\0';
+
+  return result;
+}
+
+char[] tnum(const(char)[] prefix, int num) {
+  char[11] buf;
+  size_t pos = buf.length;
+
+  if (num == 0) {
+    pos--;
+    buf[pos] = '0';
+  }
+  else {
+    if (num < 0) {
+      pos--;
+      buf[pos] = '-';
+    }
+
+    while (num > 0) {
+      pos--;
+      buf[pos] = cast(char) ('0' + num % 10);
+      num /= 10;
+    }
+  }
+
+  size_t numLength = buf.length - pos;
+  auto result      = arenaPushArray!(char, false)(&gUiData.frameArena, prefix.length + numLength + 1);
+
+  result[0..prefix.length]                       = prefix;
+  result[prefix.length..prefix.length+numLength] = buf[pos..$];
+
+  // Null-termination... sigh...
+  result[$-1] = '\0';
+
+  return result;
+}
+
 
 // Returns ID part of string followed by non-ID
 const(char)[][2] parseIdFromString(const(char)[] text) {
