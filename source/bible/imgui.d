@@ -282,7 +282,7 @@ Signal bottomButton(const(char)[] text) {
 void spacer(float size = 0) {
   Box* box = makeBox(cast(BoxFlags) 0, "");
 
-  auto flowSize = size == 0 ? SIZE_FILL_PARENT : Size(SizeKind.pixels, size);
+  auto flowSize = size == 0 ? SIZE_FILL_PARENT : Size(SizeKind.pixels, size, 1);
   auto oppSze   = SIZE_FILL_PARENT;
 
   if (box.parent.flags & BoxFlags.horizontal_children) {
