@@ -601,7 +601,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         void settingsListEntry(const(char)[] labelText, const(char)[] valueText, ModalCallback callback) {
           {
-            auto layout = ScopedLayout(tprint("lt_settings_entry_%s", labelText.ptr), Axis2.x, Justification.min, LayoutKind.fit_children);
+            auto layout = ScopedLayout(tconcat("lt_settings_entry_", labelText), Axis2.x, Justification.min, LayoutKind.fit_children);
 
             auto settingLabel = label(labelText);
             settingLabel.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 0.4, 1);

@@ -14,6 +14,8 @@ enum       TOUCH_DRAG_THRESHOLD = 8;
 
 enum float SCROLL_EASE_RATE = 0.3;
 
+enum MAX_UI_TREE_DEPTH = 200;
+
 enum RENDER_DEBUG_BOXES = false;
 
 static immutable Vec2[GFXScreen.max+1] SCREEN_POS = [
@@ -181,7 +183,7 @@ __gshared Box* gNullBox;
 pragma (inline, true) bool boxIsNull(Box* box) => box is null || box is gNullBox;
 
 // @Note: Render scroll caches forced me to make the Box* parameter non-const. Can/should this be changed?
-alias RenderCallback = void function(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) @nogc nothrow;
+alias RenderCallback = Vec2 function(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 screenPos, float z) @nogc nothrow;
 
 struct Signal {
   Box* box;
@@ -1407,53 +1409,94 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
 
   gUiData = uiData;
 
-  Vec2 screenPos = SCREEN_POS[screen];
+  auto restore = ScopedArenaRestore(&uiData.frameArena);
 
-  preOrderApply(root, (box) {
-    if ( ( !boxIsNull(box.parent) && !intersects(box.rect, box.parent.rect) ) ||
-         !intersects(box.rect, SCREEN_RECT[screen]) )
-    {
-      return true; // children will be skipped
+  auto drawOffsetStack = arenaPushArray!(Vec2, false)(&uiData.frameArena, MAX_UI_TREE_DEPTH);
+  size_t stackPos = 0;
+
+  drawOffsetStack[stackPos] = SCREEN_POS[screen] * -1;
+  Vec2 drawOffset = drawOffsetStack[stackPos];
+
+  // preOrderApply, but with the drawPos stack
+  auto runner = root;
+  preApplyLoop:
+  while (!boxIsNull(runner)) {
+    Vec2 extraOffset;
+
+    bool skipChildren = (box) {
+      if ( ( !boxIsNull(box.parent) && !intersects(box.rect, box.parent.rect) ) ||
+           !intersects(box.rect, SCREEN_RECT[screen]) )
+      {
+        return true; // children will be skipped
+      }
+
+      auto color = COLORS[box.hashKey % COLORS.length];
+
+      if (box.render) {
+        extraOffset = box.render(box, screen, side, _3DEnabled, slider3DState, drawOffset, z);
+      }
+      else if (RENDER_DEBUG_BOXES) {
+        if (box.flags & BoxFlags.clickable) {
+          C2D_DrawRectSolid(box.rect.left + drawOffset.x, box.rect.top + drawOffset.y, z, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
+        }
+        else {
+          C2D_DrawRectSolid(box.rect.left  + drawOffset.x,   box.rect.top    + drawOffset.y,    z, box.rect.right - box.rect.left-1, 1, color);
+          C2D_DrawRectSolid(box.rect.left  + drawOffset.x,   box.rect.bottom + drawOffset.y-1,  z, box.rect.right - box.rect.left-1, 1, color);
+          C2D_DrawRectSolid(box.rect.left  + drawOffset.x,   box.rect.top    + drawOffset.y,    z, 1, box.rect.bottom - box.rect.top-1, color);
+          C2D_DrawRectSolid(box.rect.right + drawOffset.x-1, box.rect.top    + drawOffset.y,    z, 1, box.rect.bottom - box.rect.top-1, color);
+        }
+
+        if ((box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
+          auto indicColor = C2D_Color32f(0x00, 0xAA/255.0, 0x11/255.0, box.hotT);
+          C2D_DrawRectSolid(box.rect.left-2 + drawOffset.x,  box.rect.top-2  + drawOffset.y,    z, box.rect.right - box.rect.left + 2*2, 2, indicColor);
+          C2D_DrawRectSolid(box.rect.left-2 + drawOffset.x,  box.rect.bottom + drawOffset.y,    z, box.rect.right - box.rect.left + 2*2, 2, indicColor);
+          C2D_DrawRectSolid(box.rect.left-2 + drawOffset.x,  box.rect.top-2  + drawOffset.y,    z, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
+          C2D_DrawRectSolid(box.rect.right  + drawOffset.x,  box.rect.top-2  + drawOffset.y,    z, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
+        }
+
+        if (box.flags & BoxFlags.draw_text) {
+          auto rect = box.rect + drawOffset;
+
+          float textX = (rect.left + rect.right)/2  - box.text.width/2;
+          float textY = (rect.top  + rect.bottom)/2 - box.textHeight/2;
+
+          C2D_DrawText(
+            &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
+          );
+        }
+      }
+
+      return false;
+    }(runner);
+
+    if (!skipChildren && !boxIsNull(runner.first)) {
+      runner = runner.first;
+      stackPos++;
+
+      // Pop from stack
+      drawOffsetStack[stackPos] = drawOffset;
+      drawOffset += extraOffset;
     }
-
-    auto color = COLORS[box.hashKey % COLORS.length];
-
-    if (box.render) {
-      box.render(box, screen, side, _3DEnabled, slider3DState, screenPos, z);
+    else if (!boxIsNull(runner.next)) {
+      runner = runner.next;
     }
-    else if (RENDER_DEBUG_BOXES) {
-      if (box.flags & BoxFlags.clickable) {
-        C2D_DrawRectSolid(box.rect.left - screenPos.x, box.rect.top - screenPos.y, 0, box.rect.right - box.rect.left, box.rect.bottom - box.rect.top, color);
-      }
-      else {
-        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.top - screenPos.y,    0, box.rect.right - box.rect.left-1, 1, color);
-        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.bottom - screenPos.y-1, 0, box.rect.right - box.rect.left-1, 1, color);
-        C2D_DrawRectSolid(box.rect.left - screenPos.x,  box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top-1, color);
-        C2D_DrawRectSolid(box.rect.right - screenPos.x-1, box.rect.top - screenPos.y,    0, 1, box.rect.bottom - box.rect.top-1, color);
-      }
+    else {
+      while (true) {
+        runner = runner.parent;
 
-      if ((box.parent.flags & BoxFlags.select_children) && (box.flags & BoxFlags.selectable) && box.hotT > 0) {
-        auto indicColor = C2D_Color32f(0x00, 0xAA/255.0, 0x11/255.0, box.hotT);
-        C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.top-2 - screenPos.y,    0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
-        C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.bottom - screenPos.y,   0, box.rect.right - box.rect.left + 2*2, 2, indicColor);
-        C2D_DrawRectSolid(box.rect.left-2 - screenPos.x,  box.rect.top-2 - screenPos.y,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
-        C2D_DrawRectSolid(box.rect.right - screenPos.x,   box.rect.top-2 - screenPos.y,    0, 2, box.rect.bottom - box.rect.top + 2*2, indicColor);
-      }
+        // Pop from stack
+        drawOffset = drawOffsetStack[stackPos];
+        stackPos--;
 
-      if (box.flags & BoxFlags.draw_text) {
-        auto rect = box.rect - screenPos;
-
-        float textX = (rect.left + rect.right)/2  - box.text.width/2;
-        float textY = (rect.top  + rect.bottom)/2 - box.textHeight/2;
-
-        C2D_DrawText(
-          &box.text, C2D_WithColor, GFXScreen.top, textX, textY, 0, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
-        );
+        if (boxIsNull(runner)) break preApplyLoop;
+        if (!boxIsNull(runner.next)) {
+          runner = runner.next;
+          break;
+        }
       }
     }
+  }
 
-    return false;
-  });
 
   // Update animation info once per frame
   // Making this separate from the first traversal because we might skip children in that one, and this should happen
