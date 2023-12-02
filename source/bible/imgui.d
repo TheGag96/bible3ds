@@ -837,22 +837,21 @@ void frameEnd() { with (gUiData) {
         }
 
         // If the children break past the size of parent...
-        float limit = box.computedSize[axis];
-        float difference = sum - limit;
+        float difference = sum - box.computedSize[axis];
         if (difference > 0) {
-          int x;
-
           // Limit the desired total further by subtracting away the space that the child boxes aren't willing to give up
           foreach (child; eachChild(box)) {
             float notWillingToGiveUp = child.computedSize[axis] * child.semanticSize[axis].strictness;
-            sum   -= notWillingToGiveUp;
-            limit -= notWillingToGiveUp;
+            sum -= notWillingToGiveUp;
           }
+          sum = max(sum, 0);
 
-          // Downsize all children by taking off from what they're willing to give up, proportional to how much they
-          // contribute to the overage
-          foreach (child; eachChild(box)) {
-            child.computedSize[axis] -= child.computedSize[axis] * (1 - child.semanticSize[axis].strictness) / sum * difference;
+          if (sum != 0) {
+            // Downsize all children by taking off from what they're willing to give up, proportional to how much they
+            // contribute to the overage
+            foreach (child; eachChild(box)) {
+              child.computedSize[axis] -= child.computedSize[axis] * (1 - child.semanticSize[axis].strictness) / sum * difference;
+            }
           }
         }
       }
