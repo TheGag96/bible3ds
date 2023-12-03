@@ -582,6 +582,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
 
+  C2Di_Context* ctx = C2Di_GetContext();
+
   const screenWidth = screen == GFXScreen.top ? GSP_SCREEN_HEIGHT_TOP : GSP_SCREEN_HEIGHT_BOTTOM;
 
   // If there are no words, we can't do the math calculations necessary with them. Just return; nothing would be drawn anyway.
@@ -668,6 +670,38 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
     }
   }
 
+  pragma(inline, true)
+  static void appendGlyphQuad(C2Di_Context* ctx, C2Di_Glyph* cur, float glyphX, float glyphY, float glyphW, float thisGlyphH, float glyphZ, float skew, uint color) {
+    float xMinSkewMin = glyphX-skew, xMinSkewMax = glyphX+skew, xMaxSkewMin = glyphX+glyphW-skew, xMaxSkewMax = glyphX+glyphW+skew;
+    float yMax = glyphY+thisGlyphH;
+    C2Di_Vertex vertex = {
+      x : xMinSkewMax, y : glyphY, z : glyphZ,
+      u : cur.texcoord.left, v : cur.texcoord.top,
+      ptX : 0.0f, ptY : 1.0f,
+      color : color,
+    };
+
+    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    vertex.x = xMinSkewMin;
+    vertex.y = yMax;
+    vertex.v = cur.texcoord.bottom;
+    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    vertex.x = xMaxSkewMax;
+    vertex.y = glyphY;
+    vertex.u = cur.texcoord.right;
+    vertex.v = cur.texcoord.top;
+    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    vertex.x = xMinSkewMin;
+    vertex.y = yMax;
+    vertex.u = cur.texcoord.left;
+    vertex.v = cur.texcoord.bottom;
+    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    vertex.x = xMaxSkewMin;
+    vertex.u = cur.texcoord.right;
+    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+  }
+
   switch (flags & C2D_AlignMask)
   {
     case C2D_AlignLeft:
@@ -690,20 +724,16 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
           glyphY = y+dispY*cur.lineNo;
         }
 
-        if (glyphX > screenWidth || glyphX+glyphW < 0) {
-          continue;
-        }
+        //if (glyphX > screenWidth || glyphX+glyphW < 0) {
+        //  continue;
+        //}
 
         float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+
+        appendGlyphQuad(ctx, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
       }
       break;
     case C2D_AlignRight:
@@ -737,12 +767,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+
+        appendGlyphQuad(ctx, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
       }
     }
     break;
@@ -777,12 +803,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+
+        appendGlyphQuad(ctx, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
       }
     }
     break;
@@ -860,12 +882,8 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
         C2Di_SetTex(cur.sheet);
         C2Di_Update();
-        C2Di_AppendVtx(glyphX+skew,        glyphY,            glyphZ, cur.texcoord.left,  cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW+skew, glyphY,            glyphZ, cur.texcoord.right, cur.texcoord.top,    0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX-skew,        glyphY+thisGlyphH, glyphZ, cur.texcoord.left,  cur.texcoord.bottom, 0.0f, 1.0f, color);
-        C2Di_AppendVtx(glyphX+glyphW-skew, glyphY+thisGlyphH, glyphZ, cur.texcoord.right, cur.texcoord.bottom, 0.0f, 1.0f, color);
+
+        appendGlyphQuad(ctx, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
       }
     }
     break;
