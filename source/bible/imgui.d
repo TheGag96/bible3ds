@@ -1272,9 +1272,10 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     Vec2 scrollDiff;
     if (input.scrollMethodCur == ScrollMethod.custom) {
       // Scroll (with easing) towards off-box child
+      // Limit the minimum speeds so that scrolling with the touch screen isn't prevented for very long
       scrollDiff[flowAxis] = SCROLL_EASE_RATE * ( (hot.rect.min[flowAxis] < cursorBounds.min[flowAxis])
-                                                    ? (hot.rect.min[flowAxis] - cursorBounds.min[flowAxis])
-                                                    : (hot.rect.max[flowAxis] - cursorBounds.max[flowAxis]) );
+                                                    ? min(hot.rect.min[flowAxis] - cursorBounds.min[flowAxis], -2)
+                                                    : max(hot.rect.max[flowAxis] - cursorBounds.max[flowAxis],  2));
     }
     else if (!inputIsNull(input)) {
       scrollDiff = updateScrollDiff(input, allowedMethods);
