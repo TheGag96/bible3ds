@@ -69,6 +69,7 @@ struct C2Di_Context
     C3D_Tex* curTex;
     uint fadeClr;
 
+    bool matricesInGeoShader;
     int uLoc_mdlvMtx, uLoc_projMtx;
 }
 

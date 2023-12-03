@@ -1,0 +1,118 @@
+; Example PICA200 geometry shader
+.gsh point c0
+
+; Uniforms
+.fvec mdlvMtx[4], projMtx[4]
+
+; Constants
+.constf BLOCK_SIZE(16.0, 16.0, 0.0, 0.0)
+
+; Outputs - this time the type *is* used
+.out oPosition  position
+.out oTexCoord0 texcoord0
+.out oTexCoord1 texcoord1
+.out oColor     color
+
+; Inputs: we will receive the following inputs:
+; v0-v3:  data of the first vertex
+; v4-v7:  data of the second vertex
+; v8-v11: data of the third vertex
+
+; Inputs
+.in iPosition_1      v0
+.in iTexCoord_1      v1
+.in iProcTexCoord_1  v2
+.in iColor_1         v3
+.in iPosition_2      v4
+.in iTexCoord_2      v5
+.in iProcTexCoord_2  v6
+.in iColor_2         v7
+
+.entry quad_gmain
+.proc quad_gmain
+  ; start with is top left vertex
+  mov r0, iPosition_1
+  mov r1, iTexCoord_1
+  mov r2, iProcTexCoord_1
+
+  ; project matrix for top left
+  ; r12 = mdlvMtx * r0
+  dp4 r12.x, mdlvMtx[0], r0
+  dp4 r12.y, mdlvMtx[1], r0
+  dp4 r12.z, mdlvMtx[2], r0
+  dp4 r12.w, mdlvMtx[3], r0
+
+  ; r0 = projMtx * r12
+  dp4 r0.x, projMtx[0], r12
+  dp4 r0.y, projMtx[1], r12
+  dp4 r0.z, projMtx[2], r12
+  dp4 r0.w, projMtx[3], r12
+
+  ; do bottom right vertex
+  mov r6, iPosition_2
+  mov r7, iTexCoord_2
+  mov r8, iProcTexCoord_2
+
+  ; project matrix for bottom right
+  ; r12 = mdlvMtx * r6
+  dp4 r12.x, mdlvMtx[0], r6
+  dp4 r12.y, mdlvMtx[1], r6
+  dp4 r12.z, mdlvMtx[2], r6
+  dp4 r12.w, mdlvMtx[3], r6
+
+  ; r6 = projMtx * r12
+  dp4 r6.x, projMtx[0], r12
+  dp4 r6.y, projMtx[1], r12
+  dp4 r6.z, projMtx[2], r12
+  dp4 r6.w, projMtx[3], r12
+
+  ; calculate bottom left vertex
+  mov r3, r0
+  mov r3.x, r6.x  ; matrix math swaps what x/y mean
+  mov r4, r1
+  mov r4.y, r7.y
+  mov r5, r2
+  mov r5.y, r8.y
+
+  ; tl, bl, br
+  call emit_triangle
+
+  ; calculate top right vertex
+  mov r3, r0
+  mov r3.y, r6.y
+  mov r4, r1
+  mov r4.x, r7.x
+  mov r5, r2
+  mov r5.x, r8.x
+
+  ; tl, tr, br
+  call emit_triangle
+
+  end
+.end
+
+.proc emit_triangle
+  ; Emit the first vertex
+  setemit 0
+  mov oPosition,  r0
+  mov oTexCoord0, r1
+  mov oTexCoord1, r2
+  mov oColor,     iColor_1
+  emit
+
+  ; Emit the second vertex
+  setemit 1
+  mov oPosition,  r3
+  mov oTexCoord0, r4
+  mov oTexCoord1, r5
+  mov oColor,     iColor_1
+  emit
+
+  ; Emit the third vertex and finish the primitive
+  setemit 2, prim
+  mov oPosition,  r6
+  mov oTexCoord0, r7
+  mov oTexCoord1, r8
+  mov oColor,     iColor_1
+  emit
+.end

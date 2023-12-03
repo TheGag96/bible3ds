@@ -56,7 +56,7 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   }
 
   C2Di_Context* ctx = C2Di_GetContext();
-  C2D_Prepare(C2DShader.normal);
+  C2D_Prepare(C2DShader.quad);
 
   auto tex = &gUiAssets.buttonTex;
 
@@ -110,7 +110,7 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   C2D_Flush();
 
   //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
+  C2D_Prepare(C2DShader.quad, true);
 
   env = C3D_GetTexEnv(2);
   C3D_TexEnvInit(env);
@@ -237,7 +237,7 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
     C2D_Flush();
 
     //Cleanup, resetting things to how C2D normally expects
-    C2D_Prepare(C2DShader.normal, true);
+    C2D_Prepare(C2DShader.quad, true);
 
     env = C3D_GetTexEnv(2);
     C3D_TexEnvInit(env);
@@ -264,7 +264,7 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
 Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   C2Di_Context* ctx = C2Di_GetContext();
 
-  C2D_Prepare(C2DShader.normal);
+  C2D_Prepare(C2DShader.quad);
 
   auto tex = &gUiAssets.selectorTex;
 
@@ -333,7 +333,7 @@ Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
   C2D_Flush(); //need this if alpha value changes
 
   //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
+  C2D_Prepare(C2DShader.quad, true);
 
   env = C3D_GetTexEnv(2);
   C3D_TexEnvInit(env);
@@ -386,16 +386,16 @@ void loadAssets() {
 void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
   C2Di_Context* ctx = C2Di_GetContext();
 
-  C2Di_Vertex[6] vertexList = [
+  C2Di_Vertex[2] vertexList = [
     // Top-left quad
     // First triangle
     { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
-    { brX, tlY, z,   brU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+    //{ brX, tlY, z,   brU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
     { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
     // Second triangle
-    { brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX, brY, z,   tlU,  brV,  0.0f,  0.0f,  0xFF<<24 },
-    { tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
+    //{ brX, brY, z,   brU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+    //{ tlX, brY, z,   tlU,  brV,  0.0f,  0.0f,  0xFF<<24 },
+    //{ tlX, tlY, z,   tlU,  tlV,  0.0f,  0.0f,  0xFF<<24 },
   ];
 
   ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
@@ -422,16 +422,16 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
 
   auto thisScreenWidth = screenWidth(screen);
 
-  C2Di_Vertex[6] vertex_list = [
+  C2Di_Vertex[2] vertex_list = [
     // First face (PZ)
     // First triangle
     { 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
-    { thisScreenWidth, 0.0f,          0.0f,  28.0f,  0.0f,  2.0f, -1.0f,  0xFF<<24 },
+    //{ thisScreenWidth, 0.0f,          0.0f,  28.0f,  0.0f,  2.0f, -1.0f,  0xFF<<24 },
     { thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
     // Second triangle
-    { thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
-    { 0.0f,            SCREEN_HEIGHT, 0.0f,   0.0f, 28.0f,  0.0f,  1.0f,  0xFF<<24 },
-    { 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
+    //{ thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
+    //{ 0.0f,            SCREEN_HEIGHT, 0.0f,   0.0f, 28.0f,  0.0f,  1.0f,  0xFF<<24 },
+    //{ 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
   ];
 
   static if (true) {
@@ -482,7 +482,7 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
   C2D_Flush();
 
   //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
+  C2D_Prepare(C2DShader.quad, true);
 
   env = C3D_GetTexEnv(2);
   C3D_TexEnvInit(env);
@@ -500,16 +500,16 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   C2Di_Context* ctx = C2Di_GetContext();
 
   void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
-    C2Di_Vertex[6] vertexList = [
+    C2Di_Vertex[2] vertexList = [
       // Top-left quad
       // First triangle
       { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
-      { brX, tlY, z,   tlV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      //{ brX, tlY, z,   tlV,  brU,  0.0f,  0.0f,  0xFF<<24 },
       { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
       // Second triangle
-      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
-      { tlX, brY, z,   brV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
-      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+      //{ brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      //{ tlX, brY, z,   brV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+      //{ tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
     ];
 
     ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
@@ -536,7 +536,7 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   float scale = (rect.bottom - rect.top) / (box.related.scrollInfo.limitMax - box.related.scrollInfo.limitMin + viewHeight);
   float height = viewHeight * scale;
 
-  C2D_Prepare(C2DShader.normal);
+  C2D_Prepare(C2DShader.quad);
 
   auto indicatorTex = &gUiAssets.indicatorTex;
 
@@ -574,7 +574,7 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   pushQuadUvSwap(realX, realY + height - indicatorTex.height, realX + indicatorTex.width, realY + height,                       z,  1, 1,   0, 0);
 
   //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
+  C2D_Prepare(C2DShader.quad, true);
 
   return Vec2(0);
 }
@@ -627,7 +627,7 @@ void scrollCacheBeginFrame(ScrollCache* scrollCache) { with (scrollCache) {
 }}
 
 void scrollCacheEndFrame(ScrollCache* scrollCache) { with (scrollCache) {
-  C2D_Prepare(C2DShader.normal);
+  C2D_Prepare(C2DShader.quad);
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
 }}
 

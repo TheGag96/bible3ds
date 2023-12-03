@@ -674,33 +674,41 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 
   pragma(inline, true)
   static void appendGlyphQuad(C2Di_Context* ctx, C2Di_Glyph* cur, float glyphX, float glyphY, float glyphW, float thisGlyphH, float glyphZ, float skew, uint color) {
-    float xMinSkewMin = glyphX-skew, xMinSkewMax = glyphX+skew, xMaxSkewMin = glyphX+glyphW-skew, xMaxSkewMax = glyphX+glyphW+skew;
+    //float xMinSkewMin = glyphX-skew, xMinSkewMax = glyphX+skew, xMaxSkewMin = glyphX+glyphW-skew, xMaxSkewMax = glyphX+glyphW+skew;
     float yMax = glyphY+thisGlyphH;
     C2Di_Vertex vertex = {
-      x : xMinSkewMax, y : glyphY, z : glyphZ,
+      //x : xMinSkewMax, y : glyphY, z : glyphZ,
+      x : glyphX, y : glyphY, z : glyphZ,
       u : cur.texcoord.left, v : cur.texcoord.top,
       ptX : 0.0f, ptY : 1.0f,
       color : color,
     };
 
+    //ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    //vertex.x = xMinSkewMin;
+    //vertex.y = yMax;
+    //vertex.v = cur.texcoord.bottom;
+    //ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    //vertex.x = xMaxSkewMax;
+    //vertex.y = glyphY;
+    //vertex.u = cur.texcoord.right;
+    //vertex.v = cur.texcoord.top;
+    //ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    //ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    //vertex.x = xMinSkewMin;
+    //vertex.y = yMax;
+    //vertex.u = cur.texcoord.left;
+    //vertex.v = cur.texcoord.bottom;
+    //ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+    //vertex.x = xMaxSkewMin;
+    //vertex.u = cur.texcoord.right;
+    //ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
+
     ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
-    vertex.x = xMinSkewMin;
-    vertex.y = yMax;
-    vertex.v = cur.texcoord.bottom;
-    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
-    vertex.x = xMaxSkewMax;
-    vertex.y = glyphY;
+    vertex.x += glyphW;
+    vertex.y += thisGlyphH;
     vertex.u = cur.texcoord.right;
-    vertex.v = cur.texcoord.top;
-    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
-    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
-    vertex.x = xMinSkewMin;
-    vertex.y = yMax;
-    vertex.u = cur.texcoord.left;
     vertex.v = cur.texcoord.bottom;
-    ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
-    vertex.x = xMaxSkewMin;
-    vertex.u = cur.texcoord.right;
     ctx.vtxBuf[ctx.vtxBufPos++] = vertex;
   }
 

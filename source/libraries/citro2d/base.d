@@ -21,6 +21,7 @@ enum C2DShader {
   normal,
   scanline_offset,
   scroll_cache,
+  quad,
 }
 
 enum C2D_NUM_SHADERS = C2DShader.max + 1;
@@ -35,6 +36,7 @@ enum SHADER_GET(string name) = cast(immutable(ubyte)[]) import(name ~ ".shbin");
 static immutable RENDER2D_SHBIN     = SHADER_GET!("render2d");
 static immutable RENDER2G_SHBIN     = SHADER_GET!("render2g");
 static immutable SCROLL_CACHE_SHBIN = SHADER_GET!("scroll_cache");
+static immutable QUAD_SHBIN         = SHADER_GET!("quad");
 
 struct C2D_DrawParams
 {
@@ -445,6 +447,10 @@ bool C2D_Init(size_t maxObjects)
             case C2DShader.scroll_cache:
                 vertsPerSprite = 6;
                 break;
+            case C2DShader.quad:
+                ctx.matricesInGeoShader = true;
+                vertsPerSprite = 2;
+                break;
         }
 
         ctx.vtxBufSize = vertsPerSprite*maxObjects;
@@ -461,6 +467,9 @@ bool C2D_Init(size_t maxObjects)
                 break;
             case C2DShader.scroll_cache:
                 ctx.shader = DVLB_ParseFile(cast(uint*)SCROLL_CACHE_SHBIN.ptr, SCROLL_CACHE_SHBIN.length);
+                break;
+            case C2DShader.quad:
+                ctx.shader = DVLB_ParseFile(cast(uint*)QUAD_SHBIN.ptr, QUAD_SHBIN.length);
                 break;
         }
 
@@ -483,6 +492,9 @@ bool C2D_Init(size_t maxObjects)
             case C2DShader.scroll_cache:
                 shaderProgramSetGsh(&ctx.program, &ctx.shader.DVLE[1], cast(ubyte) (4*vertsPerSprite/2));
                 break;
+            case C2DShader.quad:
+                shaderProgramSetGsh(&ctx.program, &ctx.shader.DVLE[1], 8);
+                break;
         }
 
         AttrInfo_Init(&ctx.attrInfo);
@@ -499,8 +511,9 @@ bool C2D_Init(size_t maxObjects)
         Mtx_OrthoTilt(&s_projBot, 0.0f, 320.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
 
         // Get uniform locations
-        ctx.uLoc_mdlvMtx = shaderInstanceGetUniformLocation(ctx.program.vertexShader, "mdlvMtx");
-        ctx.uLoc_projMtx = shaderInstanceGetUniformLocation(ctx.program.vertexShader, "projMtx");
+        auto program = ctx.matricesInGeoShader ? ctx.program.geometryShader : ctx.program.vertexShader;
+        ctx.uLoc_mdlvMtx = shaderInstanceGetUniformLocation(program, "mdlvMtx");
+        ctx.uLoc_projMtx = shaderInstanceGetUniformLocation(program, "projMtx");
 
         // Prepare proctex
         C3D_ProcTexInit(&ctx.ptBlend, 0, 1);
@@ -1025,12 +1038,12 @@ bool C2D_DrawRectangle(float x, float y, float z, float w, float h, uint clr0, u
     C2Di_Update();
 
     C2Di_AppendVtx(x,   y,   z, -1.0f, -1.0f, 0.0f, 1.0f, clr0);
-    C2Di_AppendVtx(x,   y+h, z, -1.0f, -1.0f, 0.0f, 1.0f, clr2);
+    //C2Di_AppendVtx(x,   y+h, z, -1.0f, -1.0f, 0.0f, 1.0f, clr2);
     C2Di_AppendVtx(x+w, y+h, z, -1.0f, -1.0f, 0.0f, 1.0f, clr3);
 
-    C2Di_AppendVtx(x,   y,   z, -1.0f, -1.0f, 0.0f, 1.0f, clr0);
-    C2Di_AppendVtx(x+w, y+h, z, -1.0f, -1.0f, 0.0f, 1.0f, clr3);
-    C2Di_AppendVtx(x+w, y,   z, -1.0f, -1.0f, 0.0f, 1.0f, clr1);
+    //C2Di_AppendVtx(x,   y,   z, -1.0f, -1.0f, 0.0f, 1.0f, clr0);
+    //C2Di_AppendVtx(x+w, y+h, z, -1.0f, -1.0f, 0.0f, 1.0f, clr3);
+    //C2Di_AppendVtx(x+w, y,   z, -1.0f, -1.0f, 0.0f, 1.0f, clr1);
     return true;
 }
 
@@ -1104,10 +1117,14 @@ void C2Di_Update()
 
   C2Di_FlushVtxBuf();
 
-  if (flags & C2DiF_DirtyProj)
-    C3D_FVUnifMtx4x4(GPUShaderType.vertex_shader, ctx.uLoc_projMtx, &ctx.projMtx);
-  if (flags & C2DiF_DirtyMdlv)
-    C3D_FVUnifMtx4x4(GPUShaderType.vertex_shader, ctx.uLoc_mdlvMtx, &ctx.mdlvMtx);
+  if (flags & C2DiF_DirtyProj) {
+    auto shaderType = ctx.matricesInGeoShader ? GPUShaderType.geometry_shader : GPUShaderType.vertex_shader;
+    C3D_FVUnifMtx4x4(shaderType, ctx.uLoc_projMtx, &ctx.projMtx);
+  }
+  if (flags & C2DiF_DirtyMdlv) {
+    auto shaderType = ctx.matricesInGeoShader ? GPUShaderType.geometry_shader : GPUShaderType.vertex_shader;
+    C3D_FVUnifMtx4x4(shaderType, ctx.uLoc_mdlvMtx, &ctx.mdlvMtx);
+  }
   if (flags & C2DiF_DirtyTex)
     C3D_TexBind(0, ctx.curTex);
   if (flags & C2DiF_DirtySrc)

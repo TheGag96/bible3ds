@@ -70,6 +70,10 @@ struct MainData {
 }
 MainData mainData;
 
+//Shader uniforms (maybe move?)
+__gshared int uLoc_quad_projMtx     = -1;
+__gshared int uLoc_quad_mdlvMtx     = -1;
+
 enum SOC_ALIGN      = 0x1000;
 enum SOC_BUFFERSIZE = 0x100000;
 
@@ -114,7 +118,7 @@ extern(C) int main(int argc, char** argv) {
   gfxSet3D(true); // Enable stereoscopic 3D
   C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
   C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
-  C2D_Prepare(C2DShader.normal);
+  C2D_Prepare(C2DShader.quad);
   //C3D_AlphaTest(true, GPUTestFunc.notequal, 0); //make empty space in sprites properly transparent, even despite using the depth buffer
   //consoleInit(GFXScreen.bottom, null);
 
