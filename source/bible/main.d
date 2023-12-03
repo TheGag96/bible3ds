@@ -133,10 +133,13 @@ extern(C) int main(int argc, char** argv) {
 
   initMainData(&mainData);
 
+  // Start profiling here, which will make the first frame of profile data bogus.
+  // Below, endProfileAndLog is called before syncing to the frame, followed by another beginProfile call. The point is
+  // to not include the time waiting to sync to the frame prior to drawing in the profile data.
+  beginProfile();
+
   // Main loop
   while (aptMainLoop()) {
-    beginProfile();
-
     osTickCounterUpdate(&tickCounter);
     float frameTime = osTickCounterRead(&tickCounter);
 
@@ -195,13 +198,13 @@ extern(C) int main(int argc, char** argv) {
       //debug printf("\x1b[4;1HGPU:     %6.2f%%\x1b[K", C3D_GetDrawingTime()*6.0f);
       //debug printf("\x1b[5;1HCmdBuf:  %6.2f%%\x1b[K", C3D_GetCmdBufUsage()*100.0f);
 
-      mixin(timeBlock("render"));
-
       // Render the scene
-      {
-        mixin(timeBlock("beginFrame"));
-        C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-      }
+      // Don't include time spent waiting in C3D_FrameBegin in the profiling data.
+      endProfileAndLog();
+      C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+      beginProfile();
+
+      mixin(timeBlock("render"));
       if (mainData.curView == View.reading) {
         mixin(timeBlock("render > scroll cache"));
 
@@ -245,8 +248,11 @@ extern(C) int main(int argc, char** argv) {
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
     }
-    C3D_FrameEnd(0);
-    endProfileAndLog();
+
+    {
+      mixin(timeBlock("C3D_FrameEnd"));
+      C3D_FrameEnd(0);
+    }
   }
 
   // Deinit libs

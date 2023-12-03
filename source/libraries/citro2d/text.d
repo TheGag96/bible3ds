@@ -24,7 +24,7 @@ import core.stdc.stdlib;
 
 import std.math : ceil;
 
-import bible.util;
+import bible.util, bible.profiling;
 
 nothrow: @nogc:
 
@@ -581,6 +581,8 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX
 extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen, float x, float y, float z, float scaleX, float scaleY, ...)
 {
   auto text  = cast(C2D_Text*) text_; // get around lack of head const
+
+  mixin(timeBlock("C2D_DrawText"));
 
   C2Di_Context* ctx = C2Di_GetContext();
 

@@ -639,6 +639,8 @@ const(char)[][2] parseIdFromString(const(char)[] text) {
 }
 
 Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
+  mixin(timeBlock("makeBox"));
+
   const(char)[][2] idAndNon = parseIdFromString(text);
   const(char)[] id = idAndNon[0], displayText = idAndNon[1];
 
@@ -1415,6 +1417,8 @@ void sendCommand(uint code, uint value) { with (gUiData) {
 }}
 
 void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, float z = 0) { with (uiData) {
+  mixin(timeBlock("render single screen"));
+
   static immutable uint[] COLORS = [
     C2D_Color32(0xFF, 0x00, 0x00, 0xFF),
     C2D_Color32(0x00, 0xFF, 0x00, 0xFF),
