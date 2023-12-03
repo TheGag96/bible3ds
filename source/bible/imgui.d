@@ -684,6 +684,7 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
 
   if ((flags & BoxFlags.draw_text) && displayText.length) {
     C2D_TextParse(&result.text, textBuf, displayText);
+    C2D_TextOptimize(&result.text);
     float width, height;
     C2D_TextGetDimensions(&result.text, result.style.textSize, result.style.textSize, &width, &height);
     result.text.width = width;
