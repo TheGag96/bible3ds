@@ -286,4 +286,5 @@ struct DimSlice(T, size_t n = 1) {
 enum ColorTheme : ubyte {
   neutral,
   warm,
+  night,
 }

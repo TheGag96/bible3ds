@@ -60,15 +60,13 @@ struct MainData {
   PageId pageId;
   ui.LoadedPage loadedPage;
 
-  float defaultPageTextSize = 0, defaultPageMargin = 0;
-
   bool frameNeedsRender;
 
   BibleLoadData bible;
 
   ui.ColorTable colorTable;
   bool fadingBetweenThemes;
-  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack;
+  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, stylePage;
 }
 MainData mainData;
 
@@ -271,24 +269,26 @@ void initMainData(MainData* mainData) { with (mainData) {
 
   scrollCache = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
-  defaultPageTextSize = DEFAULT_PAGE_TEXT_SIZE;
-  defaultPageMargin   = DEFAULT_PAGE_MARGIN;
-
   colorTable = COLOR_THEMES[gSaveFile.settings.colorTheme];
 
   styleButtonBook                 = ui.BoxStyle.init;
   styleButtonBook.colors          = colorTable;
-  styleButtonBook.margin          = BOOK_BUTTON_MARGIN;
+  styleButtonBook.margin          = Vec2(BOOK_BUTTON_MARGIN);
   styleButtonBook.textSize        = 0.5f;
 
   styleButtonBottom               = styleButtonBook;
-  styleButtonBottom.margin        = BOTTOM_BUTTON_MARGIN;
+  styleButtonBottom.margin        = Vec2(BOTTOM_BUTTON_MARGIN);
   styleButtonBottom.textSize      = 0.6f;
 
   // @Hack: Gets played manually by builder code so that it plays on pressing B. Consider revising...
   styleButtonBack                 = styleButtonBottom;
   styleButtonBack.pressedSound    = SoundEffect.none;
   styleButtonBack.pressedSoundVol = 0.0;
+
+  stylePage                       = styleButtonBook;
+  stylePage.colors                = colorTable;
+  stylePage.margin                = Vec2(DEFAULT_PAGE_MARGIN);
+  stylePage.textSize              = DEFAULT_PAGE_TEXT_SIZE;
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
@@ -300,7 +300,7 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
     newPageId.chapter = book.chapters.length + newPageId.chapter;
   }
 
-  ui.loadPage(&loadedPage, book.chapters[newPageId.chapter], newPageId.chapter, defaultPageTextSize, Vec2(defaultPageMargin));
+  ui.loadPage(&loadedPage, book.chapters[newPageId.chapter], newPageId.chapter, &stylePage);
   scrollCache.needsRepaint = true;
   frameNeedsRender = true;
 
@@ -834,35 +834,10 @@ extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {
 immutable string[ColorTheme.max+1] COLOR_THEME_NAMES = [
   ColorTheme.warm    : "Warm",
   ColorTheme.neutral : "Neutral",
+  ColorTheme.night   : "Night",
 ];
 
 immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
-  ColorTheme.warm : [
-    ui.Color.clear_color                      : C2D_Color32(0xE6, 0xDA, 0xB6, 0xFF),
-    ui.Color.text                             : C2D_Color32(0x00, 0x00, 0x00, 0xFF),
-    ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xE9, 0xC4, 0xFF),
-    ui.Color.bg_stripes_dark                  : C2D_Color32(0xD4, 0xC4, 0xAA, 0xFF),
-    ui.Color.bg_stripes_light                 : C2D_Color32(0xBF, 0xB4, 0x99, 0xFF),
-    ui.Color.button_normal                    : C2D_Color32(0xFB, 0xF6, 0xE2, 0xFF),
-    ui.Color.button_sel_indicator             : C2D_Color32(0x87, 0xAB, 0x40, 0xFF),
-
-    ui.Color.button_bottom_top                : C2D_Color32(0xF4, 0xED, 0xD7, 0xFF),
-    ui.Color.button_bottom_bottom             : C2D_Color32(0xC7, 0xC0, 0xA9, 0xFF),
-    ui.Color.button_bottom_base               : C2D_Color32(0xE4, 0xDA, 0xBD, 0xFF),
-    ui.Color.button_bottom_line               : C2D_Color32(0x9E, 0x98, 0x86, 0xFF),
-    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6C, 0x64, 0xFF),
-    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xBF, 0xBD, 0xB2, 0xFF),
-    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA6, 0xA3, 0x97, 0xFF),
-    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7A, 0x79, 0x74, 0xFF),
-    ui.Color.button_bottom_text               : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
-    ui.Color.button_bottom_text_bevel         : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
-
-    ui.Color.button_bottom_above_fade         : C2D_Color32(0xE9, 0xE2, 0xD2, 0x80),
-    ui.Color.scroll_indicator                 : C2D_Color32(0xCA, 0xC1, 0x5F, 0xFF),
-    ui.Color.scroll_indicator_outline         : C2D_Color32(0xF0, 0xF1, 0xE1, 0xFF),
-    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x9A, 0x20, 0xFF),
-    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xBD, 0x78, 0xFF),
-  ],
   ColorTheme.neutral : [
     ui.Color.clear_color                      : C2D_Color32(0xEE, 0xEE, 0xEE, 0xFF),
     ui.Color.text                             : C2D_Color32(0x00, 0x00, 0x00, 0xFF),
@@ -891,6 +866,58 @@ immutable ui.ColorTable[ColorTheme.max+1] COLOR_THEMES = [
     ui.Color.button_bottom_text_bevel         : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
 
     ui.Color.button_bottom_above_fade         : C2D_Color32(0xF2, 0xF2, 0xF7, 0x80),
+    ui.Color.scroll_indicator                 : C2D_Color32(0x66, 0xAD, 0xC1, 0xFF),
+    ui.Color.scroll_indicator_outline         : C2D_Color32(0xE1, 0xED, 0xF1, 0xFF),
+    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x80, 0x20, 0xFF),
+    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xAE, 0x78, 0xFF),
+  ],
+  ColorTheme.warm : [
+    ui.Color.clear_color                      : C2D_Color32(0xE6, 0xDA, 0xB6, 0xFF),
+    ui.Color.text                             : C2D_Color32(0x00, 0x00, 0x00, 0xFF),
+    ui.Color.bg_bg                            : C2D_Color32(0xF5, 0xE9, 0xC4, 0xFF),
+    ui.Color.bg_stripes_dark                  : C2D_Color32(0xD4, 0xC4, 0xAA, 0xFF),
+    ui.Color.bg_stripes_light                 : C2D_Color32(0xBF, 0xB4, 0x99, 0xFF),
+    ui.Color.button_normal                    : C2D_Color32(0xFB, 0xF6, 0xE2, 0xFF),
+    ui.Color.button_sel_indicator             : C2D_Color32(0x87, 0xAB, 0x40, 0xFF),
+
+    ui.Color.button_bottom_top                : C2D_Color32(0xF4, 0xED, 0xD7, 0xFF),
+    ui.Color.button_bottom_bottom             : C2D_Color32(0xC7, 0xC0, 0xA9, 0xFF),
+    ui.Color.button_bottom_base               : C2D_Color32(0xE4, 0xDA, 0xBD, 0xFF),
+    ui.Color.button_bottom_line               : C2D_Color32(0x9E, 0x98, 0x86, 0xFF),
+    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6C, 0x64, 0xFF),
+    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xBF, 0xBD, 0xB2, 0xFF),
+    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA6, 0xA3, 0x97, 0xFF),
+    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x7A, 0x79, 0x74, 0xFF),
+    ui.Color.button_bottom_text               : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
+    ui.Color.button_bottom_text_bevel         : C2D_Color32(0xFF, 0xFF, 0xFF, 0xFF),
+
+    ui.Color.button_bottom_above_fade         : C2D_Color32(0xE9, 0xE2, 0xD2, 0x80),
+    ui.Color.scroll_indicator                 : C2D_Color32(0xCA, 0xC1, 0x5F, 0xFF),
+    ui.Color.scroll_indicator_outline         : C2D_Color32(0xF0, 0xF1, 0xE1, 0xFF),
+    ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x9A, 0x20, 0xFF),
+    ui.Color.scroll_indicator_pushing_outline : C2D_Color32(0xE3, 0xBD, 0x78, 0xFF),
+  ],
+  ColorTheme.night : [
+    ui.Color.clear_color                      : C2D_Color32(0x27, 0x2A, 0x38, 0xFF),
+    ui.Color.text                             : C2D_Color32(0xDD, 0xDD, 0xDD, 0xFF),
+    ui.Color.bg_bg                            : C2D_Color32(0x2F, 0x32, 0x41, 0xFF),
+    ui.Color.bg_stripes_dark                  : C2D_Color32(0x25, 0x26, 0x32, 0xFF),
+    ui.Color.bg_stripes_light                 : C2D_Color32(0x3E, 0x41, 0x4F, 0xFF),
+    ui.Color.button_normal                    : C2D_Color32(0x3D, 0x42, 0x52, 0xFF),
+    ui.Color.button_sel_indicator             : C2D_Color32(0x14, 0xB8, 0x24, 0xE0),
+    ui.Color.button_bottom_top                : C2D_Color32(0x4F, 0x52, 0x63, 0xFF),
+    ui.Color.button_bottom_bottom             : C2D_Color32(0x40, 0x43, 0x4F, 0xFF),
+    ui.Color.button_bottom_base               : C2D_Color32(0x4A, 0x4D, 0x5C, 0xFF),
+
+    ui.Color.button_bottom_line               : C2D_Color32(0x42, 0x42, 0x46, 0xFF),
+    ui.Color.button_bottom_pressed_top        : C2D_Color32(0x6E, 0x6E, 0x6A, 0xFF),
+    ui.Color.button_bottom_pressed_bottom     : C2D_Color32(0xC0, 0xC0, 0xBC, 0xFF),
+    ui.Color.button_bottom_pressed_base       : C2D_Color32(0xA5, 0xA5, 0x9E, 0xFF),
+    ui.Color.button_bottom_pressed_line       : C2D_Color32(0x45, 0x45, 0x45, 0xFF),
+    ui.Color.button_bottom_text               : C2D_Color32(0xF2, 0xF2, 0xF7, 0xFF),
+    ui.Color.button_bottom_text_bevel         : C2D_Color32(0x11, 0x11, 0x11, 0xFF),
+
+    ui.Color.button_bottom_above_fade         : C2D_Color32(0x26, 0x26, 0x35, 0x80),
     ui.Color.scroll_indicator                 : C2D_Color32(0x66, 0xAD, 0xC1, 0xFF),
     ui.Color.scroll_indicator_outline         : C2D_Color32(0xE1, 0xED, 0xF1, 0xFF),
     ui.Color.scroll_indicator_pushing         : C2D_Color32(0xDD, 0x80, 0x20, 0xFF),

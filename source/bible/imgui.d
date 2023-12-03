@@ -87,9 +87,9 @@ struct LoadedPage {
 
   int linesInPage;
 
-  float textSize = 0;
-  Vec2 pageMargin;
   Vec2 glyphSize;
+
+  BoxStyle* style;
 }
 
 struct ScrollInfo {
@@ -130,7 +130,7 @@ struct BoxStyle {
   // Not making it ColorTable* because it's easy to screw up access by indexing the pointer instead of the table.
   const(uint)[] colors;
 
-  float margin = 0;
+  Vec2 margin;
   float textSize = 0;
   SoundEffect pressedSound = SoundEffect.button_confirm;
   float pressedSoundVol = 0.5;
@@ -523,7 +523,7 @@ BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Scro
   // content to the top of the screen.
   auto extraBottomScreen  = size(clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom])).y;
   box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphSize.y
-                                + loadedPage.pageMargin.y * 2 - height + extraBottomScreen, 0);
+                                + loadedPage.style.margin.y * 2 - height + extraBottomScreen, 0);
 
   return BoxAndSignal(box, signalFromBox(box));
 }
@@ -801,10 +801,10 @@ void frameEnd() { with (gUiData) {
           break;
         case SizeKind.text_content:
           if (axis == Axis2.x) {
-            box.computedSize[axis] = box.text.width + 2*box.style.margin;
+            box.computedSize[axis] = box.text.width + 2*box.style.margin.x;
           }
           else {
-            box.computedSize[axis] = box.textHeight + 2*box.style.margin;
+            box.computedSize[axis] = box.textHeight + 2*box.style.margin.y;
           }
           break;
         case SizeKind.percent_of_parent:
@@ -1527,7 +1527,7 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
   }
 }}
 
-void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, float textScale, Vec2 margin) { with (page) {
+void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pageStyle) { with (page) {
   if (page.arena.data.ptr) {
     arenaClear(&page.arena);
   }
@@ -1542,19 +1542,20 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, float textSc
   textArray = arenaPushArray!(C2D_Text, false)(&page.arena, numLines);
   textBuf   = C2D_TextBufNew(&page.arena, 16384);
 
+  page.style       = pageStyle;
   page.linesInPage = numLines;
-  page.textSize    = textScale;
-  page.pageMargin  = margin;
+
+  float textScale = pageStyle.textSize;
 
   wrapInfos = arenaPushArray!(C2D_WrapInfo, false)(&page.arena, numLines);
 
   // Chapter heading
   C2D_TextParse(&textArray[0], textBuf, arenaPrintf(&page.arena, "Chapter %d", chapterNum), flags : C2D_ParseFlags.bible);
-  wrapInfos[0] = C2D_CalcWrapInfo(&textArray[0], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * margin.x);
+  wrapInfos[0] = C2D_CalcWrapInfo(&textArray[0], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * pageStyle.margin.x);
 
   foreach (lineNum; 0..pageLines.length) {
     C2D_TextParse(&textArray[lineNum+1], textBuf, pageLines[lineNum], flags : C2D_ParseFlags.bible);
-    wrapInfos[lineNum+1] = C2D_CalcWrapInfo(&textArray[lineNum+1], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * margin.x);
+    wrapInfos[lineNum+1] = C2D_CalcWrapInfo(&textArray[lineNum+1], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * pageStyle.margin.x);
   }
 
   auto actualNumLines = numLines;

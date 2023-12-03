@@ -13,8 +13,8 @@ Vec2 renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, fl
   float textX, textY;
   final switch (box.justification) {
     case Justification.min:
-      textX = rect.left+box.style.margin;
-      textY = rect.top+box.style.margin;
+      textX = rect.left+box.style.margin.x;
+      textY = rect.top+box.style.margin.y;
       break;
     case Justification.center:
       textX = (rect.left + rect.right)/2 - box.text.width/2;
@@ -44,8 +44,8 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   float textX, textY;
   final switch (box.justification) {
     case Justification.min:
-      textX = rect.left+box.style.margin;
-      textY = rect.top+box.style.margin;
+      textX = rect.left+box.style.margin.x;
+      textY = rect.top+box.style.margin.y;
       break;
     case Justification.center:
       textX = (rect.left + rect.right)/2 - box.text.width/2;
@@ -138,8 +138,8 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   float textX, textY;
   final switch (box.justification) {
     case Justification.min:
-      textX = rect.left+box.style.margin;
-      textY = rect.top+box.style.margin;
+      textX = rect.left+box.style.margin.x;
+      textY = rect.top+box.style.margin.y;
       break;
     case Justification.center:
       textX = (rect.left + rect.right)/2 - box.text.width/2;
@@ -788,23 +788,25 @@ void renderPage(
 ) { with (loadedPage) {
   float width, height;
 
-  float startX = pageMargin.x;
+  float startX   = style.margin.x;
+  float textSize = style.textSize;
 
   C2D_TextGetDimensions(&loadedPage.textArray[0], textSize, textSize, &width, &height);
 
   //float renderStartOffset = round(loadedPage.scrollInfo.offset +
   //                                loadedPage.actualLineNumberTable[virtualLine].realPos +
-  //                                pageMargin.y);
+  //                                style.margin.y);
 
-  int virtualLine = min(max(cast(int) floor((round(from-pageMargin.y))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
+  int virtualLine = min(max(cast(int) floor((round(from-style.margin.y))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
   int startLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
-  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + pageMargin.y;
+  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + style.margin.y;
 
   float extra = 0;
   int i = startLine; //max(startLine, 0);
   while (offsetY < to && i < linesInPage) {
     C2D_DrawText(
-      &loadedPage.textArray[i], C2D_WordWrapPrecalc, GFXScreen.bottom, startX, offsetY, 0.5f, textSize, textSize,
+      &loadedPage.textArray[i], C2D_WithColor | C2D_WordWrapPrecalc, GFXScreen.bottom, startX, offsetY, 0.5f, textSize, textSize,
+      style.colors[Color.text],
       &loadedPage.wrapInfos[i]
     );
     extra = height * (1 + (loadedPage.wrapInfos[i].words.length ? loadedPage.wrapInfos[i].words[loadedPage.textArray[i].words-1].newLineNumber : 0));
