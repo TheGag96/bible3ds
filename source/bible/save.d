@@ -12,10 +12,11 @@ struct Settings {
   ColorTheme colorTheme;
   ubyte[62] spare;
 }
+static assert (Settings.sizeof == 64);
 
 struct Progress {
-  ubyte chapter;
-  ubyte scrollAmount; // 0-255 meaning top of page to bottom of page
+  ubyte chapter = 1;
+  ubyte verse;
 }
 
 // @TODO: Consider an actual config file of some kind

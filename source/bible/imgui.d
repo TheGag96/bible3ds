@@ -510,7 +510,7 @@ ScopedLayout ScopedButtonLayout(
   return result;
 }
 
-BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache) {
+BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache, int* jumpVerseRequest) {
   Box* box = makeBox(BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus, id);
   box.semanticSize[] = [SIZE_FILL_PARENT, SIZE_FILL_PARENT].s;
   box.scrollCache    = scrollCache;
@@ -524,6 +524,24 @@ BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Scro
   auto extraBottomScreen  = size(clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom])).y;
   box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphSize.y
                                 + loadedPage.style.margin.y * 2 - height + extraBottomScreen, 0);
+
+  if (jumpVerseRequest && *jumpVerseRequest) {
+    int jumpVerse;
+    foreach (i, ref lineEntry; loadedPage.actualLineNumberTable) {
+      if (lineEntry.textLineIndex == *jumpVerseRequest) {
+        jumpVerse = i;
+        break;
+      }
+    }
+
+    float offset = loadedPage.style.margin.y + jumpVerse * loadedPage.glyphSize.y;
+    box.scrollInfo.offset     = offset;
+    box.scrollInfo.offsetLast = offset;
+
+    scrollCache.needsRepaint = true;
+
+    *jumpVerseRequest = 0;
+  }
 
   return BoxAndSignal(box, signalFromBox(box));
 }

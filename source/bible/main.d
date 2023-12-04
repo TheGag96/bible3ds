@@ -58,6 +58,7 @@ struct MainData {
   float size = 0;
 
   PageId pageId;
+  int jumpVerseRequest;
   ui.LoadedPage loadedPage;
 
   bool frameNeedsRender;
@@ -390,7 +391,12 @@ void mainGui(MainData* mainData, Input* input) {
         // @TODO: Do this without blocking UI
         waitAsyncBibleLoad(&mainData.bible);
         mainData.curView = View.reading;
-        loadBiblePage(mainData, PageId(gSaveFile.settings.translation, cast(Book) command.value, 1));
+
+        auto book    = cast(Book) command.value;
+        auto chapter = gSaveFile.progress[book].chapter;
+        auto verse   = gSaveFile.progress[book].verse;
+        loadBiblePage(mainData, PageId(gSaveFile.settings.translation, book, chapter));
+        mainData.jumpVerseRequest = verse;
         break;
     }
   }
@@ -570,12 +576,27 @@ void mainGui(MainData* mainData, Input* input) {
       break;
 
     case View.reading:
-      auto readPane = scrollableReadPane("reading_scroll_read_view", mainData.loadedPage, &mainData.scrollCache);
+      auto readPane = scrollableReadPane("reading_scroll_read_view", mainData.loadedPage, &mainData.scrollCache, &mainData.jumpVerseRequest);
       mainData.loadedPage.scrollInfo = readPane.box.scrollInfo;
 
       {
         auto style = ScopedStyle(&mainData.styleButtonBack);
         if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+          auto scrollInfo = &mainData.loadedPage.scrollInfo;
+
+          auto foundIndex = mainData.loadedPage.actualLineNumberTable.length-1;
+          foreach (i, ref lineEntry; mainData.loadedPage.actualLineNumberTable) {
+            if (lineEntry.realPos > scrollInfo.offset) {
+              foundIndex = i;
+              break;
+            }
+          }
+          if (foundIndex > 0) foundIndex--;
+          int curVerse = mainData.loadedPage.actualLineNumberTable[foundIndex].textLineIndex;
+
+          gSaveFile.progress[mainData.pageId.book] = Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) curVerse);
+          saveSettings();
+
           sendCommand(CommandCode.switch_view, View.book);
           audioPlaySound(SoundEffect.button_back, 0.5);
         }
