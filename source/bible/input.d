@@ -141,7 +141,7 @@ void updateInput(Input* input, uint _down, uint _held, touchPosition _touch, cir
   }
 }}
 
-Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (input) {
+Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF, uint allowedAxes = 0xFFFFFFFF) { with (input) {
   Vec2 result;
 
   final switch (scrollMethodCur) {
@@ -157,7 +157,11 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
       }
       break;
     case ScrollMethod.touch:
-      if (!held(Key.touch)) {
+      if ( !held(Key.touch)     &&
+           !prevHeld(Key.touch) &&
+           (!(allowedAxes & (1 << Axis2.x)) || scrollVel[Axis2.x] == 0) &&
+           (!(allowedAxes & (1 << Axis2.y)) || scrollVel[Axis2.y] == 0))
+      {
         scrollMethodCur = ScrollMethod.none;
       }
       break;
@@ -202,27 +206,6 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
 
   final switch (scrollMethodCur) {
     case ScrollMethod.none:
-      foreach (axis; enumRange!Axis2) {
-        if (held(Key.touch)) {
-          // This can happen if touch is disallowed as an input method
-          scrollVel[axis] = 0;
-        }
-        else if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
-          if (axis == Axis2.x) {
-            scrollVel[axis] = max(min(prevPrevTouchRaw.px - prevTouchRaw.px, 40), -40);
-          }
-          else {
-            scrollVel[axis] = max(min(prevPrevTouchRaw.py - prevTouchRaw.py, 40), -40);
-          }
-        }
-
-        result[axis] = scrollVel[axis];
-        scrollVel[axis] *= 0.95;
-
-        if (fabs(scrollVel[axis]) < 3) {
-          scrollVel[axis] = 0;
-        }
-      }
       break;
     case ScrollMethod.dpad:
       if      (held(Key.dup))    result.y = -5;
@@ -234,7 +217,32 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
       result = Vec2(circleRaw.dx/10, -circleRaw.dy/10);
       break;
     case ScrollMethod.touch:
-      result = Vec2(prevTouchRaw.px - touchRaw.px, prevTouchRaw.py - touchRaw.py);
+      foreach (axis; enumRange!Axis2) {
+        if (!(allowedAxes & (1 << axis))) continue;
+
+        if (held(Key.touch)) {
+          scrollVel[axis] = 0;
+          result[axis] = axis == Axis2.x ? prevTouchRaw.px - touchRaw.px : prevTouchRaw.py - touchRaw.py;
+        }
+        else {
+          if (prevHeld(Key.touch) && prevPrevHeld(Key.touch)) {
+            if (axis == Axis2.x) {
+              scrollVel[axis] = max(min(prevPrevTouchRaw.px - prevTouchRaw.px, 40), -40);
+            }
+            else {
+              scrollVel[axis] = max(min(prevPrevTouchRaw.py - prevTouchRaw.py, 40), -40);
+            }
+          }
+
+          result[axis] = scrollVel[axis];
+          scrollVel[axis] *= 0.95;
+
+          if (fabs(scrollVel[axis]) < 3) {
+            scrollVel[axis] = 0;
+          }
+        }
+      }
+
       break;
     case ScrollMethod.custom: break;
   }
@@ -244,8 +252,4 @@ Vec2 updateScrollDiff(Input* input, uint allowedMethods = 0xFFFFFFFF) { with (in
 
 void resetScrollDiff(Input* input) { with (input) {
   scrollVel = 0;
-}}
-
-bool touchScrollOcurring(in Input input, Axis2 axis) { with (input) {
-  return scrollMethodCur == ScrollMethod.touch || (scrollMethodCur == ScrollMethod.none && scrollVel[axis] != 0);
 }}

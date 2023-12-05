@@ -1221,7 +1221,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     }
 
     box.hoveredChild = cursored.childId;
-    if (!touchScrollOcurring(*input, flowAxis)) cursored.hotT = 1;
+    if (input.scrollMethodCur != ScrollMethod.touch) cursored.hotT = 1;
     hot = cursored;
 
     // Signal pushing against scroll limit if we're holding a directional key and can't go any further
@@ -1273,7 +1273,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
     if (!inputIsNull(input) && (needToScrollTowardsChild || input.scrollMethodCur == ScrollMethod.custom)) {
       // Scrolling towards off-screen children will occur if triggered by keying over to it until our target is on screen.
-      if (input.scrollMethodCur == ScrollMethod.none && input.scrollVel[flowAxis] == 0 && needToScrollTowardsChild) {
+      if (input.scrollMethodCur == ScrollMethod.none && needToScrollTowardsChild) {
         input.scrollMethodCur = ScrollMethod.custom;
         input.scrollVel = 0;
       }
@@ -1296,12 +1296,12 @@ Signal signalFromBox(Box* box) { with (gUiData) {
                                                     : max(hot.rect.max[flowAxis] - cursorBounds.max[flowAxis],  2));
     }
     else if (!inputIsNull(input)) {
-      scrollDiff = updateScrollDiff(input, allowedMethods);
+      scrollDiff = updateScrollDiff(input, allowedMethods, 1 << flowAxis);
     }
 
     respondToScroll(box, &result, scrollDiff);
 
-    if (needToScrollTowardsChild && touchScrollOcurring(*input, flowAxis)) {
+    if (needToScrollTowardsChild && input.scrollMethodCur == ScrollMethod.touch) {
       // Mimicking how the 3DS UI works, select nearest in-view child while scrolling
 
       if (hot.rect.max[flowAxis] > cursorBounds.max[flowAxis]) {
