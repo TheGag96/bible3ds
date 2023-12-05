@@ -637,7 +637,6 @@ void mainGui(MainData* mainData, Input* input) {
             spacer(4);
           }
 
-          auto style = ScopedStyle(&mainData.styleButtonBack);
           if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
@@ -660,10 +659,9 @@ void mainGui(MainData* mainData, Input* input) {
               mainData.fadingBetweenThemes      = true;
               mainData.scrollCache.needsRepaint = true;
             }
-            spacer(8);
+            spacer(4);
           });
 
-          auto style = ScopedStyle(&mainData.styleButtonBack);
           if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
@@ -724,10 +722,14 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
     auto previewStyle = arenaPush!BoxStyle(&gUiData.frameArena);
     *previewStyle = mainData.styleButtonBook;
     previewStyle.colors = COLOR_THEMES[colorTheme];
+    previewStyle.margin   *= 4.0/5;
+    previewStyle.textSize *= 0.9;
 
     auto previewStyleBottom = arenaPush!BoxStyle(&gUiData.frameArena);
     *previewStyleBottom = mainData.styleButtonBottom;
     previewStyleBottom.colors = COLOR_THEMES[colorTheme];
+    previewStyleBottom.margin   *= 4.0/5;
+    previewStyleBottom.textSize *= 0.9;
 
     auto style = ScopedStyle(previewStyle);
 
