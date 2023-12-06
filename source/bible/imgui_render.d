@@ -246,7 +246,8 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   C2D_DrawRectSolid(rect.left, rect.top, z, rect.right-rect.left, 1, lineColor);
 
   // @TODO: Flipped for dark bottom button
-  int textBevelOffset = pressed ? -1 : 1;
+  //int textBevelOffset = pressed ? -1 : 1;
+  int textBevelOffset = 1;
 
   if (box.flags & BoxFlags.draw_text) {
     C2D_DrawText(
