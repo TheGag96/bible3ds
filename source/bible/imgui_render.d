@@ -344,6 +344,9 @@ Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
 
 Vec2 renderModalBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   auto rect = box.rect + drawOffset;
+
+  // What X and Y mean are flipped for this function's arguments. Goofy.
+  C3D_SetScissor(GPUScissorMode.normal, cast(uint) round(rect.top), cast(uint) round(rect.left), cast(uint) round(rect.bottom), cast(uint) round(rect.right));
   C2D_DrawRectSolid(rect.left, rect.top, z, rect.right - rect.left, rect.bottom - rect.top, box.style.colors[Color.clear_color]);
   return Vec2(0);
 }

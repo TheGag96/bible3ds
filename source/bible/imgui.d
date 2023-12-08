@@ -1446,6 +1446,8 @@ void sendCommand(uint code, uint value, UiData* uiData = gUiData) { with (uiData
 void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, float z = 0) { with (uiData) {
   mixin(timeBlock("render single screen"));
 
+  C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
+
   static immutable uint[] COLORS = [
     C2D_Color32(0xFF, 0x00, 0x00, 0xFF),
     C2D_Color32(0x00, 0xFF, 0x00, 0xFF),

@@ -226,6 +226,8 @@ extern(C) int main(int argc, char** argv) {
         mixin(timeBlock("render > left"));
         C2D_TargetClear(topLeft, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topLeft);
+        C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
+        C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
         if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
         ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
@@ -235,6 +237,8 @@ extern(C) int main(int argc, char** argv) {
         mixin(timeBlock("render > right"));
         C2D_TargetClear(topRight, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(topRight);
+        C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
+        C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
         if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
         ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
@@ -244,6 +248,8 @@ extern(C) int main(int argc, char** argv) {
         mixin(timeBlock("render > bottom"));
         C2D_TargetClear(bottom, mainData.colorTable[ui.Color.clear_color]);
         C2D_SceneBegin(bottom);
+        C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
+        C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
         if (mainData.renderModal) ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
         ui.drawBackground(GFXScreen.bottom, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
