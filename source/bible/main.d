@@ -602,25 +602,84 @@ void mainGui(MainData* mainData, Input* input) {
       mainData.loadedPage.scrollInfo = readPane.box.scrollInfo;
 
       {
-        auto style = ScopedStyle(&mainData.styleButtonBack);
-        if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-          auto scrollInfo = &mainData.loadedPage.scrollInfo;
+        auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
+        auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
-          auto foundIndex = mainData.loadedPage.actualLineNumberTable.length-1;
-          foreach (i, ref lineEntry; mainData.loadedPage.actualLineNumberTable) {
-            if (lineEntry.realPos > scrollInfo.offset) {
-              foundIndex = i;
-              break;
+        {
+          auto backStyle = ScopedStyle(&mainData.styleButtonBack);
+
+          if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+            auto scrollInfo = &mainData.loadedPage.scrollInfo;
+
+            auto foundIndex = mainData.loadedPage.actualLineNumberTable.length-1;
+            foreach (i, ref lineEntry; mainData.loadedPage.actualLineNumberTable) {
+              if (lineEntry.realPos > scrollInfo.offset) {
+                foundIndex = i;
+                break;
+              }
             }
+            if (foundIndex > 0) foundIndex--;
+            int curVerse = mainData.loadedPage.actualLineNumberTable[foundIndex].textLineIndex;
+
+            gSaveFile.progress[mainData.pageId.book] = Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) curVerse);
+            saveSettings();
+
+            sendCommand(CommandCode.switch_view, View.book);
+            audioPlaySound(SoundEffect.button_back, 0.5);
           }
-          if (foundIndex > 0) foundIndex--;
-          int curVerse = mainData.loadedPage.actualLineNumberTable[foundIndex].textLineIndex;
+        }
 
-          gSaveFile.progress[mainData.pageId.book] = Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) curVerse);
-          saveSettings();
+        if (bottomButton("Chapters").clicked) {
+          openModal(mainData, (MainData* mainData, UiView* uiView) {
+            enum CHAPTERS_PER_ROW = 5;
 
-          sendCommand(CommandCode.switch_view, View.book);
-          audioPlaySound(SoundEffect.button_back, 0.5);
+            bool result = false;
+
+            Signal scrollSignal;
+            auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.center, LayoutKind.fill_parent);
+
+            auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length;
+            auto numRows = numChapters / CHAPTERS_PER_ROW;
+
+            foreach (row; 0..numRows) {
+              spacer(4);
+
+              {
+                auto rowLayout = ScopedLayout(tnum("lt_chapter_row_", row), Axis2.x, Justification.center, LayoutKind.fit_children);
+
+                spacer();
+
+                auto numInRow = min(numChapters - CHAPTERS_PER_ROW * row, CHAPTERS_PER_ROW);
+                foreach (chapter; row * CHAPTERS_PER_ROW + 1..row * CHAPTERS_PER_ROW + numInRow + 1) {
+                  if (chapter != row * CHAPTERS_PER_ROW + 1) spacer(2);
+
+                  auto chapterButton = button(tnum("", chapter));
+                  chapterButton.box.semanticSize[] = Size(SizeKind.pixels, 40, 1);
+
+                  if (chapterButton.clicked) {
+                    sendCommand(
+                      CommandCode.open_book,
+                      formatOpenBookCommand(mainData.pageId.book, chapter, 0),
+                      &mainData.views[View.reading].uiData,
+                    );
+                    result = true;
+                  }
+                }
+
+                spacer();
+              }
+            }
+
+            spacer(4);
+
+            if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
+              result = true;
+
+              audioPlaySound(SoundEffect.button_back, 0.5);
+            }
+
+            return result;
+          });
         }
       }
 
