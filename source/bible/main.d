@@ -532,7 +532,7 @@ void mainGui(MainData* mainData, Input* input) {
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 0) {
-                auto bookButton = button(book, 150);
+                auto bookButton = button(book, 150, extraFlags : BoxFlags.selectable);
 
                 // Select the first book button if nothing else is
                 if (i == 0 && boxIsNull(gUiData.hot)) gUiData.hot = bookButton.box;
@@ -553,7 +553,7 @@ void mainGui(MainData* mainData, Input* input) {
 
             foreach (i, book; BOOK_NAMES) {
               if (i % 2 == 1) {
-                auto bookButton = button(book, 150);
+                auto bookButton = button(book, 150, extraFlags : BoxFlags.selectable);
                 if (bookButton.clicked) {
                   sendCommand(CommandCode.open_book, formatOpenBookCommand(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
                 }

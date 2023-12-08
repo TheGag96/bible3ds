@@ -255,8 +255,11 @@ Box* label(const(char)[] text, Justification justification = Justification.min) 
   return box;
 }
 
-Signal button(const(char)[] text, int size = 0, Justification justification = Justification.center) {
-  Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text | BoxFlags.selectable, text);
+Signal button(
+  const(char)[] text,
+  int size = 0, Justification justification = Justification.center, BoxFlags extraFlags = BoxFlags.init
+) {
+  Box* box = makeBox(extraFlags | BoxFlags.clickable | BoxFlags.draw_text, text);
 
   if (size == 0) {
     box.semanticSize[Axis2.x] = Size(SizeKind.text_content, 0, 1);
