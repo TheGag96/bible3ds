@@ -576,7 +576,7 @@ struct UiData {
   uint frameIndex;
 
   Command[100] commands;
-  size_t numCommands;
+  size_t commandSeenIndex, numCommands;
 
   Box* hot, active, focused;
 
@@ -748,10 +748,11 @@ void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
 }}
 
 void clear(UiData* uiData) { with (uiData) {
-  curBox      = gNullBox;
-  root        = gNullBox;
-  style       = &DEFAULT_STYLE;
-  numCommands = 0;
+  curBox           = gNullBox;
+  root             = gNullBox;
+  style            = &DEFAULT_STYLE;
+  commandSeenIndex = 0;
+  numCommands      = 0;
 
   hot     = gNullBox;
   focused = gNullBox;
@@ -772,7 +773,6 @@ void frameStart(UiData* uiData, Input* input) {
     curBox      = gNullBox;
     root        = gNullBox;
     style       = &DEFAULT_STYLE;
-    numCommands = 0;
 
     C2D_TextBufClear(textBuf);
     hashTablePrune(&boxes);
@@ -1421,18 +1421,25 @@ void respondToScroll(Box* box, Signal* result, Vec2 scrollDiff) { with (gUiData)
   }
 }}}
 
-Command[] getCommands(UiData* uiData = gUiData) { with (uiData) {
-  if (uiData) {
-    return commands[0..numCommands];
+Command getCommand(UiData* uiData = gUiData) { with (uiData) {
+  if (uiData && numCommands > 0) {
+    auto oldIndex = commandSeenIndex;
+    commandSeenIndex = (commandSeenIndex + 1) % commands.length;
+    numCommands--;
+    return commands[oldIndex];
   }
   else {
-    return [];
+    return Command.init;
   }
 }}
 
-void sendCommand(uint code, uint value) { with (gUiData) {
-  assert(numCommands < commands.length, "Too many UI commands in one frame!");
-  commands[numCommands] = Command(code, value);
+void sendCommand(uint code, uint value, UiData* uiData = gUiData) { with (uiData) {
+  assert(uiData, "Can't send a command when there's no UI data to send it to!");
+
+  assert(numCommands <  commands.length, "Too many UI commands sent without being processed!");
+  auto insertIndex = (commandSeenIndex + numCommands) % commands.length;
+
+  commands[insertIndex] = Command(code, value);
   numCommands++;
 }}
 

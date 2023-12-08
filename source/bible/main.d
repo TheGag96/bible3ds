@@ -378,12 +378,18 @@ void mainGui(MainData* mainData, Input* input) {
   mixin(timeBlock("mainGui"));
 
   enum CommandCode {
+    none,
     switch_view,
     open_book,
   }
 
-  foreach (command; getCommands()) {
+  Command command;
+  while (true) {
+    command = getCommand();
+    if (!command.code) break;
+
     final switch (cast(CommandCode) command.code) {
+      case CommandCode.none: break;
       case CommandCode.switch_view:
         mainData.curView = cast(View) command.value;
         break;
