@@ -137,21 +137,8 @@ struct ScopedArenaRestore {
 }
 
 // Internal.
-// @TODO: Don't use log2 lol?
-enum alignShiftAmount(T) = cast(size_t) log2(cast(float) T.alignof);
-
-// Internal.
-ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignShift) { with (arena) {
-  ubyte* toReturn;
-  if (alignShift != 0) {
-    //align to minimum align of the desired allocation
-    toReturn  = cast(ubyte*) (cast(size_t)index & ~((1 << alignShift) - 1));
-    toReturn += (index != toReturn) * (1 << alignShift);
-  }
-  else {
-    toReturn = index;
-  }
-
+ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignment) { with (arena) {
+  ubyte* toReturn = cast(ubyte*) ((cast(size_t)index + alignment - 1) & ~(alignment - 1));
   ubyte* newIndex = toReturn + amount;
 
   debug {
@@ -163,6 +150,7 @@ ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignShift) { wit
   }
 
   if (newIndex > data.ptr + data.length) {
+    assert(0, "Arena allocation failed!");  // @TODO: Consider chained arenas
     return null;
   }
   else {
@@ -173,14 +161,7 @@ ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignShift) { wit
 
 ubyte[] arenaPushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
   ubyte* result = arenaAlignBumpIndex(arena, bytes, aligning);
-  if (result != null) {
-    return (cast(ubyte*) result)[0..bytes];
-  }
-  else {
-    //leak memory if allocation failed
-    assert(0, "temp allocation failed");
-    return (cast(ubyte*) malloc(bytes))[0..bytes];
-  }
+  return (cast(ubyte*) result)[0..bytes];
 }
 
 ubyte[] arenaPushBytesZero(Arena* arena, size_t bytes, size_t aligning = 1) {
@@ -194,39 +175,25 @@ ubyte[] arenaPushBytesZero(Arena* arena, size_t bytes, size_t aligning = 1) {
 T* arenaPush(T, bool init = true)(Arena* arena) {
   import core.lifetime : emplace;
 
-  T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, alignShiftAmount!T);
-  if (result != null) {
-    static if (init && __traits(compiles, () { auto test = T.init; })) {
-      emplace!T(result, T.init);
-    }
+  T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, T.alignof);
+  static if (init && __traits(compiles, () { auto test = T.init; })) {
+    emplace!T(result, T.init);
+  }
 
-    return result;
-  }
-  else {
-    //leak memory if allocation failed
-    assert(0, "temp allocation failed");
-    return cast(T*) malloc(T.sizeof);
-  }
+  return result;
 }
 
 T[] arenaPushArray(T, bool init = true)(Arena* arena, size_t size) {
   import core.lifetime : emplace;
 
-  T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, alignShiftAmount!T);
-  if (result != null) {
-    static if (init && __traits(compiles, () { auto test = T.init; })) {
-      foreach (i; 0..size) {
-        emplace!T(result + i, T.init);
-      }
+  T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, T.alignof);
+  static if (init && __traits(compiles, () { auto test = T.init; })) {
+    foreach (i; 0..size) {
+      emplace!T(result + i, T.init);
     }
+  }
 
-    return result[0..size];
-  }
-  else {
-    //leak memory if allocation failed
-    assert(0, "temp allocation failed");
-    return (cast(T*) malloc(T.sizeof*size))[0..size];
-  }
+  return result[0..size];
 }
 
 Arena arenaPushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
@@ -245,6 +212,7 @@ extern(C) char[] arenaPrintf(Arena* arena, const(char)* spec, ...) {
 
   va_list args;
   va_start(args, spec);
+  scope (exit) va_end(args);
 
   int spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
 
@@ -252,19 +220,10 @@ extern(C) char[] arenaPrintf(Arena* arena, const(char)* spec, ...) {
 
   assert(length >= 0); //no idea what to do if length comes back negative
 
-  if (length+1 <= spaceRemaining) {
-    ubyte* result = arenaAlignBumpIndex(arena, length, 0);
-    return (cast(char*) result)[0..length];
-  }
-  else {
-    //leak memory if allocation failed
-    assert(0, "temp allocation failed");
-    auto buf = cast(char*) malloc(length+1);
-    vsnprintf(buf, length+1, spec, args);
-    return buf[0..length];
-  }
+  // Plus one because of the null character
+  char* result = cast(char*)arenaAlignBumpIndex(arena, length+1, 1);
 
-  va_end(args);
+  return result[0..length];
 }
 
 pragma(inline, true)
