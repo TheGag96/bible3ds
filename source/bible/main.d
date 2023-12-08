@@ -389,6 +389,11 @@ void mainGui(MainData* mainData, Input* input) {
     open_book,
   }
 
+  enum LOAD_BOOK_PROGRESS = 0;
+  static uint formatOpenBookCommand(Book book, int chapter, int verse) {
+    return book | (chapter << 8) | (verse << 16);
+  }
+
   Command command;
   while (true) {
     command = getCommand();
@@ -404,12 +409,17 @@ void mainGui(MainData* mainData, Input* input) {
         waitAsyncBibleLoad(&mainData.bible);
         mainData.curView = View.reading;
 
-        auto book    = cast(Book) command.value;
-        auto chapter = gSaveFile.progress[book].chapter;
-        auto verse   = gSaveFile.progress[book].verse;
+        auto book    = cast(Book) (command.value         & 0xFF);
+        auto chapter =            ((command.value >> 8)  & 0xFF);
+        auto verse   =            ((command.value >> 16) & 0xFF);
+
+        if (chapter == LOAD_BOOK_PROGRESS) {
+          chapter = gSaveFile.progress[book].chapter;
+          verse   = gSaveFile.progress[book].verse;
+        }
+
         loadBiblePage(mainData, PageId(gSaveFile.settings.translation, book, chapter));
         mainData.jumpVerseRequest = verse;
-        break;
     }
   }
 
@@ -528,7 +538,7 @@ void mainGui(MainData* mainData, Input* input) {
                 if (i == 0 && boxIsNull(gUiData.hot)) gUiData.hot = bookButton.box;
 
                 if (bookButton.clicked) {
-                  sendCommand(CommandCode.open_book, i);
+                  sendCommand(CommandCode.open_book, formatOpenBookCommand(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
                 }
 
                 spacer(8);
@@ -545,7 +555,7 @@ void mainGui(MainData* mainData, Input* input) {
               if (i % 2 == 1) {
                 auto bookButton = button(book, 150);
                 if (bookButton.clicked) {
-                  sendCommand(CommandCode.open_book, i);
+                  sendCommand(CommandCode.open_book, formatOpenBookCommand(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
                 }
 
                 spacer(8);
