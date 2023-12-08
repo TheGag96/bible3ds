@@ -89,7 +89,7 @@ struct TimeBlock {
 }
 
 // Generate a string to mixin to conveniently create a scoped timer block
-string timeBlock(string name) {
+string timeBlock(string name = __FUNCTION__) {
   static if (PROFILING_ENABLED) {
     char[] filtered = new char[name.length];
     size_t counter = 0;
