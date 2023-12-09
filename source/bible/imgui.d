@@ -1146,7 +1146,9 @@ Signal signalFromBox(Box* box) { with (gUiData) {
           hot                 = scrollAncestor;
         }
 
-        if (box.flags & BoxFlags.clickable) {
+        if ( (box.flags & BoxFlags.clickable) &&
+             inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
+        {
           audioPlaySound(SoundEffect.button_off, 0.125);
         }
 
