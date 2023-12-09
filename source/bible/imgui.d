@@ -176,6 +176,8 @@ struct Box {
   float hotT = 0, activeT = 0;
 
   Box* related;  // General-purpose field to relate boxes to other boxes.
+
+  float userVal = 0;
 }
 pragma(msg, "Size of Box: ", Box.sizeof);
 
