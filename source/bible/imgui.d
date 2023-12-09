@@ -42,8 +42,10 @@ enum BoxFlags : uint {
   draw_text            = 1 << 3,
   select_children      = 1 << 4,
   selectable           = 1 << 5,
-  horizontal_children  = 1 << 6,
-  demand_focus         = 1 << 7,
+  select_toggle        = 1 << 6,
+  select_falling_edge  = 1 << 7,
+  horizontal_children  = 1 << 8,
+  demand_focus         = 1 << 9,
 }
 
 enum SizeKind : ubyte {
@@ -1111,12 +1113,18 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       auto touchPoint = Vec2(input.touchRaw.px, input.touchRaw.py);
 
       if (touchInsideBoxAndAncestors(box, touchPoint)) {
-        if (box.flags & (BoxFlags.selectable)) {
-          hot           = box;
+        if ((box.flags & BoxFlags.selectable) && !(box.flags & BoxFlags.select_falling_edge)) {
+          if ((box.flags & BoxFlags.select_toggle) && hot == box) {
+            hot = gNullBox;
+          }
+          else {
+            hot = box;
+          }
         }
         result.held     = true;
         result.pressed  = true;
         result.hovering = true;
+        result.selected = true;
         active          = box;
 
         auto ancestorToFocus = boxOrAncestorWithFlags(box, BoxFlags.demand_focus);
@@ -1125,7 +1133,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         if (!boxIsNull(box.parent)) {
           box.parent.hoveredChild  = box.childId;
           box.parent.selectedChild = box.childId;
-          result.selected          = true;
         }
 
         // @Hack: Check for clickable, in case it's actually only scrollable. Should clickable/scrollable code be separated?
@@ -1135,7 +1142,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       }
     }
     else if (active == box && input.held(Key.touch)) {
-      if (box.flags & (BoxFlags.selectable)) {
+      if ((box.flags & BoxFlags.selectable) && !(box.flags & (BoxFlags.select_toggle | BoxFlags.select_falling_edge))) {
         hot       = box;
       }
       active      = box;
@@ -1188,6 +1195,15 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
         if (box.flags & BoxFlags.clickable) {
           audioPlaySound(box.style.soundButtonPressed);
+        }
+
+        if ((box.flags & BoxFlags.selectable) && (box.flags & BoxFlags.select_falling_edge)) {
+          if ((box.flags & BoxFlags.select_toggle) && hot == box) {
+            hot = gNullBox;
+          }
+          else {
+            hot = box;
+          }
         }
       }
     }
