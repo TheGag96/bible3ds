@@ -1255,7 +1255,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
     Rectangle cursorBounds;
     bool needToScrollTowardsChild = false;
-    if (isAncestorOf(hot, box))  {
+    if (isAncestorOf(hot, box) && boxIsNull(active))  {
       // Assume that clickable boxes should scroll up to the bottom screen if we need to scroll to have it in view
       cursorBounds = flowAxis == Axis2.y && (hot.flags & BoxFlags.clickable) ?
                         clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom]) : box.rect;
