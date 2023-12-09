@@ -132,8 +132,14 @@ struct BoxStyle {
 
   Vec2 margin;
   float textSize = 0;
-  SoundEffect pressedSound = SoundEffect.button_confirm;
-  float pressedSoundVol = 0.5;
+
+  SoundPlay soundButtonDown    = { SoundEffect.button_down,    0.125  };
+  SoundPlay soundButtonPressed = { SoundEffect.button_confirm, 0.5    };
+  SoundPlay soundButtonOff     = { SoundEffect.button_off,     0.125  };
+  SoundPlay soundButtonMove    = { SoundEffect.button_move,    0.05   };
+  SoundPlay soundScrollStart   = { SoundEffect.scroll_tick,    0.025  };
+  SoundPlay soundScrollTick    = { SoundEffect.scroll_tick,    0.0125 };
+  SoundPlay soundScrollStop    = { SoundEffect.scroll_stop,    0.05   };
 }
 immutable DEFAULT_STYLE = BoxStyle.init;
 
@@ -1124,7 +1130,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
         // @Hack: Check for clickable, in case it's actually only scrollable. Should clickable/scrollable code be separated?
         if (box.flags & BoxFlags.clickable) {
-          audioPlaySound(SoundEffect.button_down, 0.125);
+          audioPlaySound(box.style.soundButtonDown);
         }
       }
     }
@@ -1149,7 +1155,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         if ( (box.flags & BoxFlags.clickable) &&
              inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
         {
-          audioPlaySound(SoundEffect.button_off, 0.125);
+          audioPlaySound(box.style.soundButtonOff);
         }
 
         result.held            = false;
@@ -1165,14 +1171,14 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         if ( (box.flags & BoxFlags.clickable) &&
              !inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
         {
-          audioPlaySound(SoundEffect.button_down, 0.125);
+          audioPlaySound(box.style.soundButtonDown);
         }
       }
       else {
         result.released = inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py));
 
         if (result.released && (box.flags & BoxFlags.clickable)) {
-          audioPlaySound(SoundEffect.button_off, 0.125);
+          audioPlaySound(box.style.soundButtonOff);
         }
       }
     }
@@ -1183,7 +1189,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         result.clicked  = true;
 
         if (box.flags & BoxFlags.clickable) {
-          audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
+          audioPlaySound(box.style.soundButtonPressed);
         }
       }
     }
@@ -1220,7 +1226,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         audioPlaySound(SoundEffect.scroll_stop, 0.05);
       }
       else {
-        audioPlaySound(SoundEffect.button_move, 0.05);
+        audioPlaySound(box.style.soundButtonMove);
       }
       cursored = newCursored;
     }
@@ -1333,7 +1339,7 @@ Signal signalFromBox(Box* box) { with (gUiData) {
         result.selected = true;
       }
 
-      audioPlaySound(box.style.pressedSound, box.style.pressedSoundVol);
+      audioPlaySound(box.style.soundButtonPressed);
     }
     // @HACK: Checking for prevDown is unreliable if selecting the button caused us to switch views, which means we
     //        would have missed processing that input frame. We have to just force the box off of active unless we
@@ -1412,16 +1418,16 @@ void respondToScroll(Box* box, Signal* result, Vec2 scrollDiff) { with (gUiData)
   ////
 
   if (startedScrolling == OneFrameEvent.triggered) {
-    audioPlaySound(SoundEffect.scroll_tick, 0.025);
+    audioPlaySound(box.style.soundScrollStart);
     startedScrolling = OneFrameEvent.already_processed;
   }
 
   if (floor(offset/SCROLL_TICK_DISTANCE) != floor(offsetLast/SCROLL_TICK_DISTANCE)) {
-    audioPlaySound(SoundEffect.scroll_tick, 0.0125);
+    audioPlaySound(box.style.soundScrollTick);
   }
 
   if (scrollJustStopped == OneFrameEvent.triggered) {
-    audioPlaySound(SoundEffect.scroll_stop, 0.05);
+    audioPlaySound(box.style.soundScrollStop);
     scrollJustStopped = OneFrameEvent.already_processed;
   }
 }}}

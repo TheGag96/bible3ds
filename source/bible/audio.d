@@ -99,6 +99,11 @@ enum SoundEffect : ubyte {
   button_move,
 }
 
+struct SoundPlay {
+  SoundEffect effect;
+  float volume = 1;
+}
+
 enum SoundType : ubyte {
   normal,
   looping
@@ -206,6 +211,11 @@ void audioLoadSoundEffect(SoundEffect se) {
   }
 
   DSP_FlushDataCache(soundData.ptr, soundData.length);
+}
+
+pragma(inline, true)
+void audioPlaySound(SoundPlay soundPlay) {
+  audioPlaySound(soundPlay.effect, soundPlay.volume);
 }
 
 void audioPlaySound(SoundEffect se, float volume = 1) {

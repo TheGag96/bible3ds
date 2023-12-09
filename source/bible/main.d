@@ -284,24 +284,23 @@ void initMainData(MainData* mainData) { with (mainData) {
 
   colorTable = COLOR_THEMES[gSaveFile.settings.colorTheme];
 
-  styleButtonBook                 = ui.BoxStyle.init;
-  styleButtonBook.colors          = colorTable;
-  styleButtonBook.margin          = Vec2(BOOK_BUTTON_MARGIN);
-  styleButtonBook.textSize        = 0.5f;
+  styleButtonBook                    = ui.BoxStyle.init;
+  styleButtonBook.colors             = colorTable;
+  styleButtonBook.margin             = Vec2(BOOK_BUTTON_MARGIN);
+  styleButtonBook.textSize           = 0.5f;
 
-  styleButtonBottom               = styleButtonBook;
-  styleButtonBottom.margin        = Vec2(BOTTOM_BUTTON_MARGIN);
-  styleButtonBottom.textSize      = 0.6f;
+  styleButtonBottom                  = styleButtonBook;
+  styleButtonBottom.margin           = Vec2(BOTTOM_BUTTON_MARGIN);
+  styleButtonBottom.textSize         = 0.6f;
 
   // @Hack: Gets played manually by builder code so that it plays on pressing B. Consider revising...
-  styleButtonBack                 = styleButtonBottom;
-  styleButtonBack.pressedSound    = SoundEffect.none;
-  styleButtonBack.pressedSoundVol = 0.0;
+  styleButtonBack                    = styleButtonBottom;
+  styleButtonBack.soundButtonPressed = SoundPlay(SoundEffect.none, 0);
 
-  stylePage                       = styleButtonBook;
-  stylePage.colors                = colorTable;
-  stylePage.margin                = Vec2(DEFAULT_PAGE_MARGIN);
-  stylePage.textSize              = DEFAULT_PAGE_TEXT_SIZE;
+  stylePage                          = styleButtonBook;
+  stylePage.colors                   = colorTable;
+  stylePage.margin                   = Vec2(DEFAULT_PAGE_MARGIN);
+  stylePage.textSize                 = DEFAULT_PAGE_TEXT_SIZE;
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
