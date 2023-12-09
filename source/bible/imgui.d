@@ -294,6 +294,14 @@ Signal bottomButton(const(char)[] text) {
   return signalFromBox(box);
 }
 
+Signal listButton(const(char)[] text, Justification justification = Justification.min) {
+  Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text, text);
+  box.semanticSize[] = [SIZE_FILL_PARENT, Size(SizeKind.text_content, 0, 1)].s;
+  box.justification = justification;
+  box.render = &renderListButton;
+  return signalFromBox(box);
+}
+
 void spacer(float size = 0) {
   Box* box = makeBox(cast(BoxFlags) 0, "");
 
@@ -523,8 +531,9 @@ ScopedLayout ScopedButtonLayout(
   return result;
 }
 
-BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, ScrollCache* scrollCache, int* jumpVerseRequest) {
-  Box* box = makeBox(BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus, id);
+ScopedSignalLayout!() ScopedScrollableReadPane(const(char)[] id, Signal* signalToWrite, in LoadedPage loadedPage, ScrollCache* scrollCache, int* jumpVerseRequest) {
+  auto box = ScopedSignalLayout!()(id, signalToWrite, Axis2.y, Justification.center, LayoutKind.fill_parent, BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus);
+
   box.semanticSize[] = [SIZE_FILL_PARENT, SIZE_FILL_PARENT].s;
   box.scrollCache    = scrollCache;
   box.render         = &scrollCacheDraw;
@@ -532,10 +541,11 @@ BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Scro
   box.scrollInfo.limitMin = 0;
 
   auto height             = box.rect.bottom - box.rect.top;
-  // Add the size of the box on the bottom screen back to the scroll limit so that you can always scroll all the
+  // Add the height of the top screen so that all content is selectable on the bottom screen.
+  // Add the height of the box on the bottom screen back to the scroll limit so that you can always scroll all the
   // content to the top of the screen.
   auto extraBottomScreen  = size(clipWithinOther(box.rect, SCREEN_RECT[GFXScreen.bottom])).y;
-  box.scrollInfo.limitMax = max(loadedPage.actualLineNumberTable.length * loadedPage.glyphSize.y
+  box.scrollInfo.limitMax = max(SCREEN_HEIGHT + loadedPage.actualLineNumberTable.length * loadedPage.glyphSize.y
                                 + loadedPage.style.margin.y * 2 - height + extraBottomScreen, 0);
 
   if (jumpVerseRequest && *jumpVerseRequest) {
@@ -556,7 +566,7 @@ BoxAndSignal scrollableReadPane(const(char)[] id, in LoadedPage loadedPage, Scro
     *jumpVerseRequest = 0;
   }
 
-  return BoxAndSignal(box, signalFromBox(box));
+  return box;
 }
 
 struct ScopedStyle {

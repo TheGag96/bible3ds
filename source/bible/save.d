@@ -19,6 +19,12 @@ struct Progress {
   ubyte verse;
 }
 
+struct Bookmark {
+  Book book;
+  Progress other;
+  alias other this;
+}
+
 // @TODO: Consider an actual config file of some kind
 struct SaveFile {
   ushort fileVersion = 0;
@@ -27,10 +33,10 @@ struct SaveFile {
 
   Progress[enumCount!Book] progress;
 
-  Book bookmarkBook;
-  ubyte bookmarkChapter;
+  Bookmark[15] bookmarks;
+  ubyte numBookmarks;
 
-  ubyte[56] spare;
+  ubyte[12] spare;
 }
 static assert (SaveFile.sizeof == 256);
 
@@ -103,7 +109,9 @@ Result saveFileInit() {
   uint bytesRead;
   rc = FSFILE_Read(fileHandle, &bytesRead, 0, &gSaveFile, gSaveFile.sizeof);
 
-  if (R_FAILED(rc) || bytesRead != gSaveFile.sizeof) {
+  // It's okay if we read less bytes than the save file structure, as we might have added more to the end of it with an
+  // update to the app.
+  if (R_FAILED(rc) || bytesRead == 0) {
     assert(0, "Couldn't read the save file for some reason!");
     return rc;
   }

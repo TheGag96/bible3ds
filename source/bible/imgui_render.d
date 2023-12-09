@@ -262,6 +262,59 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   return result;
 }
 
+Vec2 renderListButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
+  // @TODO: Beautify and compress
+
+  bool pressed = box.activeT == 1;
+
+  auto rect = box.rect + drawOffset;
+  rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
+
+  float textX, textY;
+  final switch (box.justification) {
+    case Justification.min:
+      textX = rect.left+box.style.margin.x;
+      textY = rect.top+box.style.margin.y;
+      break;
+    case Justification.center:
+      textX = (rect.left + rect.right)/2 - box.text.width/2;
+      textY = (rect.top + rect.bottom)/2 - box.textHeight/2;
+      break;
+    case Justification.max:
+      break;
+  }
+
+  uint baseColor, textColor, lineColor;
+
+  textColor     = box.style.colors[Color.button_bottom_text];
+
+  if (pressed) {
+    baseColor     = box.style.colors[Color.button_bottom_pressed_top];
+    lineColor     = box.style.colors[Color.button_bottom_pressed_line];
+  }
+  else {
+    baseColor     = box.style.colors[Color.button_bottom_top];
+    lineColor     = box.style.colors[Color.button_bottom_line];
+  }
+
+  // main button area
+  C2D_DrawRectSolid(rect.left, rect.top, z, rect.right-rect.left, rect.bottom-rect.top, baseColor);
+
+  C2D_DrawRectSolid(rect.left, rect.top, z, rect.right-rect.left, 1, lineColor);
+  if (boxIsNull(box.next)) {
+    C2D_DrawRectSolid(rect.left, rect.bottom, z, rect.right-rect.left, 1, lineColor);
+  }
+
+  auto result = Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM);
+  if (box.flags & BoxFlags.draw_text) {
+    C2D_DrawText(
+      &box.text, C2D_WithColor, GFXScreen.top, textX + result.x, textY + result.y, z, box.style.textSize, box.style.textSize, textColor
+    );
+  }
+
+  return result;
+}
+
 Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   C2Di_Context* ctx = C2Di_GetContext();
 
@@ -348,6 +401,18 @@ Vec2 renderModalBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   // What X and Y mean are flipped for this function's arguments. Goofy.
   C3D_SetScissor(GPUScissorMode.normal, cast(uint) round(rect.top), cast(uint) round(rect.left), cast(uint) round(rect.bottom), cast(uint) round(rect.right));
   C2D_DrawRectSolid(rect.left, rect.top, z, rect.right - rect.left, rect.bottom - rect.top, box.style.colors[Color.clear_color]);
+  return Vec2(0);
+}
+
+Vec2 renderVerse(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
+  // @TODO: Something better!
+  if (box.hotT > 0) {
+    auto rect = box.rect + drawOffset;
+    rect.left  += box.style.margin.x/2;
+    rect.right -= box.style.margin.x/2;
+    renderButtonSelectionIndicator(box, rect, screen, side, _3DEnabled, slider3DState, drawOffset, z);
+  }
+
   return Vec2(0);
 }
 
@@ -793,17 +858,14 @@ void renderPage(
   float width, height;
 
   float startX   = style.margin.x;
+  float startY   = style.margin.y + SCREEN_HEIGHT;
   float textSize = style.textSize;
 
   C2D_TextGetDimensions(&loadedPage.textArray[0], textSize, textSize, &width, &height);
 
-  //float renderStartOffset = round(loadedPage.scrollInfo.offset +
-  //                                loadedPage.actualLineNumberTable[virtualLine].realPos +
-  //                                style.margin.y);
-
-  int virtualLine = min(max(cast(int) floor((round(from-style.margin.y))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
+  int virtualLine = min(max(cast(int) floor((round(from-startY))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
   int startLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
-  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + style.margin.y;
+  float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + startY;
 
   float extra = 0;
   int i = startLine; //max(startLine, 0);

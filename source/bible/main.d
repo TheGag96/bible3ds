@@ -67,7 +67,7 @@ struct MainData {
 
   ui.ColorTable colorTable;
   bool fadingBetweenThemes;
-  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, stylePage;
+  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, stylePage, styleVerse;
 }
 MainData mainData;
 
@@ -298,9 +298,13 @@ void initMainData(MainData* mainData) { with (mainData) {
   styleButtonBack.soundButtonPressed = SoundPlay(SoundEffect.none, 0);
 
   stylePage                          = styleButtonBook;
-  stylePage.colors                   = colorTable;
   stylePage.margin                   = Vec2(DEFAULT_PAGE_MARGIN);
   stylePage.textSize                 = DEFAULT_PAGE_TEXT_SIZE;
+
+  styleVerse                         = styleButtonBook;
+  styleVerse.soundButtonDown         = SoundPlay.init;
+  styleVerse.soundButtonPressed      = SoundPlay.init;
+  styleVerse.soundButtonOff          = SoundPlay.init;
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
@@ -582,6 +586,38 @@ void mainGui(MainData* mainData, Input* input) {
         if (bottomButton("Options").clicked) {
           sendCommand(CommandCode.switch_view, View.options);
         }
+
+        if (bottomButton("Bookmarks").clicked) {
+          openModal(mainData, (MainData* mainData, UiView* uiView) {
+            bool result = false;
+
+            Signal scrollSignal;
+            {
+              auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
+
+              label("Bookmarks", Justification.center).semanticSize[Axis2.x] = SIZE_FILL_PARENT;
+
+              foreach (i, bookmark; gSaveFile.bookmarks[0..gSaveFile.numBookmarks]) {
+                if (listButton(tprint("%s %d:%d##bookmark_%d", BOOK_NAMES[bookmark.book].ptr, bookmark.chapter, bookmark.verse, i)).clicked) {
+                  sendCommand(
+                    CommandCode.open_book,
+                    formatOpenBookCommand(bookmark.book, bookmark.chapter, bookmark.verse),
+                    &mainData.views[View.book].uiData
+                  );
+                  result = true;
+                }
+              }
+            }
+
+            if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
+              result = true;
+
+              audioPlaySound(SoundEffect.button_back, 0.5);
+            }
+
+            return result;
+          });
+        }
       }
 
       mainLayout.startRight();
@@ -597,8 +633,51 @@ void mainGui(MainData* mainData, Input* input) {
       break;
 
     case View.reading:
-      auto readPane = scrollableReadPane("reading_scroll_read_view", mainData.loadedPage, &mainData.scrollCache, &mainData.jumpVerseRequest);
-      mainData.loadedPage.scrollInfo = readPane.box.scrollInfo;
+      Signal readPaneSignal;
+      with (mainData.loadedPage) {
+        // @HACK: Cancel selecting a verse with circle/D-pad
+        //        May need to reconsider this UX / fold some new behavior into the core code.
+        if (boxIsNull(gUiData.active) && input.scrollMethodCur == ScrollMethod.none && input.down(Key.up | Key.down)) {
+          gUiData.hot = gNullBox;
+        }
+
+        auto readPane = ScopedScrollableReadPane("reading_scroll_read_view", &readPaneSignal, mainData.loadedPage, &mainData.scrollCache, &mainData.jumpVerseRequest);
+
+        auto verseStyle = ScopedStyle(&mainData.styleVerse);
+
+        spacer(style.margin.y + glyphSize.y + SCREEN_HEIGHT);
+
+        // Overlay invisible boxes on top of each verse
+        auto curVerseStart = actualLineNumberTable[1];
+        int firstVerseLine = 1;
+        int curVerse;
+        foreach (i; 2..actualLineNumberTable.length + 1) {  // Spooky-but-intentional + 1
+          if (i == actualLineNumberTable.length ||
+              actualLineNumberTable[i].textLineIndex != curVerseStart.textLineIndex)
+          {
+            auto height =  (i - firstVerseLine) * glyphSize.y;
+            int verse = curVerseStart.textLineIndex;
+            if (i != actualLineNumberTable.length) {
+              curVerseStart = actualLineNumberTable[i];
+            }
+            firstVerseLine = i;
+
+            // Generate a unique verse ID for each selectable. If they were just by verse or chapter, then these might
+            // carry state between chapter/book switches.
+            uint verseUnique = formatOpenBookCommand(mainData.pageId.book, mainData.pageId.chapter, verse);
+            auto button = button(tnum("##read_pane_verse_", verseUnique), extraFlags : BoxFlags.selectable | BoxFlags.select_toggle | BoxFlags.select_falling_edge);
+            button.box.render = &renderVerse;
+            button.box.userVal = verse;
+            button.box.semanticSize = [SIZE_FILL_PARENT, Size(SizeKind.pixels, height)].s;
+          }
+        }
+      }
+      mainData.loadedPage.scrollInfo = readPaneSignal.box.scrollInfo;
+
+      // @HACK: Cancel selecting a verse with touch scrolling
+      if (input.scrollMethodCur == ScrollMethod.touch) {
+        gUiData.hot = gNullBox;
+      }
 
       {
         auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
@@ -688,6 +767,39 @@ void mainGui(MainData* mainData, Input* input) {
             return result;
           });
         }
+
+        if (gUiData.hot.parent == readPaneSignal.box) {
+          // Verse selected
+          size_t bookmarkIndex = size_t.max;
+          Bookmark potentialBookmark = Bookmark(
+            mainData.pageId.book, Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) gUiData.hot.userVal)
+          );
+          foreach (i, ref bookmark; gSaveFile.bookmarks[0..gSaveFile.numBookmarks]) {
+            if (bookmark == potentialBookmark) {
+              bookmarkIndex = i;
+              break;
+            }
+          }
+
+          if (bookmarkIndex == size_t.max) {
+            if (bottomButton("Bookmark").clicked) {
+              // @TODO Do something different at boomark limit...
+              if (gSaveFile.numBookmarks < gSaveFile.bookmarks.length) {
+                gSaveFile.bookmarks[gSaveFile.numBookmarks++] = potentialBookmark;
+              }
+              saveSettings();
+            }
+          }
+          else {
+            if (bottomButton("Unbookmark").clicked) {
+              foreach (i; bookmarkIndex..gSaveFile.numBookmarks-1) {
+                gSaveFile.bookmarks[i] = gSaveFile.bookmarks[i+1];
+              }
+              gSaveFile.numBookmarks--;
+              saveSettings();
+            }
+          }
+        }
       }
 
       mainLayout.startRight();
@@ -697,7 +809,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         rightSplit.startTop();
 
-        scrollIndicator("reading_scroll_indicator", readPane.box, Justification.min, readPane.signal.pushingAgainstScrollLimit);
+        scrollIndicator("reading_scroll_indicator", readPaneSignal.box, Justification.min, readPaneSignal.pushingAgainstScrollLimit);
       }
 
       break;
