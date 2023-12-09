@@ -643,6 +643,8 @@ void mainGui(MainData* mainData, Input* input) {
             auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length - 1; // Minus 1 because the 0th chapter is a dummy
             auto numRows = (numChapters + CHAPTERS_PER_ROW - 1) / CHAPTERS_PER_ROW;
 
+            label("Chapters");
+
             foreach (row; 0..numRows) {
               spacer(4);
 
