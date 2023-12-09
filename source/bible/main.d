@@ -631,30 +631,33 @@ void mainGui(MainData* mainData, Input* input) {
 
         if (bottomButton("Chapters").clicked) {
           openModal(mainData, (MainData* mainData, UiView* uiView) {
-            enum CHAPTERS_PER_ROW = 5;
+            enum CHAPTERS_PER_ROW    = 5;
+            enum CHAPTER_BUTTON_SIZE = 40;
 
             bool result = false;
 
             Signal scrollSignal;
-            auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.center, LayoutKind.fill_parent);
+            auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
+            auto horizLayout  = ScopedLayout(      "lt_chapter_horiz",                 Axis2.x, Justification.center, LayoutKind.fit_children);
+            auto vertLayout   = ScopedLayout(      "lt_chapter_vert",                  Axis2.y, Justification.center, LayoutKind.grow_children);
 
-            auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length;
-            auto numRows = numChapters / CHAPTERS_PER_ROW;
+            auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length - 1; // Minus 1 because the 0th chapter is a dummy
+            auto numRows = (numChapters + CHAPTERS_PER_ROW - 1) / CHAPTERS_PER_ROW;
 
             foreach (row; 0..numRows) {
               spacer(4);
 
               {
-                auto rowLayout = ScopedLayout(tnum("lt_chapter_row_", row), Axis2.x, Justification.center, LayoutKind.fit_children);
-
-                spacer();
+                auto rowLayout = ScopedLayout(tnum("lt_chapter_row_", row), Axis2.x, Justification.center, LayoutKind.grow_children);
+                // @TODO: Reconsider the meaning of LayoutKind.grow_children to do this instead?
+                rowLayout.box.semanticSize[] = SIZE_CHILDREN_SUM;
 
                 auto numInRow = min(numChapters - CHAPTERS_PER_ROW * row, CHAPTERS_PER_ROW);
                 foreach (chapter; row * CHAPTERS_PER_ROW + 1..row * CHAPTERS_PER_ROW + numInRow + 1) {
                   if (chapter != row * CHAPTERS_PER_ROW + 1) spacer(2);
 
                   auto chapterButton = button(tnum("", chapter));
-                  chapterButton.box.semanticSize[] = Size(SizeKind.pixels, 40, 1);
+                  chapterButton.box.semanticSize[] = Size(SizeKind.pixels, CHAPTER_BUTTON_SIZE, 1);
 
                   if (chapterButton.clicked) {
                     sendCommand(
@@ -666,7 +669,10 @@ void mainGui(MainData* mainData, Input* input) {
                   }
                 }
 
-                spacer();
+                // @HACK: Add empty spaces to fill the rest of the row
+                foreach (i; 0..CHAPTERS_PER_ROW - numInRow) {
+                  spacer(2 + CHAPTER_BUTTON_SIZE);
+                }
               }
             }
 
