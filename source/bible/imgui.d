@@ -1110,10 +1110,8 @@ Signal signalFromBox(Box* box) { with (gUiData) {
 
       if (touchInsideBoxAndAncestors(box, touchPoint)) {
         if (box.flags & (BoxFlags.selectable)) {
-          box.hotT      = 1;
           hot           = box;
         }
-        box.activeT     = 1;
         result.held     = true;
         result.pressed  = true;
         result.hovering = true;
@@ -1136,7 +1134,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     }
     else if (active == box && input.held(Key.touch)) {
       if (box.flags & (BoxFlags.selectable)) {
-        box.hotT  = 1;
         hot       = box;
       }
       active      = box;
@@ -1166,7 +1163,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       }
       else if (inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.touchRaw.px, input.touchRaw.py))) {
         result.hovering = true;
-        box.activeT     = 1;
 
         if ( (box.flags & BoxFlags.clickable) &&
              !inside(box.rect - SCREEN_POS[GFXScreen.bottom], Vec2(input.prevTouchRaw.px, input.prevTouchRaw.py)) )
@@ -1232,7 +1228,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
     }
 
     box.hoveredChild = cursored.childId;
-    if (input.scrollMethodCur != ScrollMethod.touch) cursored.hotT = 1;
     hot = cursored;
 
     // Signal pushing against scroll limit if we're holding a directional key and can't go any further
@@ -1327,7 +1322,6 @@ Signal signalFromBox(Box* box) { with (gUiData) {
   if ((box.flags & BoxFlags.selectable) && hot == box && (boxIsNull(active) || active == box)) {
     if (input.down(Key.a)) {
       active          = box;
-      box.activeT     = 1;
       result.clicked  = true;
       result.pressed  = true;
       result.held     = true;
@@ -1348,6 +1342,15 @@ Signal signalFromBox(Box* box) { with (gUiData) {
       active = gNullBox;
       result.released = true;
     }
+  }
+
+  // Mimicking other 3DS UIs, Don't update hotT if we're scrolling
+  if (hot == box && (input.scrollMethodCur != ScrollMethod.touch)) {
+    box.hotT = 1;
+  }
+
+  if (active == box && (result.hovering && result.held)) {
+    box.activeT = 1;
   }
 
   return result;
