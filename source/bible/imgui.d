@@ -14,7 +14,8 @@ enum       TOUCH_DRAG_THRESHOLD = 8;
 
 enum float SCROLL_EASE_RATE = 0.3;
 
-enum MAX_UI_TREE_DEPTH = 200;
+enum MAX_UI_TREE_DEPTH    = 200;
+enum MAX_SCROLLABLE_DEPTH = 10;
 
 enum RENDER_DEBUG_BOXES = false;
 
@@ -1488,6 +1489,8 @@ void sendCommand(uint code, uint value, UiData* uiData = gUiData) { with (uiData
 void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, float z = 0) { with (uiData) {
   mixin(timeBlock("render single screen"));
 
+  auto thisScreenWidth = screenWidth(screen);
+
   C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
 
   static immutable uint[] COLORS = [
@@ -1501,11 +1504,17 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
 
   auto restore = ScopedArenaRestore(&uiData.frameArena);
 
-  auto drawOffsetStack = arenaPushArray!(Vec2, false)(&uiData.frameArena, MAX_UI_TREE_DEPTH);
-  size_t stackPos = 0;
+  struct Scissor {
+    uint left, top, right, bottom;
+  }
 
-  drawOffsetStack[stackPos] = SCREEN_POS[screen] * -1;
-  Vec2 drawOffset = drawOffsetStack[stackPos];
+  auto drawOffsetStack = arenaPushArray!(Vec2,    false)(&uiData.frameArena, MAX_UI_TREE_DEPTH);
+  auto scissorStack    = arenaPushArray!(Scissor, false)(&uiData.frameArena, MAX_SCROLLABLE_DEPTH);
+  size_t drawStackPos = 0, scissorStackPos = 0;
+
+  drawOffsetStack[drawStackPos] = SCREEN_POS[screen] * -1;
+  Vec2 drawOffset = drawOffsetStack[drawStackPos];
+  scissorStack[scissorStackPos] = Scissor.init;
 
   // preOrderApply, but with the drawPos stack
   auto runner = root;
@@ -1560,12 +1569,33 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
     }(runner);
 
     if (!skipChildren && !boxIsNull(runner.first)) {
-      runner = runner.first;
-      stackPos++;
+      drawStackPos++;
 
-      // Pop from stack
-      drawOffsetStack[stackPos] = drawOffset;
+      // Push onto stack
+      drawOffsetStack[drawStackPos] = drawOffset;
       drawOffset += extraOffset;
+
+      // Inside scrollables, scissor away children boxes that would draw outside of it
+      if (runner.flags & BoxFlags.view_scroll) {
+        auto rect = runner.rect + drawOffset;
+
+        // This function has a totally different coordinate orientation...
+        Scissor scissor = {
+          left   : cast(uint) round(SCREEN_HEIGHT   - rect.bottom),
+          top    : cast(uint) round(thisScreenWidth - rect.right),
+          right  : cast(uint) round(SCREEN_HEIGHT   - rect.top),
+          bottom : cast(uint) round(thisScreenWidth - rect.left),
+        };
+        scissorStackPos++;
+        scissorStack[scissorStackPos] = scissor;
+
+        C2D_Flush();
+        C3D_SetScissor(
+          GPUScissorMode.normal, scissor.left, scissor.top, scissor.right, scissor.bottom
+        );
+      }
+
+      runner = runner.first;
     }
     else if (!boxIsNull(runner.next)) {
       runner = runner.next;
@@ -1573,10 +1603,20 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
     else {
       while (true) {
         runner = runner.parent;
+        if (runner.flags & BoxFlags.view_scroll) {
+          C2D_Flush();
+
+          auto scissor = scissorStack[scissorStackPos];
+          scissorStackPos--;
+          C3D_SetScissor(
+            scissorStackPos == 0 ? GPUScissorMode.disable : GPUScissorMode.normal,
+            scissor.left, scissor.top, scissor.right, scissor.bottom
+          );
+        }
 
         // Pop from stack
-        drawOffset = drawOffsetStack[stackPos];
-        stackPos--;
+        drawOffset = drawOffsetStack[drawStackPos];
+        drawStackPos--;
 
         if (boxIsNull(runner)) break preApplyLoop;
         if (!boxIsNull(runner.next)) {
