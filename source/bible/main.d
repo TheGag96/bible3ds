@@ -736,7 +736,7 @@ void mainGui(MainData* mainData, Input* input) {
                 foreach (chapter; row * CHAPTERS_PER_ROW + 1..row * CHAPTERS_PER_ROW + numInRow + 1) {
                   if (chapter != row * CHAPTERS_PER_ROW + 1) spacer(2);
 
-                  auto chapterButton = button(tnum("", chapter));
+                  auto chapterButton = button(tnum(chapter));
                   chapterButton.box.semanticSize[] = Size(SizeKind.pixels, CHAPTER_BUTTON_SIZE, 1);
 
                   if (chapterButton.clicked) {

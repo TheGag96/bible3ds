@@ -629,7 +629,12 @@ char[] tconcat(const(char)[] a, const(char)[] b) {
   return result;
 }
 
-char[] tnum(const(char)[] prefix, int num) {
+pragma(inline, true)
+char[] tnum(int num, const(char)[] postfix = "") {
+  return tnum("", num, postfix);
+}
+
+char[] tnum(const(char)[] prefix, int num, const(char)[] postfix = "") {
   char[11] buf;
   size_t pos = buf.length;
 
@@ -651,17 +656,21 @@ char[] tnum(const(char)[] prefix, int num) {
   }
 
   size_t numLength = buf.length - pos;
-  auto result      = arenaPushArray!(char, false)(&gUiData.frameArena, prefix.length + numLength + 1);
+  auto result      = arenaPushArray!(char, false)(&gUiData.frameArena, prefix.length + numLength + postfix.length + 1);
 
-  result[0..prefix.length]                       = prefix;
-  result[prefix.length..prefix.length+numLength] = buf[pos..$];
+  size_t runner = 0;
+  result[runner..runner+prefix.length]  = prefix;
+  runner += prefix.length;
+  result[runner..runner+numLength]      = buf[pos..$];
+  runner += numLength;
+  result[runner..runner+postfix.length] = postfix;
 
   // Null-termination... sigh...
   result[$-1] = '\0';
 
-  return result;
+  // ...but, return the string without it, as arenaPrintf does.
+  return result[0..$-1];
 }
-
 
 // Returns ID part of string followed by non-ID
 const(char)[][2] parseIdFromString(const(char)[] text) {
