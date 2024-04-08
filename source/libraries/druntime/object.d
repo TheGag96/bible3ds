@@ -8,8 +8,13 @@ module object;
 nothrow: @nogc:
 
 public import core.internal.array.appending : _d_arrayappendT;
-public import core.internal.array.appending : _d_arrayappendcTXImpl;
+public import core.internal.array.appending : _d_arrayappendcTX;
+public import core.internal.array.casting: __ArrayCast;
 public import core.internal.array.capacity  : _d_arraysetlengthTImpl;
+public import core.internal.array.concatenation : _d_arraycatnTX;
+public import core.internal.array.arrayassign : _d_arrayassign_l;
+public import core.internal.array.arrayassign : _d_arrayassign_r;
+public import core.internal.array.arrayassign : _d_arraysetassign;
 
 alias size_t = typeof(int.sizeof);
 alias ptrdiff_t = typeof(cast(void*)0 - cast(void*)0);
@@ -20,7 +25,6 @@ alias noreturn = typeof(*null);  /// bottom type
 alias hash_t = size_t; // For backwards compatibility only.
 alias equals_t = bool; // For backwards compatibility only.
 
-// @Hack: Don't use immutable here, because my program does not use a GC by which we can guarantee immutability of strings
 alias string  = immutable(char)[];
 alias wstring = immutable(wchar)[];
 alias dstring = immutable(dchar)[];
@@ -185,15 +189,6 @@ bool __equals(T1, T2)(T1[] lhs, T2[] rhs) {
 
 void __switch_error()(string file = __FILE__, size_t line = __LINE__) {
   assert(0, "Final switch fallthough! " ~ __PRETTY_FUNCTION__);
-}
-
-extern (C) void[] _d_arraycast(uint toTSize, uint fromTSize, void[] a) @trusted {
-  //import std.io.log : Log;
-
-  auto len = a.length * fromTSize;
-  assert(len % toTSize == 0, "_d_arraycast failed!");
-
-  return a[0 .. len / toTSize];
 }
 
 extern (C) void[] _d_arraycopy(size_t size, void[] from, void[] to) @trusted {
