@@ -41,16 +41,31 @@ struct Vec(size_t n) {
     this.vals = val;
   }
 
+  static if (n >= 3) {
+    pragma(inline, true)
+    pure
+    this(Vec!(n-1) smaller, float last) {
+      this.vals[0..n-1] = smaller.vals[];
+      this.vals[n-1]    = last;
+    }
+  }
+
+  static if (n >= 4) {
+    pragma(inline, true)
+    pure
+    this(Vec!(n-2) smaller, float last1, float last2) {
+      this.vals[0..n-2] = smaller.vals[];
+      this.vals[n-2]    = last1;
+      this.vals[n-1]    = last2;
+    }
+  }
+
   pragma(inline, true)
   pure
   Vec!n opBinary(string op)(const Vec!n other) const
-  if (op == "+" || op == "-") {
-    Vec!n result = void;
-
-    static foreach (i; 0..n) {
-      mixin("result.vals[i] = vals[i] " ~ op ~ " other.vals[i];");
-    }
-
+  if (op == "+" || op == "-" || op == "*" || op == "/") {
+    Vec!n result = this;
+    mixin("result " ~ op ~ "= other;");
     return result;
   }
 
@@ -58,11 +73,9 @@ struct Vec(size_t n) {
   pure
   Vec!n opBinary(string op)(float v) const
   if (op == "*" || op == "/") {
-    Vec!n result = void;
+    Vec!n result = this;
 
-    static foreach (i; 0..n) {
-      mixin("result.vals[i] = vals[i] " ~ op ~ " v;");
-    }
+    mixin("result " ~ op ~ "= v;");
 
     return result;
   }
@@ -70,7 +83,7 @@ struct Vec(size_t n) {
   pragma(inline, true)
   pure
   ref Vec!n opOpAssign(string op)(const Vec!n other) return
-  if (op == "+" || op == "-") {
+  if (op == "+" || op == "-" || op == "*" || op == "/") {
     static foreach (i; 0..n) {
       mixin("vals[i] " ~ op ~ "= other.vals[i];");
     }
@@ -125,6 +138,22 @@ struct Vec(size_t n) {
     pure
     Vec!n cross(const Vec!n other) const {
       return Vec!n( (y*other.z - z*other.y), -(x*other.z - z*other.x), (x*other.y - y*other.x) );
+    }
+  }
+
+  static if (n >= 3) {
+    pragma(inline, true)
+    pure
+    Vec!2 xy() {
+      return Vec!2(x, y);
+    }
+  }
+
+  static if (n >= 4) {
+    pragma(inline, true)
+    pure
+    Vec!3 xyz() {
+      return Vec!3(x, y, z);
     }
   }
 }
@@ -195,21 +224,46 @@ struct Rectangle {
   }
 
   pragma(inline, true)
+  pure
   this(float left, float top, float right, float bottom) {
     this.left = left; this.top = top; this.right = right; this.bottom = bottom;
   }
 
   pragma(inline, true)
-  pure
-  Rectangle opBinary(string op)(const Vec2 vec) const
+  ref Rectangle opOpAssign(string op, size_t n)(const Vec!n vec)
   if (op == "+" || op == "-") {
-    Rectangle result = void;
+    mixin("this.left   " ~ op ~ "= vec.x;");
+    mixin("this.top    " ~ op ~ "= vec.y;");
+    mixin("this.right  " ~ op ~ "= vec.x;");
+    mixin("this.bottom " ~ op ~ "= vec.y;");
+    return this;
+  }
 
-    mixin("result.left   = left "   ~ op ~ " vec.x;");
-    mixin("result.top    = top "    ~ op ~ " vec.y;");
-    mixin("result.right  = right "  ~ op ~ " vec.x;");
-    mixin("result.bottom = bottom " ~ op ~ " vec.y;");
+  pragma(inline, true)
+  pure
+  Rectangle opBinary(string op, size_t n)(const Vec!n vec) const
+  if (op == "+" || op == "-") {
+    Rectangle result = this;
+    mixin("result " ~ op ~ "= vec;");
+    return result;
+  }
 
+  pragma(inline, true)
+  ref Rectangle opOpAssign(string op)(float v)
+  if (op == "*" || op == "/") {
+    mixin("this.left   " ~ op ~ "= v;");
+    mixin("this.top    " ~ op ~ "= v;");
+    mixin("this.right  " ~ op ~ "= v;");
+    mixin("this.bottom " ~ op ~ "= v;");
+    return this;
+  }
+
+  pragma(inline, true)
+  pure
+  Rectangle opBinary(string op)(float v) const
+  if (op == "*" || op == "/") {
+    Rectangle result = this;
+    mixin("result " ~ op ~ "= v;");
     return result;
   }
 }
@@ -267,7 +321,7 @@ struct DimSlice(T, size_t n = 1) {
 
   pragma(inline, true)
   pure nothrow @nogc @trusted
-  ref T opIndex(size_t[n] indicies...) {
+  ref inout(T) opIndex(size_t[n] indicies...) inout {
     auto arrIndex = 0;
 
     static foreach (dim; 0..n) {
