@@ -90,6 +90,103 @@ inout(ubyte)[] representation(inout(char)[] s) {
   return cast(typeof(return)) s;
 }
 
+inout(char)[] sliceCString(inout(char)* cStr) {
+  import core.stdc.string : strlen;
+  return cStr[0..strlen(cStr)];
+}
+
+inout(char)[] sliceCBuffer(inout(char)[] cBuf) {
+  foreach (i, c; cBuf.representation) {
+    if (c == '\0') {
+      cBuf = cBuf[0..i];
+      break;
+    }
+  }
+  return cBuf;
+}
+
+struct ParseIntResult(T) {
+  T number;
+  const(char)[] intPart;
+  bool success;
+}
+
+ParseIntResult!T advanceInt(T)(const(char)[]* str, int base = 10) if (is(T == uint) || is(T == int) || is(T == ulong) || is(T == long)) {
+  import std.traits;
+  import core.checkedint;
+
+  ParseIntResult!T result;
+
+  const(char)[] local = *str;
+
+  bool isNegative = !isUnsigned!T && local.length && local[0] == '-';
+  T sign = 1;
+  if (isNegative) {
+    local = local[1..$];
+    sign = -1;
+  }
+
+  bool overflow = false;
+  size_t i = 0;
+  foreach (c; local.representation) {
+    T newNum = result.number;
+
+    static if (isUnsigned!T) {
+      newNum = mulu(newNum, base, overflow);
+    }
+    else {
+      newNum = muls(newNum, base, overflow);
+    }
+    if (overflow) break;
+
+    T toAdd = void;
+    if (c >= '0' && c < '0' + min(base, 10)) {
+      toAdd = (c - '0');
+    }
+    else if (c >= 'A' && c < 'A' + base - 10) {
+      toAdd = (c - 'A' + 10);
+    }
+    else if (c >= 'a' && c < 'a' + base - 10) {
+      toAdd = (c - 'a' + 10);
+    }
+    else {
+      break;
+    }
+    if (isNegative) toAdd = -toAdd;
+
+    static if (isUnsigned!T) {
+      newNum = addu(newNum, toAdd, overflow);
+    }
+    else {
+      newNum = adds(newNum, toAdd, overflow);
+    }
+    if (overflow) break;
+
+    result.number = newNum;
+    i++;
+  }
+  local = local[i..$];
+
+  if (i > 0 && !overflow) {
+    result.success = true;
+    result.intPart = (*str)[0..$-local.length];
+    *str = local;
+  }
+
+  return result;
+}
+
+ParseIntResult!T parseInt(T)(const(char)[] str, int base = 10) if (is(T == uint) || is(T == int) || is(T == ulong) || is(T == long)) {
+  auto result = advanceInt!T(&str, base);
+
+  // If successful, the whole string should have been consumed
+  if (str.length) {
+    result.success = false;
+  }
+
+  return result;
+}
+
 struct Arena {
   ubyte[] data;
   ubyte* index;
