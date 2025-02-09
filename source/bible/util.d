@@ -6,6 +6,7 @@ public import std.algorithm   : min, max;
 public import std.math        : floor, ceil, round, log2;
 
 import ctru, citro2d, citro3d;
+import core.stdc.stdarg : va_list, va_start, va_end;
 
 nothrow: @nogc:
 
@@ -96,15 +97,20 @@ struct Arena {
   debug size_t watermark, highWatermark;
 }
 
-Arena arenaMake(size_t bytes) {
+Arena arenaMake(ubyte[] buffer) {
   Arena result;
 
-  ubyte* ptr = cast(ubyte*) malloc(bytes);
-  assert(ptr);
-  result.data  = ptr[0..bytes];
-  result.index = ptr;
+  result.data  = buffer;
+  result.index = buffer.ptr;
 
   return result;
+}
+
+Arena arenaMake(size_t bytes) {
+  ubyte* ptr = cast(ubyte*) malloc(bytes);
+  assert(ptr);
+
+  return arenaMake(ptr[0..bytes]);
 }
 
 void arenaFree(Arena* arena) {
@@ -205,14 +211,58 @@ Arena arenaPushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
   return result;
 }
 
+T* arenaCopy(T)(Arena* arena, in T thing) {
+  auto result = arenaPush!(T, false)(arena);
+  *result = thing;
+  return result;
+}
+
+T[] arenaCopyArray(T)(Arena* arena, const(T)[] arr) {
+  import core.stdc.string : memcpy;
+  auto result = arenaPushArray!(T, false)(arena, arr.length);
+  memcpy(result.ptr, arr.ptr, T.sizeof * arr.length);
+  return result;
+}
+
+void arenaAppend(T)(Arena* arena, T[]* arr, in T thing) {
+  if (arr.ptr == null) {
+    *arr = arenaCopyArray(arena, (&thing)[0..1]);
+  }
+  else {
+    if (arena.index != cast(const(ubyte)*) (arr.ptr + arr.length)) {
+      *arr = arenaCopyArray(arena, *arr);
+    }
+
+    arenaCopy(arena, thing);
+    *arr = (*arr).ptr[0..arr.length+1];
+  }
+}
+
+void arenaExtend(T)(Arena* arena, T[]* arr, const(T)[] other) {
+  if (arr.ptr == null) {
+    *arr = arenaCopyArray(arena, other);
+  }
+  else {
+    if (arena.index != cast(const(ubyte)*) (arr.ptr + arr.length)) {
+      *arr = arenaCopyArray(arena, *arr);
+    }
+
+    arenaCopyArray(arena, other);
+    *arr = (*arr).ptr[0..arr.length+other.length];
+  }
+}
+
 pragma(printf)
 extern(C) char[] arenaPrintf(Arena* arena, const(char)* spec, ...) {
-  import core.stdc.stdio  : vsnprintf;
-  import core.stdc.stdarg : va_list, va_start, va_end;
-
   va_list args;
   va_start(args, spec);
-  scope (exit) va_end(args);
+  auto result = arenaVprintf(arena, spec, args);
+  va_end(args);
+  return result;
+}
+
+extern(C) char[] arenaVprintf(Arena* arena, const(char)* spec, va_list args) {
+  import core.stdc.stdio  : vsnprintf;
 
   int spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
 
@@ -232,6 +282,15 @@ bool arenaOwns(Arena* arena, void* thing) {
 }
 
 Arena gTempStorage;
+
+pragma(printf)
+extern(C) char[] tprintf(const(char)* spec, ...) {
+  va_list args;
+  va_start(args, spec);
+  auto result = arenaVprintf(&gTempStorage, spec, args);
+  va_end(args);
+  return result;
+}
 
 @trusted
 ubyte[] readFile(alias allocFunc = malloc)(scope const(char)[] filename) {
