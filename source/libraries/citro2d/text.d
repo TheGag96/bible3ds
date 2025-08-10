@@ -532,8 +532,8 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX
   C2Di_LineInfo[] lines = null;
   C2Di_WordInfo[] words = null;
 
-  lines = pushArray!(C2Di_LineInfo, false)(arena, text.lines);
-  words = pushArray!(C2Di_WordInfo, false)(arena, text.words);
+  lines = pushArray!C2Di_LineInfo(arena, text.lines, ArenaFlags.no_init);
+  words = pushArray!C2Di_WordInfo(arena, text.words, ArenaFlags.no_init);
   biggerBytes += C2D_WrapInfo.sizeof;
   lesserBytes += (C2Di_LineInfo*).sizeof * 2;
 

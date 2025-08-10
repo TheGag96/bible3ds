@@ -619,7 +619,7 @@ char[] tprint(T...)(const(char)[] format, T args) {
 // newlib's snprintf is dog slow... So, make these specialized temp-allocated string functions for common use cases.
 
 char[] tconcat(const(char)[] a, const(char)[] b) {
-  auto result = pushArray!(char, false)(&gUiData.frameArena, a.length + b.length + 1);
+  auto result = pushArray!char(&gUiData.frameArena, a.length + b.length + 1, ArenaFlags.no_init);
   result[0..a.length]                 = a;
   result[a.length..a.length+b.length] = b;
 
@@ -656,7 +656,7 @@ char[] tnum(const(char)[] prefix, int num, const(char)[] postfix = "") {
   }
 
   size_t numLength = buf.length - pos;
-  auto result      = pushArray!(char, false)(&gUiData.frameArena, prefix.length + numLength + postfix.length + 1);
+  auto result      = pushArray!char(&gUiData.frameArena, prefix.length + numLength + postfix.length + 1, ArenaFlags.no_init);
 
   size_t runner = 0;
   result[runner..runner+prefix.length]  = prefix;
@@ -1517,8 +1517,8 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
     uint left, top, right, bottom;
   }
 
-  auto drawOffsetStack = pushArray!(Vec2,    false)(&uiData.frameArena, MAX_UI_TREE_DEPTH);
-  auto scissorStack    = pushArray!(Scissor, false)(&uiData.frameArena, MAX_SCROLLABLE_DEPTH);
+  auto drawOffsetStack = pushArray!Vec2   (&uiData.frameArena, MAX_UI_TREE_DEPTH, ArenaFlags.no_init);
+  auto scissorStack    = pushArray!Scissor(&uiData.frameArena, MAX_SCROLLABLE_DEPTH, ArenaFlags.no_init);
   size_t drawStackPos = 0, scissorStackPos = 0;
 
   drawOffsetStack[drawStackPos] = SCREEN_POS[screen] * -1;
@@ -1663,7 +1663,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
   // @HACK: Doing this here, but is there a better way this should work?
   auto numLines = pageLines.length+1;
 
-  textArray = pushArray!(C2D_Text, false)(&page.arena, numLines);
+  textArray = pushArray!C2D_Text(&page.arena, numLines, ArenaFlags.no_init);
   textBuf   = C2D_TextBufNew(&page.arena, 16384);
 
   page.style       = pageStyle;
@@ -1671,7 +1671,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
 
   float textScale = pageStyle.textSize;
 
-  wrapInfos = pushArray!(C2D_WrapInfo, false)(&page.arena, numLines);
+  wrapInfos = pushArray!C2D_WrapInfo(&page.arena, numLines, ArenaFlags.no_init);
 
   // Chapter heading
   C2D_TextParse(&textArray[0], textBuf, aprintf(&page.arena, "Chapter %d", chapterNum), flags : C2D_ParseFlags.bible);
@@ -1691,7 +1691,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
 
   C2D_TextGetDimensions(&textArray[0], textScale, textScale, &glyphSize.x, &glyphSize.y);
 
-  actualLineNumberTable = pushArray!(LoadedPage.LineTableEntry, false)(&page.arena, actualNumLines);
+  actualLineNumberTable = pushArray!(LoadedPage.LineTableEntry)(&page.arena, actualNumLines, ArenaFlags.no_init);
 
   size_t runner = 0;
   foreach (i, ref wrapInfo; wrapInfos) {
@@ -1757,10 +1757,10 @@ ulong boxHash(const(char)[] text) {
 BoxHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements, size_t tempElements) {
   BoxHashTable result;
 
-  result.table    = pushArray!(Box*, false)(arena, tableElements);
+  result.table    = pushArray!(Box*)(arena, tableElements, ArenaFlags.no_init);
   result.table[]  = gNullBox;
-  result.freePool = pushArray!(Box,  true) (arena, maxElements);
-  result.temp     = pushArray!(Box,  true) (arena, tempElements);
+  result.freePool = pushArray!Box   (arena, maxElements);
+  result.temp     = pushArray!Box   (arena, tempElements);
 
   result.firstFree = gNullBox;
 

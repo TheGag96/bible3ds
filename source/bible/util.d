@@ -187,6 +187,12 @@ ParseIntResult!T parseInt(T)(const(char)[] str, int base = 10) if (is(T == uint)
   return result;
 }
 
+enum ArenaFlags : uint {
+  defaults  = 0,
+  no_init   = (1 << 0),
+  soft_fail = (1 << 1),
+}
+
 struct Arena {
   ubyte[] data;
   ubyte* index;
@@ -244,7 +250,7 @@ struct ScopedArenaRestore {
 }
 
 // Internal.
-ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignment) { with (arena) {
+ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, ArenaFlags flags, size_t alignment) { with (arena) {
   ubyte* toReturn = cast(ubyte*) ((cast(size_t)index + alignment - 1) & ~(alignment - 1));
   ubyte* newIndex = toReturn + amount;
 
@@ -257,7 +263,9 @@ ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignment) { with
   }
 
   if (newIndex > data.ptr + data.length) {
-    assert(0, "Arena allocation failed!");  // @TODO: Consider chained arenas
+    if (!(flags & ArenaFlags.soft_fail)) {
+      assert(0, "Arena allocation failed!");  // @TODO: Consider chained arenas
+    }
     return null;
   }
   else {
@@ -266,90 +274,119 @@ ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignment) { with
   }
 }}
 
-ubyte[] pushBytesNoZero(Arena* arena, size_t bytes, size_t aligning = 1) {
-  ubyte* result = arenaAlignBumpIndex(arena, bytes, aligning);
-  return (cast(ubyte*) result)[0..bytes];
-}
-
-ubyte[] pushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
+ubyte[] pushBytes(Arena* arena, size_t bytes, ArenaFlags flags = ArenaFlags.defaults, size_t aligning = 1) {
   import core.stdc.string : memset;
 
-  auto result = pushBytesNoZero(arena, bytes, aligning);
-  memset(result.ptr, 0, result.length);
-  return result;
-}
-
-T* push(T, bool init = true)(Arena* arena) {
-  import core.lifetime : emplace;
-
-  T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, T.alignof);
-  static if (init && __traits(compiles, () { auto test = T.init; })) {
-    emplace!T(result, T.init);
+  ubyte[] result;
+  ubyte* ptr = arenaAlignBumpIndex(arena, bytes, flags, aligning);
+  if (ptr) {
+    if (!(flags & ArenaFlags.no_init)) {
+      memset(ptr, 0, bytes);
+    }
+    result = (cast(ubyte*) ptr)[0..bytes];
   }
 
   return result;
 }
 
-T[] pushArray(T, bool init = true)(Arena* arena, size_t size) {
+T* push(T)(Arena* arena, ArenaFlags flags = ArenaFlags.defaults) {
   import core.lifetime : emplace;
 
-  T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, T.alignof);
-  static if (init && __traits(compiles, () { auto test = T.init; })) {
-    foreach (i; 0..size) {
-      emplace!T(result + i, T.init);
+  T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, flags, T.alignof);
+  static if (__traits(compiles, () { auto test = T.init; })) {
+    if (result && !(flags & ArenaFlags.no_init)) {
+      emplace!T(result, T.init);
     }
   }
 
-  return result[0..size];
+  return result;
 }
 
-Arena pushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
+T[] pushArray(T)(Arena* arena, size_t size, ArenaFlags flags = ArenaFlags.defaults) {
+  import core.lifetime : emplace;
+
+  T[] result;
+  T* ptr = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, flags, T.alignof);
+  if (ptr) {
+    static if (__traits(compiles, () { auto test = T.init; })) {
+      if (!(flags & ArenaFlags.no_init)) {
+        foreach (i; 0..size) {
+          emplace!T(ptr + i, T.init);
+        }
+      }
+    }
+
+    result = ptr[0..size];
+  }
+
+  return result;
+}
+
+Arena pushArena(Arena* parent, size_t bytes, ArenaFlags flags = ArenaFlags.defaults, size_t aligning = 16) {
   Arena result;
 
-  result.data  = pushBytesNoZero(parent, bytes, aligning);
+  result.data  = pushBytes(parent, bytes, flags | ArenaFlags.no_init, aligning);
   result.index = result.data.ptr;
 
   return result;
 }
 
-T* copy(T)(Arena* arena, in T thing) {
-  auto result = push!(T, false)(arena);
-  *result = thing;
+T* copy(T)(Arena* arena, in T thing, ArenaFlags flags = ArenaFlags.defaults) {
+  auto result = push!T(arena, flags | ArenaFlags.no_init);
+  if (result) {
+    *result = thing;
+  }
   return result;
 }
 
-T[] copyArray(T)(Arena* arena, const(T)[] arr) {
+T[] copyArray(T)(Arena* arena, const(T)[] arr, ArenaFlags flags = ArenaFlags.defaults) {
   import core.stdc.string : memcpy;
-  auto result = pushArray!(T, false)(arena, arr.length);
-  memcpy(result.ptr, arr.ptr, T.sizeof * arr.length);
+  auto result = pushArray!T(arena, arr.length, flags | ArenaFlags.no_init);
+  if (result.ptr) {
+    memcpy(result.ptr, arr.ptr, T.sizeof * arr.length);
+  }
   return result;
 }
 
-void append(T)(Arena* arena, T[]* arr, in T thing) {
-  if (arr.ptr == null) {
-    *arr = copyArray(arena, (&thing)[0..1]);
+void append(T)(Arena* arena, T[]* arr, in T thing, ArenaFlags flags = ArenaFlags.defaults) {
+  T[] result = *arr;
+  if (result.length == 0) {
+    result = copyArray(arena, (&thing)[0..1], flags);
   }
   else {
-    if (arena.index != cast(const(ubyte)*) (arr.ptr + arr.length)) {
-      *arr = copyArray(arena, *arr);
+    if (arena.index != cast(const(ubyte)*) (result.ptr + result.length)) {
+      result = copyArray(arena, result, flags);
     }
 
-    copy(arena, thing);
-    *arr = (*arr).ptr[0..arr.length+1];
+    auto newPart = copy(arena, thing, flags);
+    if (result.ptr && newPart.ptr) {
+      result = result.ptr[0..result.length+1];
+    }
+  }
+
+  if (result.ptr) {
+    *arr = result;
   }
 }
 
-void extend(T)(Arena* arena, T[]* arr, const(T)[] other) {
-  if (arr.ptr == null) {
-    *arr = copyArray(arena, other);
+void extend(T)(Arena* arena, T[]* arr, const(T)[] other, ArenaFlags flags = ArenaFlags.defaults) {
+  T[] result = *arr;
+  if (result.length == 0) {
+    result = copyArray(arena, other, flags);
   }
   else {
-    if (arena.index != cast(const(ubyte)*) (arr.ptr + arr.length)) {
-      *arr = copyArray(arena, *arr);
+    if (arena.index != cast(const(ubyte)*) (result.ptr + result.length)) {
+      result = copyArray(arena, result, flags);
     }
 
-    copyArray(arena, other);
-    *arr = (*arr).ptr[0..arr.length+other.length];
+    auto newPart = copyArray(arena, other, flags);
+    if (result.ptr && newPart.ptr) {
+      result = result.ptr[0..arr.length+other.length];
+    }
+  }
+
+  if (result.ptr) {
+    *arr = result;
   }
 }
 
@@ -357,12 +394,21 @@ pragma(printf)
 extern(C) char[] aprintf(Arena* arena, const(char)* spec, ...) {
   va_list args;
   va_start(args, spec);
-  auto result = vaprintf(arena, spec, args);
+  auto result = vafprintf(arena, ArenaFlags.defaults, spec, args);
   va_end(args);
   return result;
 }
 
-extern(C) char[] vaprintf(Arena* arena, const(char)* spec, va_list args) {
+pragma(printf)
+extern(C) char[] afprintf(Arena* arena, ArenaFlags flags, const(char)* spec, ...) {
+  va_list args;
+  va_start(args, spec);
+  auto result = vafprintf(arena, flags, spec, args);
+  va_end(args);
+  return result;
+}
+
+extern(C) char[] vafprintf(Arena* arena, ArenaFlags flags, const(char)* spec, va_list args) {
   import core.stdc.stdio  : vsnprintf;
 
   int spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
@@ -372,9 +418,9 @@ extern(C) char[] vaprintf(Arena* arena, const(char)* spec, va_list args) {
   assert(length >= 0); //no idea what to do if length comes back negative
 
   // Plus one because of the null character
-  char* result = cast(char*)arenaAlignBumpIndex(arena, length+1, 1);
+  char* result = cast(char*)arenaAlignBumpIndex(arena, length+1, flags, 1);
 
-  return result[0..length];
+  return result ? result[0..length] : [];
 }
 
 pragma(inline, true)
@@ -388,7 +434,7 @@ pragma(printf)
 extern(C) char[] tprintf(const(char)* spec, ...) {
   va_list args;
   va_start(args, spec);
-  auto result = vaprintf(&gTempStorage, spec, args);
+  auto result = vafprintf(&gTempStorage, ArenaFlags.defaults, spec, args);
   va_end(args);
   return result;
 }
@@ -448,7 +494,7 @@ char[] readCompressedTextFile(Arena* arena, scope const(char)[] filename) {
 
   assert(bytesForHeader != -1);
 
-  char[] buf = pushArray!(char, false)(arena, decompSize);
+  char[] buf = pushArray!char(arena, decompSize, ArenaFlags.no_init);
 
   bool success = decompress(
     buf.ptr,

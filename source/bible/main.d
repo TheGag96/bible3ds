@@ -1154,7 +1154,7 @@ char[] getKeyboardInput(Arena* arena, size_t maxCharacters = 64) {
   } while (!shouldQuit);
 
   str = str[0..strlen(str.ptr)];
-  pushBytesNoZero(arena, str.length);
+  pushBytes(arena, str.length, ArenaFlags.no_init);
 
   return str;
 }
