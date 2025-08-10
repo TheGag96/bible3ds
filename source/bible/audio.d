@@ -18,8 +18,8 @@ enum CHANNELS_PER_SAMPLE = 2;
 enum BYTESPERSAMPLE      = CHANNELS_PER_SAMPLE * 2;
 enum WAVEBUF_SIZE        = SAMPLESPERBUF * BYTESPERSAMPLE;
 
-enum THREAD_AFFINITY = -1;           //execute thread on any core
-enum THREAD_STACK_SZ = 200 * 1024;   //stack for audio thread
+enum THREAD_AFFINITY = -1;              //execute thread on any core
+enum THREAD_STACK_SZ = kilobytes(200);  //stack for audio thread
 
 enum MUSIC_CHANNEL     = 0;
 enum FIRST_SFX_CHANNEL = MUSIC_CHANNEL + 1;

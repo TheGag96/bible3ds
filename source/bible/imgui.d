@@ -765,11 +765,11 @@ Signal popParentAndSignal() {
   return signalFromBox(popParent());
 }
 
-void init(UiData* uiData, size_t arenaSize = 1*1024*1024) { with (uiData) {
+void init(UiData* uiData, size_t arenaSize = megabytes(1)) { with (uiData) {
   uiArena    = arenaMake(arenaSize);
   textBuf    = C2D_TextBufNew(&uiArena, 16384);
   boxes      = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
-  frameArena = arenaPushArena(&uiArena, 16*1024);
+  frameArena = arenaPushArena(&uiArena, kilobytes(16));
 
   if (!gNullBox) {
     gNullBox = cast(Box*) &gNullBoxStore;
@@ -1656,7 +1656,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
     arenaClear(&page.arena);
   }
   else {
-    page.arena = arenaMake(1*1024*1024);
+    page.arena = arenaMake(megabytes(1));
   }
 
   // Extra lines for the chapter heading

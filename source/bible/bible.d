@@ -105,8 +105,8 @@ struct BibleLoadData {
 extern(C) void bibleLoadThread(void* data) {
   auto loadData = cast(BibleLoadData*) data;
 
-  gTempStorage        = arenaMake(1*1024);
-  loadData.bibleArena = arenaMake(16*1024*1024);
+  gTempStorage        = arenaMake(kilobytes(1));
+  loadData.bibleArena = arenaMake(megabytes(16));
 
   while (true) {
     // Wait for command to start a load
@@ -130,7 +130,7 @@ void startAsyncBibleLoad(BibleLoadData* bible, Translation translation) {
   if (bible.threadHandle == null) {
     LightSemaphore_Init(&bible.inSync,  initial_count :  1, max_count : 1);
     LightSemaphore_Init(&bible.outSync, initial_count : -1, max_count : 1);
-    bible.threadHandle = threadCreate(&bibleLoadThread, bible, 16*1024, 0x31, -2, true);
+    bible.threadHandle = threadCreate(&bibleLoadThread, bible, kilobytes(16), 0x31, -2, true);
   }
   else {
     // @Blocking: Last Bible load most complete before we can queue another

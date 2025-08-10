@@ -85,7 +85,7 @@ extern(C) int main(int argc, char** argv) {
 
   gNullInput = cast(Input*) &gNullInputStore;
 
-  gTempStorage = arenaMake(16*1024);
+  gTempStorage = arenaMake(kilobytes(16));
 
   // Init libs
   romfsInit();

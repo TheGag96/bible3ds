@@ -582,6 +582,10 @@ auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   }
 }
 
+T kilobytes(T)(T count) { return count * 1024; }
+T megabytes(T)(T count) { return count * 1024 * 1024; }
+T gigabytes(T)(T count) { return count * 1024 * 1024 * 1024; }
+
 pragma(inline, true)
 void breakpoint() {
   import ldc.llvmasm;
