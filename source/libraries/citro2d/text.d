@@ -183,7 +183,7 @@ C2D_TextBuf C2D_TextBufNew(Arena* arena, size_t maxGlyphs)
 {
   C2Di_TextEnsureLoad();
 
-  C2D_TextBuf buf = cast(C2D_TextBuf) arenaPushBytesZero(arena, C2Di_TextBufBufferSize(maxGlyphs)).ptr;
+  C2D_TextBuf buf = cast(C2D_TextBuf) arenaPushBytes(arena, C2Di_TextBufBufferSize(maxGlyphs)).ptr;
   buf.glyphBufSize = maxGlyphs;
   return buf;
 }

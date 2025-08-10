@@ -262,15 +262,15 @@ ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignment) { with
   }
 }}
 
-ubyte[] arenaPushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
+ubyte[] arenaPushBytesNoZero(Arena* arena, size_t bytes, size_t aligning = 1) {
   ubyte* result = arenaAlignBumpIndex(arena, bytes, aligning);
   return (cast(ubyte*) result)[0..bytes];
 }
 
-ubyte[] arenaPushBytesZero(Arena* arena, size_t bytes, size_t aligning = 1) {
+ubyte[] arenaPushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
   import core.stdc.string : memset;
 
-  auto result = arenaPushBytes(arena, bytes, aligning);
+  auto result = arenaPushBytesNoZero(arena, bytes, aligning);
   memset(result.ptr, 0, result.length);
   return result;
 }
@@ -302,7 +302,7 @@ T[] arenaPushArray(T, bool init = true)(Arena* arena, size_t size) {
 Arena arenaPushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
   Arena result;
 
-  result.data  = arenaPushBytes(parent, bytes, aligning);
+  result.data  = arenaPushBytesNoZero(parent, bytes, aligning);
   result.index = result.data.ptr;
 
   return result;
