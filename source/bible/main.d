@@ -468,10 +468,10 @@ void mainGui(MainData* mainData, Input* input) {
           foreach (chapterNum, lines; mainData.bible.books[book].chapters) {
             foreach (verseNum, line; lines[1..$]) {
               if (line.representation.canFind(mainData.searchString.representation)) {
-                SearchResult* newResult = arenaPush!SearchResult(&mainData.searchArena);
+                SearchResult* newResult = push!SearchResult(&mainData.searchArena);
 
                 newResult.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) verseNum);
-                newResult.locString = arenaPrintf(&mainData.searchArena, "%s %d:%d", BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2);
+                newResult.locString = aprintf(&mainData.searchArena, "%s %d:%d", BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2);
                 newResult.verseText = line;
 
                 linkedListPushBack(&mainData.searchResults, &mainData.searchResultsLast, newResult);
@@ -1041,13 +1041,13 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
 
   Box* layoutBox;
   {
-    auto previewStyle = arenaPush!BoxStyle(&gUiData.frameArena);
+    auto previewStyle = push!BoxStyle(&gUiData.frameArena);
     *previewStyle = mainData.styleButtonBook;
     previewStyle.colors = COLOR_THEMES[colorTheme];
     previewStyle.margin   *= 4.0/5;
     previewStyle.textSize *= 0.9;
 
-    auto previewStyleBottom = arenaPush!BoxStyle(&gUiData.frameArena);
+    auto previewStyleBottom = push!BoxStyle(&gUiData.frameArena);
     *previewStyleBottom = mainData.styleButtonBottom;
     previewStyleBottom.colors = COLOR_THEMES[colorTheme];
     previewStyleBottom.margin   *= 4.0/5;
@@ -1132,7 +1132,7 @@ char[] getKeyboardInput(Arena* arena, size_t maxCharacters = 64) {
   swkbdSetValidation(&swkbd, SWKBDValidInput.notempty_notblank, 0, 0);
   swkbdSetFeatures(&swkbd, SWKBD_DARKEN_TOP_SCREEN | SWKBD_ALLOW_HOME | SWKBD_ALLOW_RESET | SWKBD_ALLOW_POWER);
 
-  ubyte[] buffer = arenaRemaining(arena)[0..min($, maxCharacters+1)];  // Leave room for the null-terminator
+  ubyte[] buffer = remaining(arena)[0..min($, maxCharacters+1)];  // Leave room for the null-terminator
   char[]  str    = (cast(char*) buffer.ptr)[0..buffer.length];
 
   bool shouldQuit = false;
@@ -1154,7 +1154,7 @@ char[] getKeyboardInput(Arena* arena, size_t maxCharacters = 64) {
   } while (!shouldQuit);
 
   str = str[0..strlen(str.ptr)];
-  arenaPushBytesNoZero(arena, str.length);
+  pushBytesNoZero(arena, str.length);
 
   return str;
 }

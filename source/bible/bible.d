@@ -38,11 +38,11 @@ OpenBook openBibleBook(Arena* arena, Translation translation, Book book) {
   OpenBook result;
 
   auto restore = ScopedArenaRestore(&gTempStorage);
-  auto bookText = readCompressedTextFile(arena, arenaPrintf(&gTempStorage, "romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
+  auto bookText = readCompressedTextFile(arena, aprintf(&gTempStorage, "romfs:/bibles/%s/%s", TRANSLATION_NAMES[translation].ptr, BOOK_FILENAMES[book].ptr));
   result.rawFile = bookText;
 
   int numLines = bookText.representation.count('\n');
-  char[][] lines = arenaPushArray!(char[])(arena, numLines);
+  char[][] lines = pushArray!(char[])(arena, numLines);
 
   foreach (i, line; bookText.representation.splitter('\n').enumerate) {
     if (i != numLines) lines[i] = cast(char[])line;
@@ -65,7 +65,7 @@ OpenBook openBibleBook(Arena* arena, Translation translation, Book book) {
     }
   }
 
-  char[][][] chapters = arenaPushArray!(char[][])(arena, numChapters+1);
+  char[][][] chapters = pushArray!(char[][])(arena, numChapters+1);
 
   lastChapter = [];
   size_t chapterStart = 0;

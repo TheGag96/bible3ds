@@ -613,13 +613,13 @@ __gshared UiData* gUiData;
 
 pragma(inline, true)
 char[] tprint(T...)(const(char)[] format, T args) {
-  return arenaPrintf(&gUiData.frameArena, format.ptr, args);
+  return aprintf(&gUiData.frameArena, format.ptr, args);
 }
 
 // newlib's snprintf is dog slow... So, make these specialized temp-allocated string functions for common use cases.
 
 char[] tconcat(const(char)[] a, const(char)[] b) {
-  auto result = arenaPushArray!(char, false)(&gUiData.frameArena, a.length + b.length + 1);
+  auto result = pushArray!(char, false)(&gUiData.frameArena, a.length + b.length + 1);
   result[0..a.length]                 = a;
   result[a.length..a.length+b.length] = b;
 
@@ -656,7 +656,7 @@ char[] tnum(const(char)[] prefix, int num, const(char)[] postfix = "") {
   }
 
   size_t numLength = buf.length - pos;
-  auto result      = arenaPushArray!(char, false)(&gUiData.frameArena, prefix.length + numLength + postfix.length + 1);
+  auto result      = pushArray!(char, false)(&gUiData.frameArena, prefix.length + numLength + postfix.length + 1);
 
   size_t runner = 0;
   result[runner..runner+prefix.length]  = prefix;
@@ -668,7 +668,7 @@ char[] tnum(const(char)[] prefix, int num, const(char)[] postfix = "") {
   // Null-termination... sigh...
   result[$-1] = '\0';
 
-  // ...but, return the string without it, as arenaPrintf does.
+  // ...but, return the string without it, as aprintf does.
   return result[0..$-1];
 }
 
@@ -769,7 +769,7 @@ void init(UiData* uiData, size_t arenaSize = megabytes(1)) { with (uiData) {
   uiArena    = arenaMake(arenaSize);
   textBuf    = C2D_TextBufNew(&uiArena, 16384);
   boxes      = hashTableMake(arena: &uiArena, maxElements: 512, tableElements: 128, tempElements: 256);
-  frameArena = arenaPushArena(&uiArena, kilobytes(16));
+  frameArena = pushArena(&uiArena, kilobytes(16));
 
   if (!gNullBox) {
     gNullBox = cast(Box*) &gNullBoxStore;
@@ -1517,8 +1517,8 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
     uint left, top, right, bottom;
   }
 
-  auto drawOffsetStack = arenaPushArray!(Vec2,    false)(&uiData.frameArena, MAX_UI_TREE_DEPTH);
-  auto scissorStack    = arenaPushArray!(Scissor, false)(&uiData.frameArena, MAX_SCROLLABLE_DEPTH);
+  auto drawOffsetStack = pushArray!(Vec2,    false)(&uiData.frameArena, MAX_UI_TREE_DEPTH);
+  auto scissorStack    = pushArray!(Scissor, false)(&uiData.frameArena, MAX_SCROLLABLE_DEPTH);
   size_t drawStackPos = 0, scissorStackPos = 0;
 
   drawOffsetStack[drawStackPos] = SCREEN_POS[screen] * -1;
@@ -1663,7 +1663,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
   // @HACK: Doing this here, but is there a better way this should work?
   auto numLines = pageLines.length+1;
 
-  textArray = arenaPushArray!(C2D_Text, false)(&page.arena, numLines);
+  textArray = pushArray!(C2D_Text, false)(&page.arena, numLines);
   textBuf   = C2D_TextBufNew(&page.arena, 16384);
 
   page.style       = pageStyle;
@@ -1671,10 +1671,10 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
 
   float textScale = pageStyle.textSize;
 
-  wrapInfos = arenaPushArray!(C2D_WrapInfo, false)(&page.arena, numLines);
+  wrapInfos = pushArray!(C2D_WrapInfo, false)(&page.arena, numLines);
 
   // Chapter heading
-  C2D_TextParse(&textArray[0], textBuf, arenaPrintf(&page.arena, "Chapter %d", chapterNum), flags : C2D_ParseFlags.bible);
+  C2D_TextParse(&textArray[0], textBuf, aprintf(&page.arena, "Chapter %d", chapterNum), flags : C2D_ParseFlags.bible);
   wrapInfos[0] = C2D_CalcWrapInfo(&textArray[0], &page.arena, textScale, SCREEN_BOTTOM_WIDTH - 2 * pageStyle.margin.x);
 
   foreach (lineNum; 0..pageLines.length) {
@@ -1691,7 +1691,7 @@ void loadPage(LoadedPage* page, char[][] pageLines, int chapterNum, BoxStyle* pa
 
   C2D_TextGetDimensions(&textArray[0], textScale, textScale, &glyphSize.x, &glyphSize.y);
 
-  actualLineNumberTable = arenaPushArray!(LoadedPage.LineTableEntry, false)(&page.arena, actualNumLines);
+  actualLineNumberTable = pushArray!(LoadedPage.LineTableEntry, false)(&page.arena, actualNumLines);
 
   size_t runner = 0;
   foreach (i, ref wrapInfo; wrapInfos) {
@@ -1757,10 +1757,10 @@ ulong boxHash(const(char)[] text) {
 BoxHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElements, size_t tempElements) {
   BoxHashTable result;
 
-  result.table    = arenaPushArray!(Box*, false)(arena, tableElements);
+  result.table    = pushArray!(Box*, false)(arena, tableElements);
   result.table[]  = gNullBox;
-  result.freePool = arenaPushArray!(Box,  true) (arena, maxElements);
-  result.temp     = arenaPushArray!(Box,  true) (arena, tempElements);
+  result.freePool = pushArray!(Box,  true) (arena, maxElements);
+  result.temp     = pushArray!(Box,  true) (arena, tempElements);
 
   result.firstFree = gNullBox;
 

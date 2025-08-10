@@ -227,9 +227,12 @@ debug {
   extern (C) void __assert(const char* msg_, const char* file_, int line) @trusted {
     import ctru.console : consoleInit;
     import ctru.gfx     : GFXScreen;
+    import ldc.llvmasm;
 
     consoleInit(GFXScreen.bottom, null);
     printf("\x1b[1;1HAssert failed in file %s at line %d: %s\x1b[K", file_, line, msg_);
+
+    __asm("bkpt", "");
 
     printf("\n\nPress Start to exit...\n");
 

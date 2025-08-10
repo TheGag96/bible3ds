@@ -183,7 +183,7 @@ C2D_TextBuf C2D_TextBufNew(Arena* arena, size_t maxGlyphs)
 {
   C2Di_TextEnsureLoad();
 
-  C2D_TextBuf buf = cast(C2D_TextBuf) arenaPushBytes(arena, C2Di_TextBufBufferSize(maxGlyphs)).ptr;
+  C2D_TextBuf buf = cast(C2D_TextBuf) pushBytes(arena, C2Di_TextBufBufferSize(maxGlyphs)).ptr;
   buf.glyphBufSize = maxGlyphs;
   return buf;
 }
@@ -532,8 +532,8 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX
   C2Di_LineInfo[] lines = null;
   C2Di_WordInfo[] words = null;
 
-  lines = arenaPushArray!(C2Di_LineInfo, false)(arena, text.lines);
-  words = arenaPushArray!(C2Di_WordInfo, false)(arena, text.words);
+  lines = pushArray!(C2Di_LineInfo, false)(arena, text.lines);
+  words = pushArray!(C2Di_WordInfo, false)(arena, text.words);
   biggerBytes += C2D_WrapInfo.sizeof;
   lesserBytes += (C2Di_LineInfo*).sizeof * 2;
 

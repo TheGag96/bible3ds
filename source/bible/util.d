@@ -220,7 +220,7 @@ void arenaClear(Arena* arena) {
   debug arena.watermark = 0;
 }
 
-ubyte[] arenaRemaining(Arena* arena) {
+ubyte[] remaining(Arena* arena) {
   return arena.data[arena.index - arena.data.ptr..$];
 }
 
@@ -266,20 +266,20 @@ ubyte* arenaAlignBumpIndex(Arena* arena, size_t amount, size_t alignment) { with
   }
 }}
 
-ubyte[] arenaPushBytesNoZero(Arena* arena, size_t bytes, size_t aligning = 1) {
+ubyte[] pushBytesNoZero(Arena* arena, size_t bytes, size_t aligning = 1) {
   ubyte* result = arenaAlignBumpIndex(arena, bytes, aligning);
   return (cast(ubyte*) result)[0..bytes];
 }
 
-ubyte[] arenaPushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
+ubyte[] pushBytes(Arena* arena, size_t bytes, size_t aligning = 1) {
   import core.stdc.string : memset;
 
-  auto result = arenaPushBytesNoZero(arena, bytes, aligning);
+  auto result = pushBytesNoZero(arena, bytes, aligning);
   memset(result.ptr, 0, result.length);
   return result;
 }
 
-T* arenaPush(T, bool init = true)(Arena* arena) {
+T* push(T, bool init = true)(Arena* arena) {
   import core.lifetime : emplace;
 
   T* result = cast(T*) arenaAlignBumpIndex(arena, T.sizeof, T.alignof);
@@ -290,7 +290,7 @@ T* arenaPush(T, bool init = true)(Arena* arena) {
   return result;
 }
 
-T[] arenaPushArray(T, bool init = true)(Arena* arena, size_t size) {
+T[] pushArray(T, bool init = true)(Arena* arena, size_t size) {
   import core.lifetime : emplace;
 
   T* result = cast(T*) arenaAlignBumpIndex(arena, size*T.sizeof, T.alignof);
@@ -303,66 +303,66 @@ T[] arenaPushArray(T, bool init = true)(Arena* arena, size_t size) {
   return result[0..size];
 }
 
-Arena arenaPushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
+Arena pushArena(Arena* parent, size_t bytes, size_t aligning = 16) {
   Arena result;
 
-  result.data  = arenaPushBytesNoZero(parent, bytes, aligning);
+  result.data  = pushBytesNoZero(parent, bytes, aligning);
   result.index = result.data.ptr;
 
   return result;
 }
 
-T* arenaCopy(T)(Arena* arena, in T thing) {
-  auto result = arenaPush!(T, false)(arena);
+T* copy(T)(Arena* arena, in T thing) {
+  auto result = push!(T, false)(arena);
   *result = thing;
   return result;
 }
 
-T[] arenaCopyArray(T)(Arena* arena, const(T)[] arr) {
+T[] copyArray(T)(Arena* arena, const(T)[] arr) {
   import core.stdc.string : memcpy;
-  auto result = arenaPushArray!(T, false)(arena, arr.length);
+  auto result = pushArray!(T, false)(arena, arr.length);
   memcpy(result.ptr, arr.ptr, T.sizeof * arr.length);
   return result;
 }
 
-void arenaAppend(T)(Arena* arena, T[]* arr, in T thing) {
+void append(T)(Arena* arena, T[]* arr, in T thing) {
   if (arr.ptr == null) {
-    *arr = arenaCopyArray(arena, (&thing)[0..1]);
+    *arr = copyArray(arena, (&thing)[0..1]);
   }
   else {
     if (arena.index != cast(const(ubyte)*) (arr.ptr + arr.length)) {
-      *arr = arenaCopyArray(arena, *arr);
+      *arr = copyArray(arena, *arr);
     }
 
-    arenaCopy(arena, thing);
+    copy(arena, thing);
     *arr = (*arr).ptr[0..arr.length+1];
   }
 }
 
-void arenaExtend(T)(Arena* arena, T[]* arr, const(T)[] other) {
+void extend(T)(Arena* arena, T[]* arr, const(T)[] other) {
   if (arr.ptr == null) {
-    *arr = arenaCopyArray(arena, other);
+    *arr = copyArray(arena, other);
   }
   else {
     if (arena.index != cast(const(ubyte)*) (arr.ptr + arr.length)) {
-      *arr = arenaCopyArray(arena, *arr);
+      *arr = copyArray(arena, *arr);
     }
 
-    arenaCopyArray(arena, other);
+    copyArray(arena, other);
     *arr = (*arr).ptr[0..arr.length+other.length];
   }
 }
 
 pragma(printf)
-extern(C) char[] arenaPrintf(Arena* arena, const(char)* spec, ...) {
+extern(C) char[] aprintf(Arena* arena, const(char)* spec, ...) {
   va_list args;
   va_start(args, spec);
-  auto result = arenaVprintf(arena, spec, args);
+  auto result = vaprintf(arena, spec, args);
   va_end(args);
   return result;
 }
 
-extern(C) char[] arenaVprintf(Arena* arena, const(char)* spec, va_list args) {
+extern(C) char[] vaprintf(Arena* arena, const(char)* spec, va_list args) {
   import core.stdc.stdio  : vsnprintf;
 
   int spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
@@ -378,7 +378,7 @@ extern(C) char[] arenaVprintf(Arena* arena, const(char)* spec, va_list args) {
 }
 
 pragma(inline, true)
-bool arenaOwns(Arena* arena, void* thing) {
+bool owns(Arena* arena, void* thing) {
   return thing >= arena.data.ptr && thing < arena.data.ptr + arena.data.length;
 }
 
@@ -388,7 +388,7 @@ pragma(printf)
 extern(C) char[] tprintf(const(char)* spec, ...) {
   va_list args;
   va_start(args, spec);
-  auto result = arenaVprintf(&gTempStorage, spec, args);
+  auto result = vaprintf(&gTempStorage, spec, args);
   va_end(args);
   return result;
 }
@@ -448,7 +448,7 @@ char[] readCompressedTextFile(Arena* arena, scope const(char)[] filename) {
 
   assert(bytesForHeader != -1);
 
-  char[] buf = arenaPushArray!(char, false)(arena, decompSize);
+  char[] buf = pushArray!(char, false)(arena, decompSize);
 
   bool success = decompress(
     buf.ptr,
