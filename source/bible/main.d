@@ -30,6 +30,7 @@ enum View {
   book,
   reading,
   options,
+  search,
 }
 
 struct PageId {
@@ -49,6 +50,8 @@ alias ModalCallback = bool function(MainData* mainData, UiView* uiView);
 
 struct MainData {
   View curView;
+  View[8] viewStack;
+  size_t viewStackIndex;
   UiView[View.max+1] views;
   UiView modal;
   ModalCallback modalCallback;
@@ -68,8 +71,19 @@ struct MainData {
   ui.ColorTable colorTable;
   bool fadingBetweenThemes;
   ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, stylePage, styleVerse;
+
+  Arena searchArena;
+  char[] searchString;
+  SearchResult* searchResults, searchResultsLast;
 }
 MainData mainData;
+
+struct SearchResult {
+  SearchResult* next;
+  BibleLoc loc;
+  char[] locString;
+  char[] verseText;
+}
 
 enum SOC_ALIGN      = 0x1000;
 enum SOC_BUFFERSIZE = 0x100000;
@@ -305,6 +319,8 @@ void initMainData(MainData* mainData) { with (mainData) {
   styleVerse.soundButtonDown         = SoundPlay.init;
   styleVerse.soundButtonPressed      = SoundPlay.init;
   styleVerse.soundButtonOff          = SoundPlay.init;
+
+  searchArena                        = arenaMake(kilobytes(16));
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
@@ -389,13 +405,23 @@ void mainGui(MainData* mainData, Input* input) {
   enum CommandCode {
     none,
     switch_view,
+    go_to_previous_view,
     open_book,
+    start_search,
+  }
+
+  static void sendOpenBookCommand(BibleLoc value, UiData* uiData = gUiData) {
+    sendCommand(CommandCode.open_book, *cast(uint*)&value, uiData);
+  }
+
+  void doViewSwitch(View view) {
+    if (mainData.viewStackIndex < mainData.viewStack.length) {
+      mainData.viewStack[mainData.viewStackIndex++] = mainData.curView;
+    }
+    mainData.curView = view;
   }
 
   enum LOAD_BOOK_PROGRESS = 0;
-  static uint formatOpenBookCommand(Book book, int chapter, int verse) {
-    return book | (chapter << 8) | (verse << 16);
-  }
 
   Command command;
   while (true) {
@@ -405,24 +431,57 @@ void mainGui(MainData* mainData, Input* input) {
     final switch (cast(CommandCode) command.code) {
       case CommandCode.none: break;
       case CommandCode.switch_view:
-        mainData.curView = cast(View) command.value;
+        doViewSwitch(cast(View) command.value);
+        break;
+      case CommandCode.go_to_previous_view:
+        auto thing = &mainData;
+        if (mainData.viewStackIndex > 0) {
+          mainData.curView = mainData.viewStack[--mainData.viewStackIndex];
+        }
+        else {
+          mainData.curView = cast(View) 0;
+        }
         break;
       case CommandCode.open_book:
         // @TODO: Do this without blocking UI
         waitAsyncBibleLoad(&mainData.bible);
-        mainData.curView = View.reading;
+        doViewSwitch(View.reading);
 
-        auto book    = cast(Book) (command.value         & 0xFF);
-        auto chapter =            ((command.value >> 8)  & 0xFF);
-        auto verse   =            ((command.value >> 16) & 0xFF);
+        BibleLoc loc = *(cast(BibleLoc*) &command.value);
 
-        if (chapter == LOAD_BOOK_PROGRESS) {
-          chapter = gSaveFile.progress[book].chapter;
-          verse   = gSaveFile.progress[book].verse;
+        if (loc.chapter == LOAD_BOOK_PROGRESS) {
+          loc.chapter = gSaveFile.progress[loc.book].chapter;
+          loc.verse   = gSaveFile.progress[loc.book].verse;
         }
 
-        loadBiblePage(mainData, PageId(gSaveFile.settings.translation, book, chapter));
-        mainData.jumpVerseRequest = verse;
+        loadBiblePage(mainData, PageId(gSaveFile.settings.translation, loc.book, loc.chapter));
+        mainData.jumpVerseRequest = loc.verse;
+        break;
+      case CommandCode.start_search:
+        arenaClear(&mainData.searchArena);
+        mainData.searchString = getKeyboardInput(&mainData.searchArena);
+        waitAsyncBibleLoad(&mainData.bible);
+
+        int hitCount = 0;
+        search_book:
+        foreach (book; enumRange!Book) {
+          foreach (chapterNum, lines; mainData.bible.books[book].chapters) {
+            foreach (verseNum, line; lines[1..$]) {
+              if (line.representation.canFind(mainData.searchString.representation)) {
+                SearchResult* newResult = arenaPush!SearchResult(&mainData.searchArena);
+
+                newResult.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) verseNum);
+                newResult.locString = arenaPrintf(&mainData.searchArena, "%s %d:%d", BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2);
+                newResult.verseText = line;
+
+                linkedListPushBack(&mainData.searchResults, &mainData.searchResultsLast, newResult);
+              }
+            }
+          }
+        }
+
+        doViewSwitch(View.search);
+        break;
     }
   }
 
@@ -541,7 +600,7 @@ void mainGui(MainData* mainData, Input* input) {
                 if (i == 0 && boxIsNull(gUiData.hot)) gUiData.hot = bookButton.box;
 
                 if (bookButton.clicked) {
-                  sendCommand(CommandCode.open_book, formatOpenBookCommand(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
+                  sendOpenBookCommand(BibleLoc(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
                 }
 
                 spacer(8);
@@ -558,7 +617,7 @@ void mainGui(MainData* mainData, Input* input) {
               if (i % 2 == 1) {
                 auto bookButton = button(book, 150, extraFlags : BoxFlags.selectable);
                 if (bookButton.clicked) {
-                  sendCommand(CommandCode.open_book, formatOpenBookCommand(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
+                  sendOpenBookCommand(BibleLoc(cast(Book)i, LOAD_BOOK_PROGRESS, 0));
                 }
 
                 spacer(8);
@@ -599,9 +658,8 @@ void mainGui(MainData* mainData, Input* input) {
 
               foreach (i, bookmark; gSaveFile.bookmarks[0..gSaveFile.numBookmarks]) {
                 if (listButton(tprint("%s %d:%d##bookmark_%d", BOOK_NAMES[bookmark.book].ptr, bookmark.chapter, bookmark.verse, i)).clicked) {
-                  sendCommand(
-                    CommandCode.open_book,
-                    formatOpenBookCommand(bookmark.book, bookmark.chapter, bookmark.verse),
+                  sendOpenBookCommand(
+                    BibleLoc(bookmark.book, bookmark.chapter, bookmark.verse),
                     &mainData.views[View.book].uiData
                   );
                   result = true;
@@ -617,6 +675,10 @@ void mainGui(MainData* mainData, Input* input) {
 
             return result;
           });
+        }
+
+        if (bottomButton("Search").clicked) {
+          sendCommand(CommandCode.start_search, 0);
         }
       }
 
@@ -664,7 +726,8 @@ void mainGui(MainData* mainData, Input* input) {
 
             // Generate a unique verse ID for each selectable. If they were just by verse or chapter, then these might
             // carry state between chapter/book switches.
-            uint verseUnique = formatOpenBookCommand(mainData.pageId.book, mainData.pageId.chapter, verse);
+            BibleLoc verseLoc = { mainData.pageId.book, cast(ubyte) mainData.pageId.chapter, cast(ushort) verse };
+            uint verseUnique = *cast(uint*)&verseLoc;
             auto button = button(tnum("##read_pane_verse_", verseUnique), extraFlags : BoxFlags.selectable | BoxFlags.select_toggle | BoxFlags.select_falling_edge);
             button.box.render = &renderVerse;
             button.box.userVal = verse;
@@ -702,7 +765,7 @@ void mainGui(MainData* mainData, Input* input) {
             gSaveFile.progress[mainData.pageId.book] = Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) curVerse);
             saveSettings();
 
-            sendCommand(CommandCode.switch_view, View.book);
+            sendCommand(CommandCode.go_to_previous_view, 0);
             audioPlaySound(SoundEffect.button_back, 0.5);
           }
         }
@@ -740,9 +803,8 @@ void mainGui(MainData* mainData, Input* input) {
                   chapterButton.box.semanticSize[] = Size(SizeKind.pixels, CHAPTER_BUTTON_SIZE, 1);
 
                   if (chapterButton.clicked) {
-                    sendCommand(
-                      CommandCode.open_book,
-                      formatOpenBookCommand(mainData.pageId.book, chapter, 0),
+                    sendOpenBookCommand(
+                      BibleLoc(mainData.pageId.book, cast(ubyte) chapter, 0),
                       &mainData.views[View.reading].uiData,
                     );
                     result = true;
@@ -902,7 +964,7 @@ void mainGui(MainData* mainData, Input* input) {
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
 
-          sendCommand(CommandCode.switch_view, View.book);
+          sendCommand(CommandCode.go_to_previous_view, 0);
         }
       }
 
@@ -914,6 +976,45 @@ void mainGui(MainData* mainData, Input* input) {
         rightSplit.startTop();
 
         scrollIndicator("book_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
+      }
+      break;
+
+    case View.search:
+      Box* scrollLayoutBox;
+      Signal scrollLayoutSignal;
+      {
+        auto scrollLayout = ScopedSelectScrollLayout("search_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
+        auto style        = ScopedStyle(&mainData.styleButtonBook);
+
+        scrollLayoutBox = scrollLayout.box;
+
+        // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
+        spacer(SCREEN_HEIGHT + 8);
+
+        foreach (result; linkedRange(mainData.searchResults)) {
+          if (listButton(result.locString).clicked) {
+            sendOpenBookCommand(result.loc);
+          }
+          spacer(8);
+        }
+      }
+
+      {
+        auto style = ScopedStyle(&mainData.styleButtonBack);
+        if (bottomButton("Back").clicked || input.down(Key.b)) {
+          sendCommand(CommandCode.go_to_previous_view, 0);
+          audioPlaySound(SoundEffect.button_back, 0.5);
+        }
+      }
+
+      mainLayout.startRight();
+
+      {
+        auto rightSplit = ScopedDoubleScreenSplitLayout("search_right_split_layout_main", "search_right_split_layout_top", "search_right_split_layout_bottom");
+
+        rightSplit.startTop();
+
+        scrollIndicator("search_scroll_indicator", scrollLayoutBox, Justification.max, scrollLayoutSignal.pushingAgainstScrollLimit);
       }
       break;
   }
@@ -1021,6 +1122,41 @@ void nColumnGrid(Range, Value)(const(char)[] idPrefix, int numCols, Range range,
       b++;
     }
   }
+}
+
+char[] getKeyboardInput(Arena* arena, size_t maxCharacters = 64) {
+  import core.stdc.string : strlen;
+
+  SWKBDState swkbd;
+  swkbdInit(&swkbd, SWKBDType.western, 2, -1);
+  swkbdSetValidation(&swkbd, SWKBDValidInput.notempty_notblank, 0, 0);
+  swkbdSetFeatures(&swkbd, SWKBD_DARKEN_TOP_SCREEN | SWKBD_ALLOW_HOME | SWKBD_ALLOW_RESET | SWKBD_ALLOW_POWER);
+
+  ubyte[] buffer = arenaRemaining(arena)[0..min($, maxCharacters+1)];  // Leave room for the null-terminator
+  char[]  str    = (cast(char*) buffer.ptr)[0..buffer.length];
+
+  bool shouldQuit = false;
+  do {
+    swkbdSetInitialText(&swkbd, "");
+    SWKBDButton button = swkbdInputText(&swkbd, str.ptr, str.length);
+
+    if (button != SWKBDButton.none) break;
+
+    SWKBDResult res = swkbdGetResult(&swkbd);
+    if (res == SWKBDResult.resetpressed) {
+      shouldQuit = true;
+      aptSetChainloaderToSelf();
+      break;
+    }
+    else if (res != SWKBDResult.homepressed && res != SWKBDResult.powerpressed) break; // An actual error happened
+
+    shouldQuit = !aptMainLoop();
+  } while (!shouldQuit);
+
+  str = str[0..strlen(str.ptr)];
+  arenaPushBytesNoZero(arena, str.length);
+
+  return str;
 }
 
 extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {

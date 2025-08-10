@@ -374,3 +374,9 @@ static immutable string[] BOOK_NAMES = [
   Book.Jude             : "Jude",
   Book.Revelation       : "Revelation",
 ];
+
+align(4) struct BibleLoc {
+  Book book;
+  ubyte chapter;
+  ushort verse;  // Longer for padding
+}

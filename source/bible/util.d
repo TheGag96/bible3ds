@@ -220,6 +220,10 @@ void arenaClear(Arena* arena) {
   debug arena.watermark = 0;
 }
 
+ubyte[] arenaRemaining(Arena* arena) {
+  return arena.data[arena.index - arena.data.ptr..$];
+}
+
 struct ScopedArenaRestore {
   @nogc: nothrow:
 
@@ -540,6 +544,22 @@ Vec4 rgba8ToRgbaF(uint color) {
   return Vec4(color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, color >> 24) / 255;
 }
 
+bool canFind(T)(T haystack, T needle) {
+  if (needle.length > haystack.length) return false;
+  foreach (a; 0..haystack.length - needle.length) {
+    bool found = true;
+    foreach (b; 0..needle.length) {
+      if (needle[b] != haystack[a+b]) {
+        found = false;
+        break;
+      }
+    }
+    if (found) return true;
+  }
+
+  return false;
+}
+
 //wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
 auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
   import ctru;
@@ -603,4 +623,105 @@ bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
   // Delete the t3x object since we don't need it
   Tex3DS_TextureFree(t3x);
   return true;
+}
+
+T* linkedListPushBack(T)(T** first, T** last, T* toAdd) {
+  if (!*first) {
+    *first = toAdd;
+  }
+
+  if (*last) {
+    (*last).next = toAdd;
+    static if (is(typeof(toAdd.prev))) {
+      toAdd.prev = *last;
+    }
+  }
+
+  *last = toAdd;
+
+  return toAdd;
+}
+
+// Returns a range over any linked-list-like thing.
+// Just requires a pointer property for next.
+// Optionally, an isNull property will be used to check for nullness.
+auto linkedRange(T)(T* list) {
+  static struct LinkedRange {
+    T* front;
+
+    static if (is(typeof(list.isNull))) {
+      pragma(inline, true)
+      static bool nullCheck(T* list) { return list.isNull; }
+    }
+    else {
+      pragma(inline, true)
+      static bool nullCheck(T* list) { return list == null; }
+    }
+
+    bool empty() {
+      return nullCheck(front);
+    }
+
+    void popFront() {
+      if (!nullCheck(front)) {
+        front = front.next;
+      }
+    }
+  }
+
+  return LinkedRange(list);
+}
+
+// Returns a range over any graph-like thing that traverses it in pre-order.
+// Just requires pointer properties for first, next, and parent.
+// Optionally, an isNull property will be used to check for nullness.
+auto preOrderRange(T)(T* graph) {
+  import std.typecons : Tuple;
+
+  static struct PreOrderRange {
+    T* runner;
+    int depth;
+
+    static if (is(typeof(graph.isNull))) {
+      pragma(inline, true)
+      static bool nullCheck(T* graph) { return graph.isNull; }
+    }
+    else {
+      pragma(inline, true)
+      static bool nullCheck(T* graph) { return graph == null; }
+    }
+
+    Tuple!(T*, int) front() {
+      return Tuple!(T*, int)(runner, depth);
+    }
+
+    bool empty() {
+      return nullCheck(runner);
+    }
+
+    void popFront() {
+      if (!nullCheck(runner)) {
+        if (!nullCheck(runner.first)) {
+          runner = runner.first;
+          depth++;
+        }
+        else if (!nullCheck(runner.next)) {
+          runner = runner.next;
+        }
+        else {
+          while (true) {
+            runner = runner.parent;
+            depth--;
+            if (nullCheck(runner)) return;
+            if (!nullCheck(runner.next)) {
+              runner = runner.next;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return PreOrderRange(graph, 0);
 }
