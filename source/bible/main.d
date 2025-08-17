@@ -70,11 +70,12 @@ struct MainData {
 
   ui.ColorTable colorTable;
   bool fadingBetweenThemes;
-  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, stylePage, styleVerse;
+  ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, styleButtonList, stylePage, styleVerse;
 
   Arena searchArena;
   char[] searchString;
   SearchResult* searchResults, searchResultsLast;
+  size_t searchResultCount;
 }
 MainData mainData;
 
@@ -307,6 +308,10 @@ void initMainData(MainData* mainData) { with (mainData) {
   styleButtonBottom.margin           = Vec2(BOTTOM_BUTTON_MARGIN);
   styleButtonBottom.textSize         = 0.6f;
 
+  styleButtonList                  = styleButtonBook;
+  styleButtonList.margin           = Vec2(4);
+  styleButtonList.textSize         = DEFAULT_PAGE_TEXT_SIZE;
+
   // @Hack: Gets played manually by builder code so that it plays on pressing B. Consider revising...
   styleButtonBack                    = styleButtonBottom;
   styleButtonBack.soundButtonPressed = SoundPlay(SoundEffect.none, 0);
@@ -320,7 +325,7 @@ void initMainData(MainData* mainData) { with (mainData) {
   styleVerse.soundButtonPressed      = SoundPlay.init;
   styleVerse.soundButtonOff          = SoundPlay.init;
 
-  searchArena                        = arenaMake(kilobytes(16));
+  searchArena                        = arenaMake(kilobytes(128));
 }}
 
 void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
@@ -462,19 +467,31 @@ void mainGui(MainData* mainData, Input* input) {
         mainData.searchString = getKeyboardInput(&mainData.searchArena);
         waitAsyncBibleLoad(&mainData.bible);
 
+        mainData.searchResults     = null;
+        mainData.searchResultsLast = null;
+        mainData.searchResultCount = 0;
+
         int hitCount = 0;
         search_book:
         foreach (book; enumRange!Book) {
           foreach (chapterNum, lines; mainData.bible.books[book].chapters) {
             foreach (verseNum, line; lines[1..$]) {
               if (line.representation.canFind(mainData.searchString.representation)) {
-                SearchResult* newResult = push!SearchResult(&mainData.searchArena);
+                SearchResult* newResult = push!SearchResult(&mainData.searchArena, ArenaFlags.soft_fail);
+                if (!newResult) break search_book;
 
                 newResult.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) verseNum);
-                newResult.locString = aprintf(&mainData.searchArena, "%s %d:%d", BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2);
+                newResult.locString = afprintf(
+                  &mainData.searchArena, ArenaFlags.soft_fail, "%s %d:%d",
+                  BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2
+                );
+                if (!newResult.locString) break search_book;
                 newResult.verseText = line;
 
+                consumeUntil(&newResult.verseText, "] ", StrSearchFlags.skip_needle);
+
                 linkedListPushBack(&mainData.searchResults, &mainData.searchResultsLast, newResult);
+                mainData.searchResultCount++;
               }
             }
           }
@@ -983,20 +1000,58 @@ void mainGui(MainData* mainData, Input* input) {
       Box* scrollLayoutBox;
       Signal scrollLayoutSignal;
       {
-        auto scrollLayout = ScopedSelectScrollLayout("search_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
-        auto style        = ScopedStyle(&mainData.styleButtonBook);
+        enum float  SEARCH_RESULT_BUTTON_SIZE = 46;
+        enum size_t SEARCH_RESULTS_PER_SCREEN = cast(size_t) (2 * SCREEN_HEIGHT / SEARCH_RESULT_BUTTON_SIZE) + 2;
 
+        auto scrollLayout = ScopedSelectScrollLayout("search_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
         scrollLayoutBox = scrollLayout.box;
 
-        // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
-        spacer(SCREEN_HEIGHT + 8);
+        auto resultsRange = linkedRange(mainData.searchResults);
+        int i = 0;
 
-        foreach (result; linkedRange(mainData.searchResults)) {
-          if (listButton(result.locString).clicked) {
+        int numToSkip = clamp(cast(int) (max(scrollLayoutBox.scrollInfo.offset - SCREEN_HEIGHT, 0) / SEARCH_RESULT_BUTTON_SIZE) - 1, 0, cast(int) mainData.searchResultCount);
+
+        foreach (a; 0..numToSkip) {
+          resultsRange.popFront;
+        }
+        i += numToSkip;
+
+        // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
+        spacer(SCREEN_HEIGHT + SEARCH_RESULT_BUTTON_SIZE * numToSkip);
+
+        float maxTextWidth = SCREEN_BOTTOM_WIDTH - 2 * mainData.styleButtonList.margin.x;
+        foreach (result; resultsRange) {
+          Box* layoutBox;
+          {
+            auto style = ScopedStyle(&mainData.styleButtonList);
+            auto layout = ScopedListButtonLayout(
+              tnum("searchres_", i),
+              Axis2.y, Justification.min, LayoutKind.grow_children, BoxFlags.bible_text
+            );
+            layoutBox = layout.box;
+            layoutBox.semanticSize[Axis2.y] = Size(SizeKind.pixels, SEARCH_RESULT_BUTTON_SIZE, 1);
+
+            label(result.locString);
+
+            StringList lines = C2D_CalcTextWrapLines(
+              &gUiData.frameArena, null, mainData.styleButtonList.textSize,
+              result.verseText, maxTextWidth, C2D_ParseFlags.bible
+            );
+            const(char)[] resultText;
+            if (lines.first) resultText = lines.first.str;
+            label(tprint("%.*s##searchres_text_%d", cast(int) resultText.length, resultText.ptr, i));
+          }
+
+          if (signalFromBox(layoutBox).clicked) {
             sendOpenBookCommand(result.loc);
           }
-          spacer(8);
+
+          i++;
+          if (i > numToSkip + SEARCH_RESULTS_PER_SCREEN) break;
         }
+
+        float bottomSpacer = max(SEARCH_RESULT_BUTTON_SIZE * (cast(int) mainData.searchResultCount - i), 0);
+        spacer(bottomSpacer);
       }
 
       {
