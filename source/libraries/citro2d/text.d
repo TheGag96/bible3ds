@@ -572,110 +572,131 @@ StringList C2D_CalcTextWrapLines(Arena* arena, C2D_Font font, float scale, const
 
   const(ubyte)[] p = cast(const(ubyte)[])str;
 
-  uint wordNum = 0;
+  uint wordNum           = 0;
   bool lastWasWhitespace = true;
-  bool verseNumActive = false;
-  int  italicsActive = 0;
-  int  skipCount = 0;
-  bool lineStart = true;
+  bool verseNumActive    = false;
+  int  italicsActive     = 0;
+  int  skipCount         = 0;
+  bool lineStart         = true;
+  float linePosCur       = 0;
+  size_t lastLineStart   = 0;
+  size_t index           = 0;
 
-  float linePosWordStart = 0;
-  float linePosCur = 0;
-  float lineWidthFinal = 0;
-  size_t lastLineStart = 0;
-  size_t lastWordStart = 0;
-  size_t lastWordEnd = 0;
-  size_t index = 0;
-  float lastGlyphSize = 0;
-
+  static struct WordInfo {
+    bool endOfString;
+    float size             = 0;
+    float advance          = 0;
+    float lastGlyphSize    = 0;
+    float lastGlyphAdvance = 0;
+    size_t start           = 0;
+    size_t end             = 0;
+  }
+  WordInfo wordLast;
   while (true) {
-    if (skipCount > 0) skipCount--;
-
+    WordInfo wordCur;
     uint code;
-    ssize_t units = decode_utf8(&code, p[index..$]);
-    bool wordEnd = false;
-    bool lineEnd = false;
-    bool wrapped = false;
+    while (true) {
+      if (skipCount > 0) skipCount--;
 
-    if (units == -1) {
-      code = 0xFFFD;
-      units = 1;
-    }
-    else if (code == 0) {
-      lineEnd = true;
-    }
-    else if (code == '\n') {
-      lineStart = true;
-      lineEnd   = true;
-    }
-    else if ((flags & C2D_ParseFlags.bible) && lineStart && code == '[') {
-      verseNumActive = true;
-      skipCount = -1; // Skip chapter number that comes before the ':'
-    }
-    else if (verseNumActive && code == ':') {
-      skipCount = 1;
-    }
-    else if (verseNumActive && code == ']') {
-      verseNumActive = false;
-      skipCount = 1;
-    }
-    else if ((flags & C2D_ParseFlags.bible) && code == '`') {
-      italicsActive++;
-      skipCount = 1;
-    }
-    else if (italicsActive && code == '\'') {
-      italicsActive--;
-      skipCount = 1;
-    }
+      ssize_t units = decode_utf8(&code, p[index..$]);
+      bool wordEnd  = false;
 
-    if (skipCount == 0 && code != 0) {
-      fontGlyphPos_s glyphData;
-      C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
-      float scaleFactor = scale * (verseNumActive ? SMALL_SCALE : 1.0);
-
-      if (glyphData.width > 0.0f) {
-        if (lastWasWhitespace) {
-          linePosWordStart = linePosCur;
-          lastWordStart    = index;
-        }
-
-        lastWasWhitespace = false;
-        lastGlyphSize = glyphData.xOffset + glyphData.width * scaleFactor;
+      if (units == -1) {
+        wordEnd = true;
+        code    = 0xFFFD;
+        units   = 1;
       }
-      else if (!lastWasWhitespace) {
+      else if (code == 0) {
         wordEnd = true;
 
-        lastWasWhitespace = true;
+        if (wordCur.advance == 0) {
+          wordCur.endOfString = true;
+        }
+      }
+      else if (code == '\n') {
+        lineStart = true;
+      }
+      else if ((flags & C2D_ParseFlags.bible) && lineStart && code == '[') {
+        verseNumActive = true;
+        skipCount      = -1; // Skip chapter number that comes before the ':'
+      }
+      else if (verseNumActive && code == ':') {
+        skipCount = 1;
+      }
+      else if (verseNumActive && code == ']') {
+        verseNumActive = false;
+        skipCount      = 1;
+      }
+      else if ((flags & C2D_ParseFlags.bible) && code == '`') {
+        italicsActive++;
+        skipCount = 1;
+      }
+      else if (italicsActive && code == '\'') {
+        italicsActive--;
+        skipCount = 1;
       }
 
-      linePosCur += glyphData.xAdvance * scaleFactor;
-    }
+      if (skipCount == 0 && code != 0) {
+        fontGlyphPos_s glyphData;
+        C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
+        float scaleFactor = scale * (verseNumActive ? SMALL_SCALE : 1.0);
 
-    if (wordEnd) {
-      if (linePosCur + lastGlyphSize > max) {
-        lineEnd = true;
-        wrapped = true;
+        if (glyphData.width > 0.0f) {
+          if (lastWasWhitespace) {
+            wordCur.start    = index;
+          }
+
+          lastWasWhitespace        = false;
+          // @Speed: This only needs to be done one per word, not per-character...
+          wordCur.lastGlyphSize    = glyphData.xOffset + glyphData.width * scaleFactor;
+          wordCur.lastGlyphAdvance = glyphData.xAdvance * scaleFactor;
+        }
+        else if (!lastWasWhitespace) {
+          wordEnd           = true;
+          lastWasWhitespace = true;
+        }
+
+        if (!wordEnd) wordCur.advance += glyphData.xAdvance * scaleFactor;
       }
+
+      if (wordEnd) {
+        wordCur.size = wordCur.advance - wordCur.lastGlyphAdvance + wordCur.lastGlyphSize;
+        wordCur.end  = index;
+
+        break;
+      }
+
+      index += units;
     }
 
-    if (lineEnd) {
-      size_t indexLineEnd = wrapped ? lastWordStart : lastWordEnd;
-      pushString(arena, &result, str[lastLineStart..indexLineEnd]);
+    if (linePosCur + wordCur.size > max || wordCur.endOfString) {
+      size_t indexLineEnd = wordLast.end;
 
-      lastLineStart = index;
-      if (lineStart) lastLineStart++;
+      const(char)[] newString = str[lastLineStart..indexLineEnd];
+      pushString(arena, &result, newString);
+      lastLineStart = indexLineEnd;
+
+      while (true) {
+        uint    whiteSpace = ' ';
+        ssize_t units      = 0;
+
+        units = decode_utf8(&whiteSpace, p[lastLineStart..$]);
+
+        if (whiteSpace != ' ') {
+          break;
+        }
+
+        lastLineStart += units;
+      }
+
       linePosCur = 0;
     }
 
-    index += units;
+    linePosCur += wordCur.advance;
+    wordLast    = wordCur;
+    lineStart   = false;
 
-    if (wordEnd) {
-      lastWordEnd = index;
-    }
-
-    lineStart = false;
-
-    if (code == 0) {
+    if (wordCur.endOfString) {
       break;
     }
   }
@@ -1020,7 +1041,10 @@ decode_utf8(uint*          output,
 {
   ubyte code1, code2, code3, code4;
 
-  if (input.length == 0) return 0;
+  if (input.length == 0) {
+    *output = 0;
+    return 0;
+  }
 
   code1 = input[0];
   if(code1 < 0x80)

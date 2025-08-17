@@ -47,6 +47,7 @@ enum BoxFlags : uint {
   select_falling_edge  = 1 << 7,
   horizontal_children  = 1 << 8,
   demand_focus         = 1 << 9,
+  bible_text           = 1 << 10,
 }
 
 enum SizeKind : ubyte {
@@ -541,6 +542,19 @@ ScopedLayout ScopedButtonLayout(
   return result;
 }
 
+ScopedLayout ScopedListButtonLayout(
+  const(char)[] id,
+  Axis2 flowDirection,
+  Justification justification = Justification.min,
+  LayoutKind layoutKind = LayoutKind.init,
+  BoxFlags flags = BoxFlags.init,
+) {
+  auto result = ScopedLayout(id, flowDirection, justification, layoutKind, flags | BoxFlags.clickable);
+  result.render = &renderListButton;
+
+  return result;
+}
+
 ScopedSignalLayout!() ScopedScrollableReadPane(const(char)[] id, Signal* signalToWrite, in LoadedPage loadedPage, ScrollCache* scrollCache, int* jumpVerseRequest) {
   auto box = ScopedSignalLayout!()(id, signalToWrite, Axis2.y, Justification.center, LayoutKind.fill_parent, BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus);
 
@@ -743,7 +757,8 @@ Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
   result.style       = gUiData.style;
 
   if ((flags & BoxFlags.draw_text) && displayText.length) {
-    C2D_TextParse(&result.text, textBuf, displayText);
+    C2D_ParseFlags parseFlags = cast(C2D_ParseFlags) ((!!BoxFlags.bible_text) * C2D_ParseFlags.bible);
+    C2D_TextParse(&result.text, textBuf, displayText, parseFlags);
     C2D_TextOptimize(&result.text);
     float width, height;
     C2D_TextGetDimensions(&result.text, result.style.textSize, result.style.textSize, &width, &height);

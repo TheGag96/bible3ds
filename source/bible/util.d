@@ -515,6 +515,12 @@ float wrap(float x, float mod) {
   return x - mod * floor(x/mod);
 }
 
+T clamp(T)(T x, T min, T max) {
+  if (x < min) return min;
+  if (x > max) return max;
+  return x;
+}
+
 struct EnumRange(T) if (is(T == enum)) {
   T first, last;
 
@@ -573,7 +579,7 @@ Vec4 rgba8ToRgbaF(uint color) {
 
 bool canFind(T)(T haystack, T needle) {
   if (needle.length > haystack.length) return false;
-  foreach (a; 0..haystack.length - needle.length) {
+  foreach (a; 0..haystack.length - needle.length + 1) {
     bool found = true;
     foreach (b; 0..needle.length) {
       if (needle[b] != haystack[a+b]) {
@@ -585,6 +591,49 @@ bool canFind(T)(T haystack, T needle) {
   }
 
   return false;
+}
+
+enum StrSearchFlags : uint {
+  defaults       = 0,
+  include_needle = (1 << 0),  // Whether the return value includes the needle
+  skip_needle    = (1 << 1),  // Whether to move haystack past the needle upon matching
+  empty_on_fail  = (1 << 2),  // Whether the return value should be an empty string if no match
+}
+
+inout(char)[] consumeUntil(inout(char)[]* haystack, const(char)[] needle, StrSearchFlags flags = StrSearchFlags.defaults) {
+  bool   found           = false;
+  size_t amountToConsume = (flags & StrSearchFlags.empty_on_fail) ? 0 : haystack.length;
+
+  if (needle.length <= haystack.length) {
+    foreach (a; 0..haystack.length - needle.length + 1) {
+      bool match = true;
+      foreach (b; 0..needle.length) {
+        if (needle[b] != (*haystack)[a+b]) {
+          match = false;
+          break;
+        }
+      }
+
+      if (match) {
+        amountToConsume = a;
+        found           = true;
+        break;
+      }
+    }
+  }
+
+  size_t newLength = amountToConsume;
+  if (found && (flags & StrSearchFlags.include_needle)) {
+    newLength += needle.length;
+  }
+  auto result = (*haystack)[0..newLength];
+
+  if (found && (flags & StrSearchFlags.skip_needle)) {
+    amountToConsume += needle.length;
+  }
+  *haystack = (*haystack)[amountToConsume..$];
+
+  return result;
 }
 
 T kilobytes(T)(T count) { return count * 1024; }
