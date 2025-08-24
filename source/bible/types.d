@@ -342,3 +342,12 @@ enum ColorTheme : ubyte {
   warm,
   night,
 }
+
+struct StringNode {
+  StringNode* next;
+  const(char)[] str;
+}
+
+struct StringList {
+  StringNode* first, last;
+}

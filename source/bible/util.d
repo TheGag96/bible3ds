@@ -688,6 +688,10 @@ T* linkedListPushBack(T)(T** first, T** last, T* toAdd) {
   return toAdd;
 }
 
+T* linkedListPushBack(List, T)(List* list, T* toAdd) {
+  return linkedListPushBack!T(&list.first, &list.last, toAdd);
+}
+
 // Returns a range over any linked-list-like thing.
 // Just requires a pointer property for next.
 // Optionally, an isNull property will be used to check for nullness.
@@ -770,4 +774,9 @@ auto preOrderRange(T)(T* graph) {
   }
 
   return PreOrderRange(graph, 0);
+}
+
+void pushString(Arena* arena, StringList* list, const(char)[] str) {
+  auto node = linkedListPushBack(list, push!StringNode(arena));
+  node.str  = str;
 }
