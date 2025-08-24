@@ -566,6 +566,123 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX
   return C2D_WrapInfo(lines, words);
 }
 
+// Takes a string and splits it into a list of lines wrapped to a given maximum line length.
+StringList C2D_CalcTextWrapLines(Arena* arena, C2D_Font font, float scale, const(char)[] str, float max, C2D_ParseFlags flags = C2D_ParseFlags.none) {
+  StringList result;
+
+  const(ubyte)[] p = cast(const(ubyte)[])str;
+
+  uint wordNum = 0;
+  bool lastWasWhitespace = true;
+  bool verseNumActive = false;
+  int  italicsActive = 0;
+  int  skipCount = 0;
+  bool lineStart = true;
+
+  float linePosWordStart = 0;
+  float linePosCur = 0;
+  float lineWidthFinal = 0;
+  size_t lastLineStart = 0;
+  size_t lastWordStart = 0;
+  size_t lastWordEnd = 0;
+  size_t index = 0;
+  float lastGlyphSize = 0;
+
+  while (true) {
+    if (skipCount > 0) skipCount--;
+
+    uint code;
+    ssize_t units = decode_utf8(&code, p[index..$]);
+    bool wordEnd = false;
+    bool lineEnd = false;
+    bool wrapped = false;
+
+    if (units == -1) {
+      code = 0xFFFD;
+      units = 1;
+    }
+    else if (code == 0) {
+      lineEnd = true;
+    }
+    else if (code == '\n') {
+      lineStart = true;
+      lineEnd   = true;
+    }
+    else if ((flags & C2D_ParseFlags.bible) && lineStart && code == '[') {
+      verseNumActive = true;
+      skipCount = -1; // Skip chapter number that comes before the ':'
+    }
+    else if (verseNumActive && code == ':') {
+      skipCount = 1;
+    }
+    else if (verseNumActive && code == ']') {
+      verseNumActive = false;
+      skipCount = 1;
+    }
+    else if ((flags & C2D_ParseFlags.bible) && code == '`') {
+      italicsActive++;
+      skipCount = 1;
+    }
+    else if (italicsActive && code == '\'') {
+      italicsActive--;
+      skipCount = 1;
+    }
+
+    if (skipCount == 0 && code != 0) {
+      fontGlyphPos_s glyphData;
+      C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
+      float scaleFactor = scale * (verseNumActive ? SMALL_SCALE : 1.0);
+
+      if (glyphData.width > 0.0f) {
+        if (lastWasWhitespace) {
+          linePosWordStart = linePosCur;
+          lastWordStart    = index;
+        }
+
+        lastWasWhitespace = false;
+        lastGlyphSize = glyphData.xOffset + glyphData.width * scaleFactor;
+      }
+      else if (!lastWasWhitespace) {
+        wordEnd = true;
+
+        lastWasWhitespace = true;
+      }
+
+      linePosCur += glyphData.xAdvance * scaleFactor;
+    }
+
+    if (wordEnd) {
+      if (linePosCur + lastGlyphSize > max) {
+        lineEnd = true;
+        wrapped = true;
+      }
+    }
+
+    if (lineEnd) {
+      size_t indexLineEnd = wrapped ? lastWordStart : lastWordEnd;
+      pushString(arena, &result, str[lastLineStart..indexLineEnd]);
+
+      lastLineStart = index;
+      if (lineStart) lastLineStart++;
+      linePosCur = 0;
+    }
+
+    index += units;
+
+    if (wordEnd) {
+      lastWordEnd = index;
+    }
+
+    lineStart = false;
+
+    if (code == 0) {
+      break;
+    }
+  }
+
+  return result;
+}
+
 /** @brief Draws text using the GPU.
  *  @param[in] text Pointer to text object.
  *  @param[in] flags Text drawing flags.
