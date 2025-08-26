@@ -5,7 +5,9 @@ public import core.stdc.stdio : printf;
 public import std.algorithm   : min, max;
 public import std.math        : floor, ceil, round, log2;
 
-import ctru, citro2d, citro3d;
+version (_3DS) {
+  import ctru : ssize_t, GFXScreen;
+}
 import core.stdc.stdarg : va_list, va_start, va_end;
 
 nothrow: @nogc:
@@ -17,7 +19,9 @@ nothrow: @nogc:
 enum SCREEN_TOP_WIDTH    = 400.0f;
 enum SCREEN_BOTTOM_WIDTH = 320.0f;
 
-float screenWidth(GFXScreen screen) { return screen == GFXScreen.top ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH; }
+version (_3DS) {
+  float screenWidth(GFXScreen screen) { return screen == GFXScreen.top ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH; }
+}
 
 enum SCREEN_HEIGHT       = 240.0f;
 
@@ -28,23 +32,6 @@ enum FRAMERATE    = 60.0;
 ///////////////////////
 
 import core.stdc.stdlib : malloc, free;
-
-T* allocInstance(T, bool initialize = true, alias allocFunc = malloc)() {
-  import core.lifetime : emplace;
-
-  auto result = cast(T*)allocFunc(T.sizeof);
-  assert(result);
-
-  static if (initialize && __traits(compiles, () { auto test = T.init; })) {
-    emplace!T(result, T.init);
-  }
-
-  return result;
-}
-
-void freeInstance(T, alias freeFunc = free)(T* ptr) {
-  freeFunc(ptr);
-}
 
 T[] allocArray(T, bool initialize = true, alias allocFunc = malloc)(size_t size) {
   import core.lifetime : emplace;
@@ -72,14 +59,6 @@ DimSlice!(T, R.length) allocDimSlice(T, bool initialize = true, R...)(R lengths)
     size *= a;
   }
   return DimSlice!(T, R.length)(allocArray!(T, initialize)(size), lengths);
-}
-
-auto dup(T, size_t n)(DimSlice!(T, n) other) {
-  DimSlice!(T, n) result;
-  result.arr = allocArray!(T, false)(other.arr.length);
-  result.arr[] = other.arr[];
-  result.sizes = other.sizes;
-  return result;
 }
 
 T[n] s(T, size_t n)(auto ref T[n] array) pure nothrow @nogc @safe {
@@ -457,15 +436,15 @@ ubyte[] readFile(alias allocFunc = malloc)(scope const(char)[] filename) {
 }
 
 @trusted
-char[] readTextFile(alias allocFunc = malloc)(scope const(char)[] filename) {
+ubyte[] readFile(Arena* arena, scope const(char)[] filename) {
   import core.stdc.stdio;
 
-  auto file = fopen(filename.ptr, "r".ptr);
+  auto file = fopen(filename.ptr, "rb".ptr);
   fseek(file, 0, SEEK_END);
   auto size = ftell(file);
   rewind(file);
 
-  char[] buf = allocArray!(char, false, allocFunc)(size);
+  ubyte[] buf = pushBytes(arena, size, ArenaFlags.no_init, 16);  // Let's just be safe and align generously, for whatever purpose we might need...
 
   fread(buf.ptr, 1, size, file);
   fclose(file);
@@ -477,9 +456,9 @@ char[] readTextFile(alias allocFunc = malloc)(scope const(char)[] filename) {
 char[] readCompressedTextFile(Arena* arena, scope const(char)[] filename) {
   import ctru.util.decompress;
 
-  // @Note: Use malloc for temp allocation here. Use an arena instead?
-  auto compressed = readFile(filename);
-  scope (exit) freeArray(compressed);
+  auto restore = ScopedArenaRestore(&gTempStorage);
+
+  auto compressed = readFile(&gTempStorage, filename);
 
   DecompressType decompType;
   size_t decompSize;
@@ -606,48 +585,6 @@ bool canFind(T)(T haystack, T needle) {
   return false;
 }
 
-//wish this could use "lazy", but it's incompatible with nothrow and @nogc by a design flaw in D
-auto profile(string id, T)(scope T delegate() nothrow @nogc exp, int line) {
-  import ctru;
-
-  static struct ProfileResult {
-    T returnVal;
-    float time, timeMin, timeMax, timeAvg;
-  }
-
-  __gshared TickCounter tickCounter;
-  static float timeMin = float.infinity, timeMax = -float.infinity, timeAvg = 0;
-  static int num = 0;
-  static bool started = false;
-
-  if (!started) {
-    osTickCounterStart(&tickCounter);
-    started = true;
-  }
-
-  osTickCounterUpdate(&tickCounter);
-
-  static if (is(T == void)) {
-    exp();
-  }
-  else {
-    auto result = exp();
-  }
-
-  osTickCounterUpdate(&tickCounter);
-  float time = osTickCounterRead(&tickCounter);
-
-  if (time < timeMin) timeMin = time;
-  if (time > timeMax) timeMax = time;
-
-  timeAvg = (timeAvg * num + time) / (num + 1);
-  num++;
-
-  static if (!is(T == void)) {
-    return ProfileResult(result, time, timeMin, timeMax, timeAvg);
-  }
-}
-
 T kilobytes(T)(T count) { return count * 1024; }
 T megabytes(T)(T count) { return count * 1024 * 1024; }
 T gigabytes(T)(T count) { return count * 1024 * 1024 * 1024; }
@@ -656,19 +593,6 @@ pragma(inline, true)
 void breakpoint() {
   import ldc.llvmasm;
   __asm("bkpt", "");
-}
-
-bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
-  auto bytes = readFile(filename);
-  scope (exit) freeArray(bytes);
-
-  Tex3DS_Texture t3x = Tex3DS_TextureImport(bytes.ptr, bytes.length, tex, cube, false);
-  if (!t3x)
-    return false;
-
-  // Delete the t3x object since we don't need it
-  Tex3DS_TextureFree(t3x);
-  return true;
 }
 
 T* linkedListPushBack(T)(T** first, T** last, T* toAdd) {

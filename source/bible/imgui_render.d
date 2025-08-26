@@ -424,6 +424,19 @@ struct Assets {
 
 Assets gUiAssets;
 
+bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
+  auto bytes = readFile(filename);
+  scope (exit) freeArray(bytes);
+
+  Tex3DS_Texture t3x = Tex3DS_TextureImport(bytes.ptr, bytes.length, tex, cube, false);
+  if (!t3x)
+    return false;
+
+  // Delete the t3x object since we don't need it
+  Tex3DS_TextureFree(t3x);
+  return true;
+}
+
 void loadAssets() {
   with (gUiAssets) {
     if (!loadTextureFromFile(&vignetteTex, null, "romfs:/gfx/vignette.t3x"))

@@ -105,7 +105,7 @@ struct BibleLoadData {
 extern(C) void bibleLoadThread(void* data) {
   auto loadData = cast(BibleLoadData*) data;
 
-  gTempStorage        = arenaMake(kilobytes(1));
+  gTempStorage        = arenaMake(megabytes(1));
   loadData.bibleArena = arenaMake(megabytes(16));
 
   while (true) {

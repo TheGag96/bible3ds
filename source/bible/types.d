@@ -1,13 +1,8 @@
 module bible.types;
 
-import std.typecons      : Tuple;
-import ctru.services.hid : Key;
+import std.typecons : Tuple;
 
 @nogc: nothrow:
-
-alias box     = Tuple!(float, "left", float, "right", float, "top", float, "bottom");
-alias pair    = Tuple!(float, "x", float, "y");
-alias intpair = Tuple!(int, "x", int, "y");
 
 enum Axis2 : ubyte { x, y }
 
@@ -155,59 +150,6 @@ struct Vec(size_t n) {
     Vec!3 xyz() {
       return Vec!3(x, y, z);
     }
-  }
-}
-
-enum Direction : ubyte {
-  left, right, up, down
-}
-
-pure @safe
-float affinity(Direction dir) {
-  final switch (dir) {
-    case Direction.left:
-    case Direction.up:
-      return -1;
-    case Direction.right:
-    case Direction.down:
-      return 1;
-  }
-}
-
-pure @safe
-Direction opposite(Direction dir) {
-  final switch (dir) {
-    case Direction.left:  return Direction.right;
-    case Direction.right: return Direction.left;
-    case Direction.up:    return Direction.down;
-    case Direction.down:  return Direction.up;
-  }
-}
-
-pure @safe
-Key toKey(Direction dir) {
-  final switch (dir) {
-    case Direction.left:  return Key.left;
-    case Direction.right: return Key.right;
-    case Direction.up:    return Key.up;
-    case Direction.down:  return Key.down;
-  }
-}
-
-enum LayerIndex {
-  front =  0,
-  back  =  1,
-  top   = -1,
-}
-
-pure @safe
-float depthFactor(LayerIndex layerIndex) {
-  final switch (layerIndex) {
-    case LayerIndex.front:
-    case LayerIndex.top:
-      return 1;
-    case LayerIndex.back:
-      return 0.5;
   }
 }
 
