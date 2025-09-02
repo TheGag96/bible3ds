@@ -303,19 +303,26 @@ Signal listButton(const(char)[] text, Justification justification = Justificatio
   return signalFromBox(box);
 }
 
-void spacer(float size = 0) {
+void spacer() {
+  return spacer(SIZE_FILL_PARENT);
+}
+
+void spacer(float size) {
+  return spacer(Size(SizeKind.pixels, size, 1));
+}
+
+void spacer(Size size) {
   Box* box = makeBox(cast(BoxFlags) 0, "");
 
-  auto flowSize = size == 0 ? SIZE_FILL_PARENT : Size(SizeKind.pixels, size, 1);
-  auto oppSze   = SIZE_FILL_PARENT;
+  auto oppSize = SIZE_FILL_PARENT;
 
   if (box.parent.flags & BoxFlags.horizontal_children) {
-    box.semanticSize[Axis2.x] = flowSize;
-    box.semanticSize[Axis2.y] = oppSze;
+    box.semanticSize[Axis2.x] = size;
+    box.semanticSize[Axis2.y] = oppSize;
   }
   else {
-    box.semanticSize[Axis2.x] = oppSze;
-    box.semanticSize[Axis2.y] = flowSize;
+    box.semanticSize[Axis2.x] = oppSize;
+    box.semanticSize[Axis2.y] = size;
   }
 }
 
