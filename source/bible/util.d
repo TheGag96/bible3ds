@@ -632,7 +632,7 @@ auto linkedRange(T)(T* list) {
 
     static if (is(typeof(list.isNull))) {
       pragma(inline, true)
-      static bool nullCheck(T* list) { return list.isNull; }
+      static bool nullCheck(T* list) { return list.isNull(list); }
     }
     else {
       pragma(inline, true)
@@ -665,7 +665,7 @@ auto preOrderRange(T)(T* graph) {
 
     static if (is(typeof(graph.isNull))) {
       pragma(inline, true)
-      static bool nullCheck(T* graph) { return graph.isNull; }
+      static bool nullCheck(T* graph) { return graph.isNull(graph); }
     }
     else {
       pragma(inline, true)

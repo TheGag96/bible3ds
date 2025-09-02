@@ -181,6 +181,8 @@ struct Box {
   Box* related;  // General-purpose field to relate boxes to other boxes.
 
   float userVal = 0;
+
+  alias isNull = boxIsNull;
 }
 pragma(msg, "Size of Box: ", Box.sizeof);
 
