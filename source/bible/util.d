@@ -390,7 +390,7 @@ extern(C) char[] afprintf(Arena* arena, ArenaFlags flags, const(char)* spec, ...
 extern(C) char[] vafprintf(Arena* arena, ArenaFlags flags, const(char)* spec, va_list args) {
   import core.stdc.stdio  : vsnprintf;
 
-  int spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
+  ptrdiff_t spaceRemaining = arena.data.length - (arena.index-arena.data.ptr);
 
   int length = vsnprintf(cast(char*) arena.index, spaceRemaining, spec, args);
 
@@ -452,40 +452,42 @@ ubyte[] readFile(Arena* arena, scope const(char)[] filename) {
   return buf;
 }
 
-@trusted
-char[] readCompressedTextFile(Arena* arena, scope const(char)[] filename) {
-  import ctru.util.decompress;
+version (_3DS) {
+  @trusted
+  char[] readCompressedTextFile(Arena* arena, scope const(char)[] filename) {
+    import ctru.util.decompress;
 
-  auto restore = ScopedArenaRestore(&gTempStorage);
+    auto restore = ScopedArenaRestore(&gTempStorage);
 
-  auto compressed = readFile(&gTempStorage, filename);
+    auto compressed = readFile(&gTempStorage, filename);
 
-  DecompressType decompType;
-  size_t decompSize;
+    DecompressType decompType;
+    size_t decompSize;
 
-  ssize_t bytesForHeader = decompressHeader(
-    &decompType,
-    &decompSize,
-    null,
-    compressed.ptr,
-    compressed.length
-  );
+    ssize_t bytesForHeader = decompressHeader(
+      &decompType,
+      &decompSize,
+      null,
+      compressed.ptr,
+      compressed.length
+    );
 
-  assert(bytesForHeader != -1);
+    assert(bytesForHeader != -1);
 
-  char[] buf = pushArray!char(arena, decompSize, ArenaFlags.no_init);
+    char[] buf = pushArray!char(arena, decompSize, ArenaFlags.no_init);
 
-  bool success = decompress(
-    buf.ptr,
-    buf.length,
-    null,
-    compressed.ptr,
-    compressed.length
-  );
+    bool success = decompress(
+      buf.ptr,
+      buf.length,
+      null,
+      compressed.ptr,
+      compressed.length
+    );
 
-  assert(success);
+    assert(success);
 
-  return buf;
+    return buf;
+  }
 }
 
 T approach(T)(T current, T target, T rate) {
@@ -591,8 +593,13 @@ T gigabytes(T)(T count) { return count * 1024 * 1024 * 1024; }
 
 pragma(inline, true)
 void breakpoint() {
-  import ldc.llvmasm;
-  __asm("bkpt", "");
+  version (_3DS) {
+    import ldc.llvmasm;
+    __asm("bkpt", "");
+  }
+  else {
+    // @TODO
+  }
 }
 
 T* linkedListPushBack(T)(T** first, T** last, T* toAdd) {
