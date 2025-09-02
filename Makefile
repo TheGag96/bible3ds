@@ -97,7 +97,7 @@ else # LDC
 	endif
 
 	DFLAGS := $(PERF_FLAGS) \
-				-frame-pointer=none -function-sections \
+				-function-sections \
 				-betterC \
 				--d-version=DevkitARM \
 				--d-version=CRuntime_Newlib_3DS \
