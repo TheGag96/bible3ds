@@ -67,15 +67,15 @@ alias CMAP_s = tag_CMAP_s;
 /// Font character map structure.
 struct tag_CMAP_s
 {
-    ushort codeBegin; ///< First Unicode codepoint the block applies to.
-    ushort codeEnd; ///< Last Unicode codepoint the block applies to.
+    ushort codeBegin;     ///< First Unicode codepoint the block applies to.
+    ushort codeEnd;       ///< Last Unicode codepoint the block applies to.
     ushort mappingMethod; ///< Mapping method.
     ushort reserved;
-    CMAP_s* next; ///< Pointer to the next map.
+    CMAP_s* next;         ///< Pointer to the next map.
 
     union
     {
-        ushort indexOffset; ///< For CMAP_TYPE_DIRECT: index of the first glyph.
+        ushort indexOffset;   ///< For CMAP_TYPE_DIRECT: index of the first glyph.
         ushort[0] indexTable; ///< For CMAP_TYPE_TABLE: table of glyph indices.
         /// For CMAP_TYPE_SCAN: Mapping data.
         struct
@@ -99,62 +99,62 @@ struct tag_CMAP_s
 /// Font information structure.
 struct FINF_s
 {
-    uint signature; ///< Signature (FINF).
-    uint sectionSize; ///< Section size.
+    uint signature;               ///< Signature (FINF).
+    uint sectionSize;             ///< Section size.
 
-    ubyte fontType; ///< Font type
-    ubyte lineFeed; ///< Line feed vertical distance.
-    ushort alterCharIndex; ///< Glyph index of the replacement character.
+    ubyte fontType;               ///< Font type
+    ubyte lineFeed;               ///< Line feed vertical distance.
+    ushort alterCharIndex;        ///< Glyph index of the replacement character.
     charWidthInfo_s defaultWidth; ///< Default character width information.
-    ubyte encoding; ///< Font encoding (?)
+    ubyte encoding;               ///< Font encoding (?)
 
-    TGLP_s* tglp; ///< Pointer to texture sheet information.
-    CWDH_s* cwdh; ///< Pointer to the first character width information block.
-    CMAP_s* cmap; ///< Pointer to the first character map.
+    TGLP_s* tglp;                 ///< Pointer to texture sheet information.
+    CWDH_s* cwdh;                 ///< Pointer to the first character width information block.
+    CMAP_s* cmap;                 ///< Pointer to the first character map.
 
-    ubyte height; ///< Font height.
-    ubyte width; ///< Font width.
-    ubyte ascent; ///< Font ascent.
+    ubyte height;                 ///< Font height.
+    ubyte width;                  ///< Font width.
+    ubyte ascent;                 ///< Font ascent.
     ubyte padding;
 }
 
 /// Font structure.
 struct CFNT_s
 {
-    uint signature; ///< Signature (CFNU).
+    uint signature;    ///< Signature (CFNU).
     ushort endianness; ///< Endianness constant (0xFEFF).
     ushort headerSize; ///< Header size.
-    uint version_; ///< Format version.
-    uint fileSize; ///< File size.
-    uint nBlocks; ///< Number of blocks.
+    uint version_;     ///< Format version.
+    uint fileSize;     ///< File size.
+    uint nBlocks;      ///< Number of blocks.
 
-    FINF_s finf; ///< Font information.
+    FINF_s finf;       ///< Font information.
 }
 
 /// Font glyph position structure.
 struct fontGlyphPos_s
 {
-    int sheetIndex; ///< Texture sheet index to use to render the glyph.
-    float xOffset; ///< Horizontal offset to draw the glyph width.
-    float xAdvance; ///< Horizontal distance to advance after drawing the glyph.
-    float width; ///< Glyph width.
+    int sheetIndex;     ///< Texture sheet index to use to render the glyph.
+    float xOffset  = 0; ///< Horizontal offset to draw the glyph width.
+    float xAdvance = 0; ///< Horizontal distance to advance after drawing the glyph.
+    float width    = 0; ///< Glyph width.
     /// Texture coordinates to use to render the glyph.
     struct _Anonymous_1
     {
-        float left;
-        float top;
-        float right;
-        float bottom;
+        float left   = 0;
+        float top    = 0;
+        float right  = 0;
+        float bottom = 0;
     }
 
     _Anonymous_1 texcoord;
     /// Vertex coordinates to use to render the glyph.
     struct _Anonymous_2
     {
-        float left;
-        float top;
-        float right;
-        float bottom;
+        float left   = 0;
+        float top    = 0;
+        float right  = 0;
+        float bottom = 0;
     }
 
     _Anonymous_2 vtxcoord;
