@@ -1040,7 +1040,7 @@ void mainGui(MainData* mainData, Input* input) {
               null, mainData.styleButtonList.textSize,
               result.verseText, maxTextWidth, C2D_ParseFlags.bible
             );
-            label(tprint("%.*s##searchres_text_%d", cast(int) verseFirstLine.length, verseFirstLine.ptr, i));
+            label(verseFirstLine);
           }
 
           if (signalFromBox(layoutBox).clicked) {

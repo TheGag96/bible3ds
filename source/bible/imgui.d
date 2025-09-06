@@ -260,7 +260,7 @@ Box* getChild(Box* box, int childId) {
 }
 
 Box* label(const(char)[] text, Justification justification = Justification.min) {
-  Box* box = makeBox(BoxFlags.draw_text, text);
+  Box* box = makeBox(BoxFlags.draw_text, "", text);
 
   box.semanticSize[] = [Size(SizeKind.text_content, 0, 1), Size(SizeKind.text_content, 0, 1)].s;
   box.justification  = justification;
@@ -712,15 +712,20 @@ const(char)[][2] parseIdFromString(const(char)[] text) {
   return result;
 }
 
-Box* makeBox(BoxFlags flags, const(char)[] text) { with (gUiData) {
-  mixin(timeBlock("makeBox"));
-
+Box* makeBox(BoxFlags flags, const(char)[] text) {
+  mixin(timeBlock("makeBox 1"));
   const(char)[][2] idAndNon = parseIdFromString(text);
   const(char)[] id = idAndNon[0], displayText = idAndNon[1];
 
+  return makeBox(flags, id, displayText);
+}
+
+Box* makeBox(BoxFlags flags, const(char)[] id, const(char)[] displayText) { with (gUiData) {
+  mixin(timeBlock("makeBox 2"));
+
   Box* result = hashTableFindOrAlloc(&boxes, id);
   result.lastFrameTouchedIndex = frameIndex;
-  debug result.debugString = text;
+  debug result.debugString = displayText;
 
   result.first   = gNullBox;
   result.last    = gNullBox;
