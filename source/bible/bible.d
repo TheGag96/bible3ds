@@ -4,6 +4,7 @@ module bible.bible;
 
 import std.algorithm;
 import std.range;
+import std.traits;
 import bible.util;
 import ctru.thread, ctru.synchronization;
 import core.atomic;
@@ -88,60 +89,114 @@ OpenBook openBibleBook(Arena* arena, Translation translation, Book book) {
   return result;
 }
 
-struct BibleLoadData {
-  Thread threadHandle;
-
-  // In
-  LightSemaphore inSync;
-  Translation translation;
-
-  // Out
-  LightSemaphore outSync;
-  bool loadDone;  // Access atomically
-  OpenBook[Book.max+1] books;
-  Arena bibleArena;
+struct JobHandle(alias func) {
+  uint value;
 }
 
-extern(C) void bibleLoadThread(void* data) {
-  auto loadData = cast(BibleLoadData*) data;
+struct Work {
+  uint handle;
+  void* function(void*) @nogc nothrow callback;
+  void* args;
+  void* result;
+  bool received;
+}
 
-  gTempStorage        = arenaMake(megabytes(1));
-  loadData.bibleArena = arenaMake(megabytes(16));
+shared uint sJobsStarted, sJobsDone, sJobsReceived;
+shared Work[16] sWorkQueue;
+__gshared LightSemaphore sWorkToDoSem;
+__gshared LightSemaphore sWorkingSem;
+
+struct ParameterTypeStruct(alias func) {
+  ParameterTypeTuple!func params;
+}
+
+auto callFuncWithParamsStruct(alias func)(ParameterTypeStruct!func* paramStruct) {
+  return func(paramStruct.params);
+}
+
+pragma(inline, true)
+JobHandle!func jobStart(alias func)(ParameterTypeTuple!func args) {
+  // First argument MUST be an Arena*!
+  auto argsStruct = push!(ParameterTypeStruct!func)(args[0], ArenaFlags.no_init);
+
+  *argsStruct = ParameterTypeStruct!func(args);
+
+  return JobHandle!func(_jobStart(cast(void* function(void*) @nogc nothrow) &callFuncWithParamsStruct!func, argsStruct));
+}
+
+uint _jobStart(void* function(void*) @nogc nothrow callback, void* args) {
+  uint result        = atomicFetchAdd!(MemoryOrder.acq)(sJobsStarted, 1);
+  uint receivedSoFar = atomicLoad!(MemoryOrder.acq)(sJobsReceived);
+  assert(result - receivedSoFar < sWorkQueue.length);  // @TODO
+
+  sWorkQueue[result % sWorkQueue.length] = shared(Work)(result, callback, cast(shared(void*)) args, null);
+
+  LightSemaphore_Release(&sWorkingSem,  -1);
+  LightSemaphore_Release(&sWorkToDoSem,  1);
+
+  return result;
+}
+
+pragma(inline, true)
+auto jobDone(alias func)(JobHandle!func handle) {
+  return cast(ReturnType!func) _jobDone(handle.value);
+}
+
+void* _jobDone(uint handle) {
+  void* result = null;
+
+  uint doneSoFar = atomicLoad!(MemoryOrder.acq)(sJobsDone);
+
+  if (doneSoFar > handle) {
+    assert(doneSoFar - handle <= sWorkQueue.length);
+    auto work = &sWorkQueue[handle % sWorkQueue.length];
+    result = cast(void*) work.result;
+    work.received = true;
+
+    uint receivedSoFar = atomicLoad!(MemoryOrder.acq)(sJobsReceived);
+    while (receivedSoFar < doneSoFar && sWorkQueue[receivedSoFar % sWorkQueue.length].received) {
+      receivedSoFar++;
+    }
+    atomicStore!(MemoryOrder.rel)(sJobsReceived, receivedSoFar);
+  }
+
+  return result;
+}
+
+void waitOnAllJobs() {
+  LightSemaphore_Acquire(&sWorkingSem, 1);
+  LightSemaphore_Release(&sWorkingSem, 1);
+}
+
+extern(C) void threadWork(void* data) {
+  gTempStorage = arenaMake(megabytes(1));
 
   while (true) {
-    // Wait for command to start a load
-    LightSemaphore_Acquire(&loadData.inSync,  1);
-    auto translation = atomicLoad!(MemoryOrder.acq)(loadData.translation);
+    LightSemaphore_Acquire(&sWorkToDoSem, 1);
 
-    // Load the entire translation from storage. This can take a long time!
-    arenaClear(&loadData.bibleArena);
-    loadData.books = openBibleTranslation(&loadData.bibleArena, translation);
+    uint doneSoFar = atomicLoad!(MemoryOrder.acq)(sJobsDone);
 
-    // Signal the loaded data is now valid
-    LightSemaphore_Release(&loadData.outSync, 1);
+    auto work = cast(Work*) &sWorkQueue[doneSoFar % sWorkQueue.length];
+    work.result = work.callback(work.args);
+
+    atomicStore!(MemoryOrder.rel)(sJobsDone, doneSoFar + 1);
+    LightSemaphore_Release(&sWorkingSem, 1);
 
     arenaClear(&gTempStorage);
   }
 }
 
-void startAsyncBibleLoad(BibleLoadData* bible, Translation translation) {
-  bible.translation = translation;
-
-  if (bible.threadHandle == null) {
-    LightSemaphore_Init(&bible.inSync,  initial_count :  1, max_count : 1);
-    LightSemaphore_Init(&bible.outSync, initial_count : -1, max_count : 1);
-    bible.threadHandle = threadCreate(&bibleLoadThread, bible, kilobytes(16), 0x31, -2, true);
-  }
-  else {
-    // @Blocking: Last Bible load most complete before we can queue another
-    LightSemaphore_Acquire(&bible.outSync, 0);
-    LightSemaphore_Release(&bible.outSync, -1);
-    LightSemaphore_Release(&bible.inSync,   1);
-  }
+struct BibleLoadData {
+  Translation translation;
+  OpenBook[Book.max+1] books;
 }
 
-void waitAsyncBibleLoad(BibleLoadData* bible) {
-  LightSemaphore_Acquire(&bible.outSync, 0);
+BibleLoadData* bibleLoad(Arena* arena, Translation translation) {
+  // Load the entire translation from storage. This can take a long time!
+  auto result = push!BibleLoadData(arena, ArenaFlags.no_init);
+  result.translation = translation;
+  result.books       = openBibleTranslation(arena, translation);
+  return result;
 }
 
 enum Translation : ubyte {

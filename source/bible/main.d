@@ -66,7 +66,11 @@ struct MainData {
 
   bool frameNeedsRender;
 
-  BibleLoadData bible;
+  Thread threadHandleJob;
+
+  JobHandle!bibleLoad jobBibleLoad;
+  Arena arenaBibleLoad;
+  BibleLoadData* bible;
 
   ui.ColorTable colorTable;
   bool fadingBetweenThemes;
@@ -108,8 +112,14 @@ extern(C) int main(int argc, char** argv) {
   Result saveResult = saveFileInit();
   assert(!saveResult, "file creation failed");
 
+  LightSemaphore_Init(&sWorkToDoSem, initial_count : 0, max_count : sWorkQueue.length);
+  LightSemaphore_Init(&sWorkingSem,  initial_count : 1, max_count : 1);
+  mainData.threadHandleJob = threadCreate(&threadWork, null, kilobytes(16), 0x31, -2, true);
+
+  mainData.arenaBibleLoad = arenaMake(megabytes(16));
+
   // Try to start loading the Bible as soon as possible asynchronously
-  startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
+  mainData.jobBibleLoad = jobStart!bibleLoad(&mainData.arenaBibleLoad, gSaveFile.settings.translation);
 
   static if (PROFILING_ENABLED) {
     int ret;
@@ -449,7 +459,8 @@ void mainGui(MainData* mainData, Input* input) {
         break;
       case CommandCode.open_book:
         // @TODO: Do this without blocking UI
-        waitAsyncBibleLoad(&mainData.bible);
+        waitOnAllJobs();
+        mainData.bible = jobDone!bibleLoad(mainData.jobBibleLoad);
         doViewSwitch(View.reading);
 
         BibleLoc loc = *(cast(BibleLoc*) &command.value);
@@ -467,7 +478,8 @@ void mainGui(MainData* mainData, Input* input) {
         mainData.searchString = getKeyboardInput(&mainData.searchArena);
 
         if (mainData.searchString.length) {
-          waitAsyncBibleLoad(&mainData.bible);
+          waitOnAllJobs();
+          mainData.bible = jobDone!bibleLoad(mainData.jobBibleLoad);
 
           mainData.searchResults     = null;
           mainData.searchResultsLast = null;
@@ -945,7 +957,10 @@ void mainGui(MainData* mainData, Input* input) {
             audioPlaySound(SoundEffect.button_back, 0.5);
 
             if (mainData.bible.translation != gSaveFile.settings.translation) {
-              startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
+              // @TODO: Wait just on a Bible load job. Cancel if we can??
+              waitOnAllJobs();
+              arenaClear(&mainData.arenaBibleLoad);
+              mainData.jobBibleLoad = jobStart!bibleLoad(&mainData.arenaBibleLoad, gSaveFile.settings.translation);
             }
           }
 
@@ -970,7 +985,10 @@ void mainGui(MainData* mainData, Input* input) {
             audioPlaySound(SoundEffect.button_back, 0.5);
 
             if (mainData.bible.translation != gSaveFile.settings.translation) {
-              startAsyncBibleLoad(&mainData.bible, gSaveFile.settings.translation);
+              // @TODO: Wait just on a Bible load job. Cancel if we can??
+              waitOnAllJobs();
+              arenaClear(&mainData.arenaBibleLoad);
+              mainData.jobBibleLoad = jobStart!bibleLoad(&mainData.arenaBibleLoad, gSaveFile.settings.translation);
             }
           }
 
@@ -1003,6 +1021,8 @@ void mainGui(MainData* mainData, Input* input) {
       Box* scrollLayoutBox;
       Signal scrollLayoutSignal;
       {
+        mixin(timeBlock("search result ui"));
+
         enum float  SEARCH_RESULT_BUTTON_SIZE = 46;
         enum size_t SEARCH_RESULTS_PER_SCREEN = cast(size_t) (2 * SCREEN_HEIGHT / SEARCH_RESULT_BUTTON_SIZE) + 2;
 
@@ -1014,10 +1034,13 @@ void mainGui(MainData* mainData, Input* input) {
 
         int numToSkip = clamp(cast(int) (max(scrollLayoutBox.scrollInfo.offset - SCREEN_HEIGHT, 0) / SEARCH_RESULT_BUTTON_SIZE) - 1, 0, cast(int) mainData.searchResultCount);
 
-        foreach (a; 0..numToSkip) {
-          resultsRange.popFront;
+        {
+          mixin(timeBlock("search result ll skip"));
+          foreach (a; 0..numToSkip) {
+            resultsRange.popFront;
+          }
+          i += numToSkip;
         }
-        i += numToSkip;
 
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
         spacer(SCREEN_HEIGHT + SEARCH_RESULT_BUTTON_SIZE * numToSkip);
