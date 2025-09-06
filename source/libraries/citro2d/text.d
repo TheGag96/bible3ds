@@ -322,7 +322,7 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
 
     if (skipCount == 0) {
       fontGlyphPos_s glyphData;
-      C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
+      C2D_FontCalcGlyphPosFromCodePoint(font, &glyphData, code, 0, 1.0f, 1.0f);
       float scaleFactor = verseNumActive ? SMALL_SCALE : 1.0;
 
       if (glyphData.width > 0.0f)
@@ -638,7 +638,7 @@ StringList C2D_CalcTextWrapLines(Arena* arena, C2D_Font font, float scale, const
 
       if (skipCount == 0 && code != 0) {
         fontGlyphPos_s glyphData;
-        C2D_FontCalcGlyphPos(font, &glyphData, C2D_FontGlyphIndexFromCodePoint(font, code), 0, 1.0f, 1.0f);
+        C2D_FontCalcGlyphPosFromCodePoint(font, &glyphData, code, 0, 1.0f, 1.0f);
         float scaleFactor = scale * (verseNumActive ? SMALL_SCALE : 1.0);
 
         if (glyphData.width > 0.0f) {

@@ -179,6 +179,23 @@ void C2D_FontCalcGlyphPos(C2D_Font font, fontGlyphPos_s* out_, int glyphIndex, u
     fontCalcGlyphPos(out_, font.cfnt, glyphIndex, flags, scaleX, scaleY);
 }
 
+void C2D_FontCalcGlyphPosFromCodePoint(C2D_Font font, fontGlyphPos_s* out_, uint codePoint, uint flags, float scaleX, float scaleY)
+{
+  // Building glyph positions is pretty expensive, but we could just store the results for plain ASCII of the system font.
+  if (!font && codePoint < __C2Di_SystemFontAsciiCache.length && flags == 0 && scaleX == 1 && scaleY == 1) {
+    *out_ = __C2Di_SystemFontAsciiCache[codePoint];
+  }
+  else {
+    C2D_FontCalcGlyphPos(font, out_, C2D_FontGlyphIndexFromCodePoint(font, codePoint), 0, 1.0f, 1.0f);
+  }
+}
+
+fontGlyphPos_s* C2D_FontCalcGlyphPosFromSystemFontAscii(uint codePoint)
+{
+  // Building glyph positions is pretty expensive, but we could just store the results for plain ASCII of the system font.
+  return &__C2Di_SystemFontAsciiCache[codePoint];
+}
+
 /** @brief Get the font info structure associated with the font
  * @param[in] font Font to read from, or null for the system font
  * @returns FINF associated with the font

@@ -6,6 +6,7 @@
 module citro2d.base;
 
 import ctru.allocator;
+import ctru.font;
 import ctru.gfx;
 import ctru.gpu;
 import ctru.services.gspgpu;
@@ -29,6 +30,7 @@ __gshared C2Di_Context[C2D_NUM_SHADERS] __C2Di_Contexts;
 __gshared C3D_Mtx s_projTop, s_projBot;
 __gshared C2DShader __C2Di_CurrentShader;
 __gshared bool __C2Di_FirstPrepare = true;
+__gshared fontGlyphPos_s[128] __C2Di_SystemFontAsciiCache;
 
 enum SHADER_GET(string name) = cast(immutable(ubyte)[]) import(name ~ ".shbin");
 
@@ -533,6 +535,15 @@ bool C2D_Init(size_t maxObjects)
     }
 
     C3D_FrameEndHook(&C2Di_FrameEndHook, null);
+
+    // Initialize system font ASCII cache for C2D_FontCalcGlyphPosFromCodePoint
+    {
+      auto systemFont = fontGetSystemFont();
+      foreach (i, ref slot; __C2Di_SystemFontAsciiCache) {
+        fontCalcGlyphPos(&slot, systemFont, fontGlyphIndexFromCodePoint(systemFont, i), 0, 1.0, 1.0);
+      }
+    }
+
     return true;
 }
 
