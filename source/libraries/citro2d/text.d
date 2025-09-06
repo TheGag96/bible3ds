@@ -285,13 +285,8 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
     if (skipCount > 0) skipCount--;
 
     uint code;
-    ssize_t units = decode_utf8(&code, p);
-    if (units == -1)
-    {
-      code = 0xFFFD;
-      units = 1;
-    }
-    else if (code == 0 || code == '\n')
+    size_t units = decode_utf8(&code, p);
+    if (code == 0 || code == '\n')
     {
       // If we last parsed non-whitespace, increment the word counter
       if (!lastWasWhitespace)
@@ -566,57 +561,83 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX
   return C2D_WrapInfo(lines, words);
 }
 
-// Takes a string and splits it into a list of lines wrapped to a given maximum line length.
+pragma (inline, true)
+private bool isWhiteSpace(uint codePoint) {
+  return codePoint == ' ' || codePoint == '\t' || codePoint == '\r' || codePoint == '\n';
+}
+
 StringList C2D_CalcTextWrapLines(Arena* arena, C2D_Font font, float scale, const(char)[] str, float max, C2D_ParseFlags flags = C2D_ParseFlags.none) {
   StringList result;
+  auto bytes = str.representation;
 
-  const(ubyte)[] p = cast(const(ubyte)[])str;
+  size_t index = 0;
+  while (index < str.length) {
+    auto line = C2D_CalcTextWrapFirstLine(font, scale, str[index..$], max, flags);
 
-  uint wordNum           = 0;
-  bool lastWasWhitespace = true;
-  bool verseNumActive    = false;
-  int  italicsActive     = 0;
-  int  skipCount         = 0;
-  bool lineStart         = true;
-  float linePosCur       = 0;
+    pushString(arena, &result, line);
+    index += line.length;
+
+    while (true) {
+      uint   whiteSpace = ' ';
+      size_t units      = 0;
+
+      units = decode_utf8(&whiteSpace, bytes[index..$]);
+
+      if (!isWhiteSpace(whiteSpace)) {
+        break;
+      }
+
+      index += units;
+    }
+  }
+
+  return result;
+}
+
+// Takes a string and splits it into a list of lines wrapped to a given maximum line length.
+const(char)[] C2D_CalcTextWrapFirstLine(C2D_Font font, float scale, const(char)[] str, float max, C2D_ParseFlags flags = C2D_ParseFlags.none) {
+  mixin(timeBlock("C2D_CalcTextWrapFirstLine"));
+
+  StringList result;
+
+  const(ubyte)[] bytes = cast(const(ubyte)[])str;
+
+  bool   verseNumActive  = false;
+  int    italicsActive   = 0;
+  int    skipCount       = 0;
+  bool   lineStart       = true;
+  float  linePosCur      = 0;
   size_t lastLineStart   = 0;
   size_t index           = 0;
+  size_t indexNext       = 0;
 
   static struct WordInfo {
-    bool endOfString;
-    float size             = 0;
-    float advance          = 0;
-    float lastGlyphSize    = 0;
-    float lastGlyphAdvance = 0;
-    size_t start           = 0;
-    size_t end             = 0;
+    bool   endOfLine;
+    bool   endOfString;
+    bool   seen;
+    float  size    = 0;
+    float  advance = 0;
+    size_t end;
   }
+
   WordInfo wordLast;
   while (true) {
     WordInfo wordCur;
-    uint code;
+    uint code = 0, codeNext = 0;
+
+    indexNext = index + decode_utf8(&codeNext, bytes[index..$]);
+    bool nonSpaceFound = false;
+
     while (true) {
       if (skipCount > 0) skipCount--;
 
-      ssize_t units = decode_utf8(&code, p[index..$]);
+      code       = codeNext;
+      index      = indexNext;
+      indexNext += decode_utf8(&codeNext, bytes[index..$]);
+
       bool wordEnd  = false;
 
-      if (units == -1) {
-        wordEnd = true;
-        code    = 0xFFFD;
-        units   = 1;
-      }
-      else if (code == 0) {
-        wordEnd = true;
-
-        if (wordCur.advance == 0) {
-          wordCur.endOfString = true;
-        }
-      }
-      else if (code == '\n') {
-        lineStart = true;
-      }
-      else if ((flags & C2D_ParseFlags.bible) && lineStart && code == '[') {
+      if ((flags & C2D_ParseFlags.bible) && lineStart && code == '[') {
         verseNumActive = true;
         skipCount      = -1; // Skip chapter number that comes before the ':'
       }
@@ -636,60 +657,43 @@ StringList C2D_CalcTextWrapLines(Arena* arena, C2D_Font font, float scale, const
         skipCount = 1;
       }
 
+      if (codeNext == '\0') {
+        wordEnd             = true;
+        wordCur.endOfString = true;
+        wordCur.endOfLine   = true;
+      }
+      else if (codeNext == '\n') {
+        wordEnd             = true;
+        wordCur.endOfLine   = true;
+      }
+
       if (skipCount == 0 && code != 0) {
+        if (!isWhiteSpace(code) && isWhiteSpace(codeNext)) {
+          wordEnd = true;
+        }
+
         fontGlyphPos_s glyphData;
         C2D_FontCalcGlyphPosFromCodePoint(font, &glyphData, code, 0, 1.0f, 1.0f);
         float scaleFactor = scale * (verseNumActive ? SMALL_SCALE : 1.0);
 
-        if (glyphData.width > 0.0f) {
-          if (lastWasWhitespace) {
-            wordCur.start    = index;
-          }
-
-          lastWasWhitespace        = false;
-          // @Speed: This only needs to be done one per word, not per-character...
-          wordCur.lastGlyphSize    = glyphData.xOffset + glyphData.width * scaleFactor;
-          wordCur.lastGlyphAdvance = glyphData.xAdvance * scaleFactor;
+        if (wordEnd) {
+          wordCur.size   = wordCur.advance + (glyphData.xOffset + glyphData.width) * scaleFactor;
         }
-        else if (!lastWasWhitespace) {
-          wordEnd           = true;
-          lastWasWhitespace = true;
-        }
-
-        if (!wordEnd) wordCur.advance += glyphData.xAdvance * scaleFactor;
+        wordCur.advance += glyphData.xAdvance * scaleFactor;
       }
 
       if (wordEnd) {
-        wordCur.size = wordCur.advance - wordCur.lastGlyphAdvance + wordCur.lastGlyphSize;
         wordCur.end  = index;
-
         break;
       }
-
-      index += units;
     }
 
-    if (linePosCur + wordCur.size > max || wordCur.endOfString) {
-      size_t indexLineEnd = wordLast.end;
+    if (!wordLast.seen && linePosCur + wordCur.size > max) {
+      return str[lastLineStart..wordLast.end];
+    }
 
-      const(char)[] newString = str[lastLineStart..indexLineEnd];
-      pushString(arena, &result, newString);
-      lastLineStart = indexLineEnd;
-
-      while (true) {
-        uint    whiteSpace = ' ';
-        ssize_t units      = 0;
-
-        units = decode_utf8(&whiteSpace, p[lastLineStart..$]);
-
-        if (whiteSpace != ' ') {
-          break;
-        }
-
-        lastLineStart += units;
-      }
-
-      linePosCur = 0;
+    if (wordCur.endOfLine) {
+      return str[lastLineStart..wordCur.end];
     }
 
     linePosCur += wordCur.advance;
@@ -701,7 +705,7 @@ StringList C2D_CalcTextWrapLines(Arena* arena, C2D_Font font, float scale, const
     }
   }
 
-  return result;
+  return str;
 }
 
 /** @brief Draws text using the GPU.
@@ -1035,99 +1039,115 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
 /** @} */
 
 // Ported and modified from libctru's decode_utf8.c
-ssize_t
+size_t
 decode_utf8(uint*          output,
             const(ubyte)[] input)
 {
-  ubyte code1, code2, code3, code4;
+  size_t ret = 0;
 
   if (input.length == 0) {
     *output = 0;
-    return 0;
+  }
+  else {
+    ret = 1;
+
+    ubyte code1 = input[0];
+    if(code1 < 0x80)
+    {
+      /* 1-byte sequence */
+      *output = code1;
+    }
+    else if(code1 < 0xC2)
+    {
+      goto utf8_invalid;
+    }
+    else if(code1 < 0xE0)
+    {
+      if (input.length < 2)
+      {
+        goto utf8_invalid;
+      }
+
+      /* 2-byte sequence */
+      ubyte code2 = input[1];
+      if((code2 & 0xC0) != 0x80)
+      {
+        goto utf8_invalid;
+      }
+
+      *output = (code1 << 6) + code2 - 0x3080;
+      ret = 2;
+    }
+    else if(code1 < 0xF0)
+    {
+      if (input.length < 3)
+      {
+        goto utf8_invalid;
+      }
+
+      /* 3-byte sequence */
+      ubyte code2 = input[1];
+      if((code2 & 0xC0) != 0x80)
+      {
+        goto utf8_invalid;
+      }
+      if(code1 == 0xE0 && code2 < 0xA0)
+      {
+        goto utf8_invalid;
+      }
+
+      ubyte code3 = input[2];
+      if((code3 & 0xC0) != 0x80)
+      {
+        goto utf8_invalid;
+      }
+
+      *output = (code1 << 12) + (code2 << 6) + code3 - 0xE2080;
+      ret = 3;
+    }
+    else if(code1 < 0xF5)
+    {
+      if (input.length < 4)
+      {
+        goto utf8_invalid;
+      }
+
+      /* 4-byte sequence */
+      ubyte code2 = input[1];
+      if((code2 & 0xC0) != 0x80)
+      {
+        goto utf8_invalid;
+      }
+      if(code1 == 0xF0 && code2 < 0x90)
+      {
+        goto utf8_invalid;
+      }
+      if(code1 == 0xF4 && code2 >= 0x90)
+      {
+        goto utf8_invalid;
+      }
+
+      ubyte code3 = input[2];
+      if((code3 & 0xC0) != 0x80)
+      {
+        goto utf8_invalid;
+      }
+
+      ubyte code4 = input[3];
+      if((code4 & 0xC0) != 0x80)
+      {
+        goto utf8_invalid;
+      }
+
+      *output = (code1 << 18) + (code2 << 12) + (code3 << 6) + code4 - 0x3C82080;
+      ret = 4;
+    }
+
   }
 
-  code1 = input[0];
-  if(code1 < 0x80)
-  {
-    /* 1-byte sequence */
-    *output = code1;
-    return 1;
-  }
-  else if(code1 < 0xC2)
-  {
-    return -1;
-  }
-  else if(code1 < 0xE0)
-  {
-    /* 2-byte sequence */
-    if (input.length < 2) return -1;
-
-    code2 = input[1];
-    if((code2 & 0xC0) != 0x80)
-    {
-      return -1;
-    }
-
-    *output = (code1 << 6) + code2 - 0x3080;
-    return 2;
-  }
-  else if(code1 < 0xF0)
-  {
-    if (input.length < 3) return -1;
-    /* 3-byte sequence */
-    code2 = input[1];
-    if((code2 & 0xC0) != 0x80)
-    {
-      return -1;
-    }
-    if(code1 == 0xE0 && code2 < 0xA0)
-    {
-      return -1;
-    }
-
-    code3 = input[2];
-    if((code3 & 0xC0) != 0x80)
-    {
-      return -1;
-    }
-
-    *output = (code1 << 12) + (code2 << 6) + code3 - 0xE2080;
-    return 3;
-  }
-  else if(code1 < 0xF5)
-  {
-    /* 4-byte sequence */
-    if (input.length < 4) return -1;
-
-    code2 = input[1];
-    if((code2 & 0xC0) != 0x80)
-    {
-      return -1;
-    }
-    if(code1 == 0xF0 && code2 < 0x90)
-    {
-      return -1;
-    }
-    if(code1 == 0xF4 && code2 >= 0x90)
-    {
-      return -1;
-    }
-
-    code3 = input[2];
-    if((code3 & 0xC0) != 0x80)
-    {
-      return -1;
-    }
-
-    code4 = input[3];
-    if((code4 & 0xC0) != 0x80)
-    {
-      return -1;
-    }
-
-    *output = (code1 << 18) + (code2 << 12) + (code3 << 6) + code4 - 0x3C82080;
-    return 4;
-  }
-
-  return -1;
+  return ret;
+utf8_invalid:
+  *output = 0xFFFD;
+  ret = 1;
+  return ret;
 }

@@ -1036,13 +1036,11 @@ void mainGui(MainData* mainData, Input* input) {
 
             label(result.locString);
 
-            StringList lines = C2D_CalcTextWrapLines(
-              &gUiData.frameArena, null, mainData.styleButtonList.textSize,
+            auto verseFirstLine = C2D_CalcTextWrapFirstLine(
+              null, mainData.styleButtonList.textSize,
               result.verseText, maxTextWidth, C2D_ParseFlags.bible
             );
-            const(char)[] resultText;
-            if (lines.first) resultText = lines.first.str;
-            label(tprint("%.*s##searchres_text_%d", cast(int) resultText.length, resultText.ptr, i));
+            label(tprint("%.*s##searchres_text_%d", cast(int) verseFirstLine.length, verseFirstLine.ptr, i));
           }
 
           if (signalFromBox(layoutBox).clicked) {
