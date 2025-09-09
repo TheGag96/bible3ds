@@ -60,7 +60,8 @@ struct MainData {
 
   float size = 0;
 
-  PageId pageId;
+  bool needLoadPage;
+  PageId pageId, pendingPageId;
   int jumpVerseRequest;
   ui.LoadedPage loadedPage;
 
@@ -69,17 +70,15 @@ struct MainData {
   Thread threadHandleJob;
 
   JobHandle!bibleLoad jobBibleLoad;
-  Arena arenaBibleLoad;
   BibleLoadData* bible;
 
   ui.ColorTable colorTable;
   bool fadingBetweenThemes;
   ui.BoxStyle styleButtonBook, styleButtonBottom, styleButtonBack, styleButtonList, stylePage, styleVerse;
 
+  JobHandle!bibleSearch jobBibleSearch;
   Arena searchArena;
-  char[] searchString;
-  SearchResult* searchResults, searchResultsLast;
-  size_t searchResultCount;
+  BibleSearchResults* searchResults;
 }
 MainData mainData;
 
@@ -112,14 +111,16 @@ extern(C) int main(int argc, char** argv) {
   Result saveResult = saveFileInit();
   assert(!saveResult, "file creation failed");
 
+  LightLock_Init(&sMutexBibleData);
   LightSemaphore_Init(&sWorkToDoSem, initial_count : 0, max_count : sWorkQueue.length);
   LightSemaphore_Init(&sWorkingSem,  initial_count : 1, max_count : 1);
+
+  sArenaBibleLoad = arenaMake(megabytes(16));
+
   mainData.threadHandleJob = threadCreate(&threadWork, null, kilobytes(16), 0x31, -2, true);
 
-  mainData.arenaBibleLoad = arenaMake(megabytes(16));
-
   // Try to start loading the Bible as soon as possible asynchronously
-  mainData.jobBibleLoad = jobStart!bibleLoad(&mainData.arenaBibleLoad, gSaveFile.settings.translation);
+  mainData.jobBibleLoad = startJob!bibleLoad(gSaveFile.settings.translation);
 
   static if (PROFILING_ENABLED) {
     int ret;
@@ -202,6 +203,7 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     arenaClear(&gTempStorage);
 
+    // @Bug: If it takes more than one second for the Bible to load while in the read view, we won't render when it completes.
     if (mainData.curView == View.reading && input.framesNoInput > 60) {
       ////
       // Dormant frame
@@ -338,16 +340,16 @@ void initMainData(MainData* mainData) { with (mainData) {
   searchArena                        = arenaMake(kilobytes(128));
 }}
 
-void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
-  if (newPageId == pageId) return;
+void loadBiblePage(MainData* mainData) { with (mainData) {
+  if (pendingPageId == pageId && !needLoadPage) return;
 
-  OpenBook* book = &bible.books[newPageId.book];
+  OpenBook* book = &bible.books[pendingPageId.book];
 
-  if (newPageId.chapter < 0) {
-    newPageId.chapter = book.chapters.length + newPageId.chapter;
+  if (pendingPageId.chapter < 0) {
+    pendingPageId.chapter = book.chapters.length + pendingPageId.chapter;
   }
 
-  ui.loadPage(&loadedPage, book.chapters[newPageId.chapter], newPageId.chapter, &stylePage);
+  ui.loadPage(&loadedPage, book.chapters[pendingPageId.chapter], pendingPageId.chapter, &stylePage);
   scrollCache.needsRepaint = true;
   frameNeedsRender = true;
 
@@ -361,7 +363,8 @@ void loadBiblePage(MainData* mainData, PageId newPageId) { with (mainData) {
   loadedPage.scrollInfo.offset     = 0;
   loadedPage.scrollInfo.offsetLast = 0;
 
-  pageId = newPageId;
+  pageId = pendingPageId;
+  needLoadPage = false;
 }}
 
 void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainData) {
@@ -403,7 +406,10 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
     newPageId.chapter += chapterDiff;
   }
 
-  loadBiblePage(mainData, newPageId);
+  if (pageId != newPageId) {
+    mainData.needLoadPage  = true;
+    mainData.pendingPageId = newPageId;
+  }
 }}
 
 void openModal(MainData* mainData, ModalCallback modalCallback) {
@@ -438,6 +444,12 @@ void mainGui(MainData* mainData, Input* input) {
 
   enum LOAD_BOOK_PROGRESS = 0;
 
+  void* unused;  // @TODO: This job result is a dummy. Change the API to remove??
+  getJobResult!bibleLoad(  &mainData.jobBibleLoad,   &unused);
+  getJobResult!bibleSearch(&mainData.jobBibleSearch, &mainData.searchResults);
+  mainData.bible = bibleDataGet();
+  scope(exit) bibleDataRelease(&mainData.bible);
+
   Command command;
   while (true) {
     command = getCommand();
@@ -458,9 +470,6 @@ void mainGui(MainData* mainData, Input* input) {
         }
         break;
       case CommandCode.open_book:
-        // @TODO: Do this without blocking UI
-        waitOnAllJobs();
-        mainData.bible = jobDone!bibleLoad(mainData.jobBibleLoad);
         doViewSwitch(View.reading);
 
         BibleLoc loc = *(cast(BibleLoc*) &command.value);
@@ -470,47 +479,24 @@ void mainGui(MainData* mainData, Input* input) {
           loc.verse   = gSaveFile.progress[loc.book].verse;
         }
 
-        loadBiblePage(mainData, PageId(gSaveFile.settings.translation, loc.book, loc.chapter));
+        mainData.needLoadPage     = true;
+        mainData.pendingPageId    = PageId(gSaveFile.settings.translation, loc.book, loc.chapter);
         mainData.jumpVerseRequest = loc.verse;
         break;
       case CommandCode.start_search:
-        arenaClear(&mainData.searchArena);
-        mainData.searchString = getKeyboardInput(&mainData.searchArena);
-
-        if (mainData.searchString.length) {
+        if (mainData.jobBibleSearch.value) {
+          // @TODO: Ughhhhh waiting like this sucks but if I want to allocate the search string on the search arena, I
+          // have no choice!!
+          cancelJob(&mainData.jobBibleSearch);
           waitOnAllJobs();
-          mainData.bible = jobDone!bibleLoad(mainData.jobBibleLoad);
+        }
 
-          mainData.searchResults     = null;
-          mainData.searchResultsLast = null;
-          mainData.searchResultCount = 0;
+        arenaClear(&mainData.searchArena);
+        const(char)[] searchString = getKeyboardInput(&mainData.searchArena);
 
-          int hitCount = 0;
-          search_book:
-          foreach (book; enumRange!Book) {
-            foreach (chapterNum, lines; mainData.bible.books[book].chapters) {
-              foreach (verseNum, line; lines[1..$]) {
-                if (line.representation.canFind(mainData.searchString.representation)) {
-                  SearchResult* newResult = push!SearchResult(&mainData.searchArena, ArenaFlags.soft_fail);
-                  if (!newResult) break search_book;
-
-                  newResult.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) verseNum);
-                  newResult.locString = afprintf(
-                    &mainData.searchArena, ArenaFlags.soft_fail, "%s %d:%d",
-                    BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2
-                  );
-                  if (!newResult.locString) break search_book;
-                  newResult.verseText = line;
-
-                  consumeUntil(&newResult.verseText, "] ", StrSearchFlags.skip_needle);
-
-                  linkedListPushBack(&mainData.searchResults, &mainData.searchResultsLast, newResult);
-                  mainData.searchResultCount++;
-                }
-              }
-            }
-          }
-
+        if (searchString.length) {
+          mainData.searchResults = null;
+          mainData.jobBibleSearch = startJob!bibleSearch(&mainData.searchArena, searchString);
           doViewSwitch(View.search);
         }
         break;
@@ -518,7 +504,7 @@ void mainGui(MainData* mainData, Input* input) {
   }
 
   // @TODO: Should this be handled as a UI command?
-  if (!mainData.modalCallback && mainData.curView == View.reading) {
+  if (!mainData.modalCallback && mainData.curView == View.reading && mainData.bible) {
     handleChapterSwitchHotkeys(mainData, input);
   }
 
@@ -727,184 +713,217 @@ void mainGui(MainData* mainData, Input* input) {
       break;
 
     case View.reading:
-      Signal readPaneSignal;
-      with (mainData.loadedPage) {
-        // @HACK: Cancel selecting a verse with circle/D-pad
-        //        May need to reconsider this UX / fold some new behavior into the core code.
-        if (boxIsNull(gUiData.active) && input.scrollMethodCur == ScrollMethod.none && input.down(Key.up | Key.down)) {
+      if (mainData.bible) {
+        loadBiblePage(mainData);
+
+        Signal readPaneSignal;
+        with (mainData.loadedPage) {
+          // @HACK: Cancel selecting a verse with circle/D-pad
+          //        May need to reconsider this UX / fold some new behavior into the core code.
+          if (boxIsNull(gUiData.active) && input.scrollMethodCur == ScrollMethod.none && input.down(Key.up | Key.down)) {
+            gUiData.hot = gNullBox;
+          }
+
+          auto readPane = ScopedScrollableReadPane("reading_scroll_read_view", &readPaneSignal, mainData.loadedPage, &mainData.scrollCache, &mainData.jumpVerseRequest);
+
+          auto verseStyle = ScopedStyle(&mainData.styleVerse);
+
+          spacer(style.margin.y + glyphSize.y + SCREEN_HEIGHT);
+
+          // Overlay invisible boxes on top of each verse
+          auto curVerseStart = actualLineNumberTable[1];
+          int firstVerseLine = 1;
+          int curVerse;
+          foreach (i; 2..actualLineNumberTable.length + 1) {  // Spooky-but-intentional + 1
+            if (i == actualLineNumberTable.length ||
+                actualLineNumberTable[i].textLineIndex != curVerseStart.textLineIndex)
+            {
+              auto height =  (i - firstVerseLine) * glyphSize.y;
+              int verse = curVerseStart.textLineIndex;
+              if (i != actualLineNumberTable.length) {
+                curVerseStart = actualLineNumberTable[i];
+              }
+              firstVerseLine = i;
+
+              // Generate a unique verse ID for each selectable. If they were just by verse or chapter, then these might
+              // carry state between chapter/book switches.
+              BibleLoc verseLoc = { mainData.pageId.book, cast(ubyte) mainData.pageId.chapter, cast(ushort) verse };
+              uint verseUnique = *cast(uint*)&verseLoc;
+              auto button = button(tnum("##read_pane_verse_", verseUnique), extraFlags : BoxFlags.selectable | BoxFlags.select_toggle | BoxFlags.select_falling_edge);
+              button.box.render = &renderVerse;
+              button.box.userVal = verse;
+              button.box.semanticSize = [SIZE_FILL_PARENT, Size(SizeKind.pixels, height)].s;
+            }
+          }
+        }
+        mainData.loadedPage.scrollInfo = readPaneSignal.box.scrollInfo;
+
+        // @HACK: Cancel selecting a verse with touch scrolling
+        if (input.scrollMethodCur == ScrollMethod.touch) {
           gUiData.hot = gNullBox;
         }
 
-        auto readPane = ScopedScrollableReadPane("reading_scroll_read_view", &readPaneSignal, mainData.loadedPage, &mainData.scrollCache, &mainData.jumpVerseRequest);
-
-        auto verseStyle = ScopedStyle(&mainData.styleVerse);
-
-        spacer(style.margin.y + glyphSize.y + SCREEN_HEIGHT);
-
-        // Overlay invisible boxes on top of each verse
-        auto curVerseStart = actualLineNumberTable[1];
-        int firstVerseLine = 1;
-        int curVerse;
-        foreach (i; 2..actualLineNumberTable.length + 1) {  // Spooky-but-intentional + 1
-          if (i == actualLineNumberTable.length ||
-              actualLineNumberTable[i].textLineIndex != curVerseStart.textLineIndex)
-          {
-            auto height =  (i - firstVerseLine) * glyphSize.y;
-            int verse = curVerseStart.textLineIndex;
-            if (i != actualLineNumberTable.length) {
-              curVerseStart = actualLineNumberTable[i];
-            }
-            firstVerseLine = i;
-
-            // Generate a unique verse ID for each selectable. If they were just by verse or chapter, then these might
-            // carry state between chapter/book switches.
-            BibleLoc verseLoc = { mainData.pageId.book, cast(ubyte) mainData.pageId.chapter, cast(ushort) verse };
-            uint verseUnique = *cast(uint*)&verseLoc;
-            auto button = button(tnum("##read_pane_verse_", verseUnique), extraFlags : BoxFlags.selectable | BoxFlags.select_toggle | BoxFlags.select_falling_edge);
-            button.box.render = &renderVerse;
-            button.box.userVal = verse;
-            button.box.semanticSize = [SIZE_FILL_PARENT, Size(SizeKind.pixels, height)].s;
-          }
-        }
-      }
-      mainData.loadedPage.scrollInfo = readPaneSignal.box.scrollInfo;
-
-      // @HACK: Cancel selecting a verse with touch scrolling
-      if (input.scrollMethodCur == ScrollMethod.touch) {
-        gUiData.hot = gNullBox;
-      }
-
-      {
-        auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
-        auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
-
         {
-          auto backStyle = ScopedStyle(&mainData.styleButtonBack);
+          auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
+          auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
-          if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-            auto scrollInfo = &mainData.loadedPage.scrollInfo;
+          {
+            auto backStyle = ScopedStyle(&mainData.styleButtonBack);
 
-            auto foundIndex = mainData.loadedPage.actualLineNumberTable.length-1;
-            foreach (i, ref lineEntry; mainData.loadedPage.actualLineNumberTable) {
-              if (lineEntry.realPos > scrollInfo.offset) {
-                foundIndex = i;
+            if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+              auto scrollInfo = &mainData.loadedPage.scrollInfo;
+
+              auto foundIndex = mainData.loadedPage.actualLineNumberTable.length-1;
+              foreach (i, ref lineEntry; mainData.loadedPage.actualLineNumberTable) {
+                if (lineEntry.realPos > scrollInfo.offset) {
+                  foundIndex = i;
+                  break;
+                }
+              }
+              if (foundIndex > 0) foundIndex--;
+              int curVerse = mainData.loadedPage.actualLineNumberTable[foundIndex].textLineIndex;
+
+              gSaveFile.progress[mainData.pageId.book] = Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) curVerse);
+              saveSettings();
+
+              sendCommand(CommandCode.go_to_previous_view, 0);
+              audioPlaySound(SoundEffect.button_back, 0.5);
+            }
+          }
+
+          if (bottomButton("Chapters").clicked) {
+            openModal(mainData, (MainData* mainData, UiView* uiView) {
+              enum CHAPTERS_PER_ROW    = 5;
+              enum CHAPTER_BUTTON_SIZE = 40;
+
+              bool result = false;
+
+              Signal scrollSignal;
+              auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
+              auto horizLayout  = ScopedLayout(      "lt_chapter_horiz",                 Axis2.x, Justification.center, LayoutKind.fit_children);
+              auto vertLayout   = ScopedLayout(      "lt_chapter_vert",                  Axis2.y, Justification.center, LayoutKind.grow_children);
+
+              auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length - 1; // Minus 1 because the 0th chapter is a dummy
+              auto numRows = (numChapters + CHAPTERS_PER_ROW - 1) / CHAPTERS_PER_ROW;
+
+              label("Chapters");
+
+              foreach (row; 0..numRows) {
+                spacer(4);
+
+                {
+                  auto rowLayout = ScopedLayout(tnum("lt_chapter_row_", row), Axis2.x, Justification.center, LayoutKind.grow_children);
+                  // @TODO: Reconsider the meaning of LayoutKind.grow_children to do this instead?
+                  rowLayout.box.semanticSize[] = SIZE_CHILDREN_SUM;
+
+                  auto numInRow = min(numChapters - CHAPTERS_PER_ROW * row, CHAPTERS_PER_ROW);
+                  foreach (chapter; row * CHAPTERS_PER_ROW + 1..row * CHAPTERS_PER_ROW + numInRow + 1) {
+                    if (chapter != row * CHAPTERS_PER_ROW + 1) spacer(2);
+
+                    auto chapterButton = button(tnum(chapter));
+                    chapterButton.box.semanticSize[] = Size(SizeKind.pixels, CHAPTER_BUTTON_SIZE, 1);
+
+                    if (chapterButton.clicked) {
+                      sendOpenBookCommand(
+                        BibleLoc(mainData.pageId.book, cast(ubyte) chapter, 0),
+                        &mainData.views[View.reading].uiData,
+                      );
+                      result = true;
+                    }
+                  }
+
+                  // @HACK: Add empty spaces to fill the rest of the row
+                  foreach (i; 0..CHAPTERS_PER_ROW - numInRow) {
+                    spacer(2 + CHAPTER_BUTTON_SIZE);
+                  }
+                }
+              }
+
+              spacer(4);
+
+              if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
+                result = true;
+
+                audioPlaySound(SoundEffect.button_back, 0.5);
+              }
+
+              return result;
+            });
+          }
+
+          if (gUiData.hot.parent == readPaneSignal.box) {
+            // Verse selected
+            size_t bookmarkIndex = size_t.max;
+            Bookmark potentialBookmark = Bookmark(
+              mainData.pageId.book, Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) gUiData.hot.userVal)
+            );
+            foreach (i, ref bookmark; gSaveFile.bookmarks[0..gSaveFile.numBookmarks]) {
+              if (bookmark == potentialBookmark) {
+                bookmarkIndex = i;
                 break;
               }
             }
-            if (foundIndex > 0) foundIndex--;
-            int curVerse = mainData.loadedPage.actualLineNumberTable[foundIndex].textLineIndex;
 
-            gSaveFile.progress[mainData.pageId.book] = Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) curVerse);
-            saveSettings();
-
-            sendCommand(CommandCode.go_to_previous_view, 0);
-            audioPlaySound(SoundEffect.button_back, 0.5);
+            if (bookmarkIndex == size_t.max) {
+              if (bottomButton("Bookmark").clicked) {
+                // @TODO Do something different at boomark limit...
+                if (gSaveFile.numBookmarks < gSaveFile.bookmarks.length) {
+                  gSaveFile.bookmarks[gSaveFile.numBookmarks++] = potentialBookmark;
+                }
+                saveSettings();
+              }
+            }
+            else {
+              if (bottomButton("Unbookmark").clicked) {
+                foreach (i; bookmarkIndex..gSaveFile.numBookmarks-1) {
+                  gSaveFile.bookmarks[i] = gSaveFile.bookmarks[i+1];
+                }
+                gSaveFile.numBookmarks--;
+                saveSettings();
+              }
+            }
           }
         }
 
-        if (bottomButton("Chapters").clicked) {
-          openModal(mainData, (MainData* mainData, UiView* uiView) {
-            enum CHAPTERS_PER_ROW    = 5;
-            enum CHAPTER_BUTTON_SIZE = 40;
+        mainLayout.startRight();
 
-            bool result = false;
+        {
+          auto rightSplit = ScopedDoubleScreenSplitLayout("lt_reading_right_split_main", "lt_reading_right_split_top", "lt_reading_right_split_bottom");
 
-            Signal scrollSignal;
-            auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
-            auto horizLayout  = ScopedLayout(      "lt_chapter_horiz",                 Axis2.x, Justification.center, LayoutKind.fit_children);
-            auto vertLayout   = ScopedLayout(      "lt_chapter_vert",                  Axis2.y, Justification.center, LayoutKind.grow_children);
+          rightSplit.startTop();
 
-            auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length - 1; // Minus 1 because the 0th chapter is a dummy
-            auto numRows = (numChapters + CHAPTERS_PER_ROW - 1) / CHAPTERS_PER_ROW;
+          scrollIndicator("reading_scroll_indicator", readPaneSignal.box, Justification.min, readPaneSignal.pushingAgainstScrollLimit);
+        }
+      }
+      else {
+        // Bible data is still loading.
+        // @TODO: Prettify
+        {
+          auto searchingLayout = ScopedLayout("lt_loading", Axis2.y);
+          searchingLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
 
-            label("Chapters");
+          spacer();
+          label("Loading...");
+          spacer();
+        }
 
-            foreach (row; 0..numRows) {
-              spacer(4);
+        spacer();
 
-              {
-                auto rowLayout = ScopedLayout(tnum("lt_chapter_row_", row), Axis2.x, Justification.center, LayoutKind.grow_children);
-                // @TODO: Reconsider the meaning of LayoutKind.grow_children to do this instead?
-                rowLayout.box.semanticSize[] = SIZE_CHILDREN_SUM;
+        {
+          auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
+          auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
-                auto numInRow = min(numChapters - CHAPTERS_PER_ROW * row, CHAPTERS_PER_ROW);
-                foreach (chapter; row * CHAPTERS_PER_ROW + 1..row * CHAPTERS_PER_ROW + numInRow + 1) {
-                  if (chapter != row * CHAPTERS_PER_ROW + 1) spacer(2);
+          {
+            auto backStyle = ScopedStyle(&mainData.styleButtonBack);
 
-                  auto chapterButton = button(tnum(chapter));
-                  chapterButton.box.semanticSize[] = Size(SizeKind.pixels, CHAPTER_BUTTON_SIZE, 1);
-
-                  if (chapterButton.clicked) {
-                    sendOpenBookCommand(
-                      BibleLoc(mainData.pageId.book, cast(ubyte) chapter, 0),
-                      &mainData.views[View.reading].uiData,
-                    );
-                    result = true;
-                  }
-                }
-
-                // @HACK: Add empty spaces to fill the rest of the row
-                foreach (i; 0..CHAPTERS_PER_ROW - numInRow) {
-                  spacer(2 + CHAPTER_BUTTON_SIZE);
-                }
-              }
-            }
-
-            spacer(4);
-
-            if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
-              result = true;
-
+            if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+              sendCommand(CommandCode.go_to_previous_view, 0);
               audioPlaySound(SoundEffect.button_back, 0.5);
             }
-
-            return result;
-          });
-        }
-
-        if (gUiData.hot.parent == readPaneSignal.box) {
-          // Verse selected
-          size_t bookmarkIndex = size_t.max;
-          Bookmark potentialBookmark = Bookmark(
-            mainData.pageId.book, Progress(cast(ubyte) mainData.pageId.chapter, cast(ubyte) gUiData.hot.userVal)
-          );
-          foreach (i, ref bookmark; gSaveFile.bookmarks[0..gSaveFile.numBookmarks]) {
-            if (bookmark == potentialBookmark) {
-              bookmarkIndex = i;
-              break;
-            }
-          }
-
-          if (bookmarkIndex == size_t.max) {
-            if (bottomButton("Bookmark").clicked) {
-              // @TODO Do something different at boomark limit...
-              if (gSaveFile.numBookmarks < gSaveFile.bookmarks.length) {
-                gSaveFile.bookmarks[gSaveFile.numBookmarks++] = potentialBookmark;
-              }
-              saveSettings();
-            }
-          }
-          else {
-            if (bottomButton("Unbookmark").clicked) {
-              foreach (i; bookmarkIndex..gSaveFile.numBookmarks-1) {
-                gSaveFile.bookmarks[i] = gSaveFile.bookmarks[i+1];
-              }
-              gSaveFile.numBookmarks--;
-              saveSettings();
-            }
           }
         }
       }
 
-      mainLayout.startRight();
-
-      {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("lt_reading_right_split_main", "lt_reading_right_split_top", "lt_reading_right_split_bottom");
-
-        rightSplit.startTop();
-
-        scrollIndicator("reading_scroll_indicator", readPaneSignal.box, Justification.min, readPaneSignal.pushingAgainstScrollLimit);
-      }
 
       break;
 
@@ -956,11 +975,9 @@ void mainGui(MainData* mainData, Input* input) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
 
-            if (mainData.bible.translation != gSaveFile.settings.translation) {
-              // @TODO: Wait just on a Bible load job. Cancel if we can??
-              waitOnAllJobs();
-              arenaClear(&mainData.arenaBibleLoad);
-              mainData.jobBibleLoad = jobStart!bibleLoad(&mainData.arenaBibleLoad, gSaveFile.settings.translation);
+            if (!mainData.bible || mainData.bible.translation != gSaveFile.settings.translation) {
+              cancelJob(&mainData.jobBibleLoad);
+              mainData.jobBibleLoad = startJob!bibleLoad(gSaveFile.settings.translation);
             }
           }
 
@@ -979,18 +996,6 @@ void mainGui(MainData* mainData, Input* input) {
             }
             spacer(4);
           });
-
-          if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-            result = true;
-            audioPlaySound(SoundEffect.button_back, 0.5);
-
-            if (mainData.bible.translation != gSaveFile.settings.translation) {
-              // @TODO: Wait just on a Bible load job. Cancel if we can??
-              waitOnAllJobs();
-              arenaClear(&mainData.arenaBibleLoad);
-              mainData.jobBibleLoad = jobStart!bibleLoad(&mainData.arenaBibleLoad, gSaveFile.settings.translation);
-            }
-          }
 
           return result;
         });
@@ -1020,7 +1025,8 @@ void mainGui(MainData* mainData, Input* input) {
     case View.search:
       Box* scrollLayoutBox;
       Signal scrollLayoutSignal;
-      {
+
+      if (mainData.searchResults) {
         mixin(timeBlock("search result ui"));
 
         enum float  SEARCH_RESULT_BUTTON_SIZE = 46;
@@ -1029,10 +1035,10 @@ void mainGui(MainData* mainData, Input* input) {
         auto scrollLayout = ScopedSelectScrollLayout("search_scroll_layout", &scrollLayoutSignal, Axis2.y, Justification.min);
         scrollLayoutBox = scrollLayout.box;
 
-        auto resultsRange = linkedRange(mainData.searchResults);
+        auto resultsRange = linkedRange(mainData.searchResults.list);
         int i = 0;
 
-        int numToSkip = clamp(cast(int) (max(scrollLayoutBox.scrollInfo.offset - SCREEN_HEIGHT, 0) / SEARCH_RESULT_BUTTON_SIZE) - 1, 0, cast(int) mainData.searchResultCount);
+        int numToSkip = clamp(cast(int) (max(scrollLayoutBox.scrollInfo.offset - SCREEN_HEIGHT, 0) / SEARCH_RESULT_BUTTON_SIZE) - 1, 0, cast(int) mainData.searchResults.count);
 
         {
           mixin(timeBlock("search result ll skip"));
@@ -1074,8 +1080,21 @@ void mainGui(MainData* mainData, Input* input) {
           if (i > numToSkip + SEARCH_RESULTS_PER_SCREEN) break;
         }
 
-        float bottomSpacer = max(SEARCH_RESULT_BUTTON_SIZE * (cast(int) mainData.searchResultCount - i), 0);
+        float bottomSpacer = max(SEARCH_RESULT_BUTTON_SIZE * (cast(int) mainData.searchResults.count - i), 0);
         spacer(bottomSpacer);
+      }
+      else {
+        // @TODO: Prettify
+        {
+          auto searchingLayout = ScopedLayout("lt_searching", Axis2.y);
+          searchingLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
+
+          spacer();
+          label("Searching...");
+          spacer();
+        }
+
+        spacer();
       }
 
       {

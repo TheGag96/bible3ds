@@ -2,7 +2,7 @@ module bible.bible;
 
 @nogc: nothrow:
 
-import std.algorithm;
+import std.algorithm : count, splitter;
 import std.range;
 import std.traits;
 import bible.util;
@@ -23,16 +23,6 @@ char[] until(char[] haystack, char needle) {
   }
 
   return [];
-}
-
-OpenBook[Book.max+1] openBibleTranslation(Arena* arena, Translation translation) {
-  OpenBook[Book.max+1] result;
-
-  foreach (book; enumRange!Book) {
-    result[book] = openBibleBook(arena, translation, book);
-  }
-
-  return result;
 }
 
 OpenBook openBibleBook(Arena* arena, Translation translation, Book book) {
@@ -91,14 +81,20 @@ OpenBook openBibleBook(Arena* arena, Translation translation, Book book) {
 
 struct JobHandle(alias func) {
   uint value;
+  alias value this;
 }
 
+alias ArgsStore = ubyte[64];
+
 struct Work {
+  align(8) ArgsStore args;
   uint handle;
   void* function(void*) @nogc nothrow callback;
-  void* args;
   void* result;
   bool received;
+  bool cancelled;
+  string startedFromFile;
+  int startedFromLine;
 }
 
 shared uint sJobsStarted, sJobsDone, sJobsReceived;
@@ -115,42 +111,61 @@ auto callFuncWithParamsStruct(alias func)(ParameterTypeStruct!func* paramStruct)
 }
 
 pragma(inline, true)
-JobHandle!func jobStart(alias func)(ParameterTypeTuple!func args) {
-  // First argument MUST be an Arena*!
-  auto argsStruct = push!(ParameterTypeStruct!func)(args[0], ArenaFlags.no_init);
+JobHandle!func startJob(alias func, string file = __FILE__, int line = __LINE__)(ParameterTypeTuple!func args) {
+  static union WorkArgsUnion {
+    align(8) ArgsStore bytes;
+    ParameterTypeStruct!func args;
+    static assert(args.sizeof <= bytes.sizeof);
+  }
 
-  *argsStruct = ParameterTypeStruct!func(args);
+  WorkArgsUnion argsUnion;
+  argsUnion.args = ParameterTypeStruct!func(args);
 
-  return JobHandle!func(_jobStart(cast(void* function(void*) @nogc nothrow) &callFuncWithParamsStruct!func, argsStruct));
+  return JobHandle!func(_startJob(
+    cast(void* function(void*) @nogc nothrow) &callFuncWithParamsStruct!func, &argsUnion.bytes, file, line
+  ));
 }
 
-uint _jobStart(void* function(void*) @nogc nothrow callback, void* args) {
-  uint result        = atomicFetchAdd!(MemoryOrder.acq)(sJobsStarted, 1);
+uint _startJob(void* function(void*) @nogc nothrow callback, ArgsStore* args, string file, int line) {
+  // @Note: Wrapping indices to the work array are 0-indexed, but job handles are 1-indexed so that 0 can mean a null handle.
+  uint workIndex     = atomicFetchAdd!(MemoryOrder.acq)(sJobsStarted, 1);
+  uint handle        = workIndex + 1;
   uint receivedSoFar = atomicLoad!(MemoryOrder.acq)(sJobsReceived);
-  assert(result - receivedSoFar < sWorkQueue.length);  // @TODO
+  assert(workIndex - receivedSoFar < sWorkQueue.length);  // @TODO
 
-  sWorkQueue[result % sWorkQueue.length] = shared(Work)(result, callback, cast(shared(void*)) args, null);
+  sWorkQueue[workIndex % sWorkQueue.length] = shared(Work)(
+    cast(shared(ArgsStore)) *args, handle, callback, null, false, false, file, line
+  );
 
   LightSemaphore_Release(&sWorkingSem,  -1);
   LightSemaphore_Release(&sWorkToDoSem,  1);
 
+  return handle;
+}
+
+pragma(inline, true)
+auto getJobResult(alias func)(JobHandle!func* handle) {
+  ReturnType!func result;
+  _getJobResult(&handle.value, &result);
   return result;
 }
 
 pragma(inline, true)
-auto jobDone(alias func)(JobHandle!func handle) {
-  return cast(ReturnType!func) _jobDone(handle.value);
+void getJobResult(alias func)(JobHandle!func* handle, ReturnType!func* result) {
+  _getJobResult(&handle.value, cast(void**) result);
 }
 
-void* _jobDone(uint handle) {
-  void* result = null;
+void _getJobResult(uint* handle, void** result) {
+  if (*handle == 0) return;
 
+  uint workIndex = *handle - 1;
   uint doneSoFar = atomicLoad!(MemoryOrder.acq)(sJobsDone);
 
-  if (doneSoFar > handle) {
-    assert(doneSoFar - handle <= sWorkQueue.length);
-    auto work = &sWorkQueue[handle % sWorkQueue.length];
-    result = cast(void*) work.result;
+  if (doneSoFar > workIndex) {
+    assert(doneSoFar - workIndex <= sWorkQueue.length);
+    auto work     = &sWorkQueue[workIndex % sWorkQueue.length];
+    *result       = cast(void*) work.result;
+    *handle       = 0;
     work.received = true;
 
     uint receivedSoFar = atomicLoad!(MemoryOrder.acq)(sJobsReceived);
@@ -159,13 +174,30 @@ void* _jobDone(uint handle) {
     }
     atomicStore!(MemoryOrder.rel)(sJobsReceived, receivedSoFar);
   }
+}
 
-  return result;
+pragma(inline, true)
+void cancelJob(alias func)(JobHandle!func* handle) {
+  cancelJob(&handle.value);
+}
+
+void cancelJob(uint* handle) {
+  if (*handle == 0) return;
+
+  uint workIndex = *handle - 1;
+  assert(workIndex >= atomicLoad!(MemoryOrder.acq)(sJobsDone) && workIndex - atomicLoad!(MemoryOrder.acq)(sJobsReceived) < sWorkQueue.length);
+
+  atomicStore!(MemoryOrder.rel)(sWorkQueue[workIndex % sWorkQueue.length].cancelled, true);
+  *handle = 0;
 }
 
 void waitOnAllJobs() {
   LightSemaphore_Acquire(&sWorkingSem, 1);
   LightSemaphore_Release(&sWorkingSem, 1);
+}
+
+bool cancelled() {
+  return atomicLoad!(MemoryOrder.acq)(sWorkQueue[atomicLoad!(MemoryOrder.acq)(sJobsDone)].cancelled);
 }
 
 extern(C) void threadWork(void* data) {
@@ -177,7 +209,7 @@ extern(C) void threadWork(void* data) {
     uint doneSoFar = atomicLoad!(MemoryOrder.acq)(sJobsDone);
 
     auto work = cast(Work*) &sWorkQueue[doneSoFar % sWorkQueue.length];
-    work.result = work.callback(work.args);
+    work.result = work.callback(work.args.ptr);
 
     atomicStore!(MemoryOrder.rel)(sJobsDone, doneSoFar + 1);
     LightSemaphore_Release(&sWorkingSem, 1);
@@ -191,12 +223,113 @@ struct BibleLoadData {
   OpenBook[Book.max+1] books;
 }
 
-BibleLoadData* bibleLoad(Arena* arena, Translation translation) {
+void* bibleLoad(Translation translation) {
+  auto bibleData = bibleDataWait();
+
+  auto arena = &sArenaBibleLoad;
+  arenaClear(arena);
+
   // Load the entire translation from storage. This can take a long time!
-  auto result = push!BibleLoadData(arena, ArenaFlags.no_init);
-  result.translation = translation;
-  result.books       = openBibleTranslation(arena, translation);
+  bibleData.translation = translation;
+
+  {
+    foreach (book; enumRange!Book) {
+      if (cancelled()) break;
+      bibleData.books[book] = openBibleBook(arena, translation, book);
+    }
+  }
+
+  void* result;
+  if (cancelled()) {
+    result = null;
+  }
+  else {
+    result = cast(void*) 1;
+  }
+
+  atomicStore!(MemoryOrder.rel)(sBibleDataInitted, true);
+  bibleDataRelease(&bibleData);
+
   return result;
+}
+
+struct SearchResult {
+  SearchResult* next;
+  BibleLoc loc;
+  char[] locString;
+  char[] verseText;
+}
+
+struct BibleSearchResults {
+  SearchResult* list, listLast;
+  size_t count;
+}
+
+BibleSearchResults* bibleSearch(Arena* arena, const(char)[] searchString) {
+  auto result = push!BibleSearchResults(arena);
+
+  auto bibleData = bibleDataWait();
+
+  int hitCount = 0;
+  search_book:
+  foreach (book; enumRange!Book) {
+    if (cancelled()) break;
+
+    foreach (chapterNum, lines; bibleData.books[book].chapters) {
+      foreach (verseNum, line; lines[1..$]) {
+        if (line.representation.canFind(searchString.representation)) {
+          SearchResult* newHit = push!SearchResult(arena, ArenaFlags.soft_fail);
+          if (!newHit) break search_book;
+
+          newHit.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) verseNum);
+          newHit.locString = afprintf(
+            arena, ArenaFlags.soft_fail, "%s %d:%d",
+            BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2
+          );
+          if (!newHit.locString) break search_book;
+          newHit.verseText = line;
+
+          consumeUntil(&newHit.verseText, "] ", StrSearchFlags.skip_needle);
+
+          linkedListPushBack(&result.list, &result.listLast, newHit);
+          result.count++;
+        }
+      }
+    }
+  }
+
+  bibleDataRelease(&bibleData);
+
+  if (cancelled()) {
+    result = null;
+  }
+
+  return result;
+}
+
+__gshared Arena sArenaBibleLoad;
+__gshared BibleLoadData sBibleData;
+__gshared LightLock sMutexBibleData;
+shared bool sBibleDataInitted;
+
+BibleLoadData* bibleDataGet() {
+  BibleLoadData* result = null;
+  if (atomicLoad!(MemoryOrder.acq)(sBibleDataInitted) && LightLock_TryLock(&sMutexBibleData) == 0) {
+    result = &sBibleData;
+  }
+  return result;
+}
+
+BibleLoadData* bibleDataWait() {
+  LightLock_Lock(&sMutexBibleData);
+  return &sBibleData;
+}
+
+void bibleDataRelease(BibleLoadData** bibleData) {
+  if (*bibleData) {
+    *bibleData = null;
+    LightLock_Unlock(&sMutexBibleData);
+  }
 }
 
 enum Translation : ubyte {
