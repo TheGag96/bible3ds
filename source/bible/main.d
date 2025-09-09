@@ -436,7 +436,8 @@ void mainGui(MainData* mainData, Input* input) {
   }
 
   void doViewSwitch(View view) {
-    if (mainData.viewStackIndex < mainData.viewStack.length) {
+    if (view != mainData.curView && mainData.viewStackIndex < mainData.viewStack.length)
+    {
       mainData.viewStack[mainData.viewStackIndex++] = mainData.curView;
     }
     mainData.curView = view;
