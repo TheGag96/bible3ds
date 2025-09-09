@@ -998,6 +998,11 @@ void mainGui(MainData* mainData, Input* input) {
             spacer(4);
           });
 
+          if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+            result = true;
+            audioPlaySound(SoundEffect.button_back, 0.5);
+          }
+
           return result;
         });
       }
