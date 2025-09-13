@@ -786,7 +786,7 @@ void mainGui(MainData* mainData, Input* input) {
           {
             auto backStyle = ScopedStyle(&mainData.styleButtonBack);
 
-            if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+            if (bottomButton("\uE001 Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
               auto scrollInfo = &mainData.loadedPage.scrollInfo;
 
               auto foundIndex = mainData.loadedPage.actualLineNumberTable.length-1;
@@ -932,7 +932,7 @@ void mainGui(MainData* mainData, Input* input) {
           {
             auto backStyle = ScopedStyle(&mainData.styleButtonBack);
 
-            if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+            if (bottomButton("\uE001 Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
               sendCommand(CommandCode.go_to_previous_view, 0);
               audioPlaySound(SoundEffect.button_back, 0.5);
             }
@@ -987,7 +987,7 @@ void mainGui(MainData* mainData, Input* input) {
             spacer(4);
           }
 
-          if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+          if (button("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
 
@@ -1013,7 +1013,7 @@ void mainGui(MainData* mainData, Input* input) {
             spacer(4);
           });
 
-          if (button("Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+          if (button("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
             result = true;
             audioPlaySound(SoundEffect.button_back, 0.5);
           }
@@ -1024,7 +1024,7 @@ void mainGui(MainData* mainData, Input* input) {
 
       {
         auto style = ScopedStyle(&mainData.styleButtonBack);
-        if (bottomButton("Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+        if (bottomButton("\uE001 Back").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
           audioPlaySound(SoundEffect.button_back, 0.5);
           saveSettings();
 
@@ -1120,7 +1120,7 @@ void mainGui(MainData* mainData, Input* input) {
 
       {
         auto style = ScopedStyle(&mainData.styleButtonBack);
-        if (bottomButton("Back").clicked || input.down(Key.b)) {
+        if (bottomButton("\uE001 Back").clicked || input.down(Key.b)) {
           sendCommand(CommandCode.go_to_previous_view, 0);
           audioPlaySound(SoundEffect.button_back, 0.5);
         }
