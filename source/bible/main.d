@@ -256,7 +256,10 @@ extern(C) int main(int argc, char** argv) {
         C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
         C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
         if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
-        ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
+        ui.drawBackground(
+          GFXScreen.top, GFX3DSide.left, slider, mainData.colorTable[ui.Color.bg_bg],
+          mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
+        );
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
       }
 
@@ -267,7 +270,10 @@ extern(C) int main(int argc, char** argv) {
         C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
         C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
         if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
-        ui.drawBackground(GFXScreen.top, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
+        ui.drawBackground(
+          GFXScreen.top, GFX3DSide.right, slider, mainData.colorTable[ui.Color.bg_bg],
+          mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
+        );
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
       }
 
@@ -278,7 +284,10 @@ extern(C) int main(int argc, char** argv) {
         C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
         C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
         if (mainData.renderModal) ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
-        ui.drawBackground(GFXScreen.bottom, mainData.colorTable[ui.Color.bg_bg], mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light]);
+        ui.drawBackground(
+          GFXScreen.bottom, GFX3DSide.left, slider, mainData.colorTable[ui.Color.bg_bg],
+          mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0
+        );
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
       }
     }
@@ -600,6 +609,7 @@ void mainGui(MainData* mainData, Input* input) {
         auto scrollLayout = ScopedScrollLayout("lt_book_scroll", &scrollLayoutSignal, Axis2.y);
 
         scrollLayoutBox = scrollLayout.box;
+        scrollLayoutBox.depth = -1;
 
         // Really easy lo-fi way to force the book buttons to be selectable on the bottom screen
         spacer(SCREEN_HEIGHT + 8);
@@ -726,6 +736,7 @@ void mainGui(MainData* mainData, Input* input) {
           }
 
           auto readPane = ScopedScrollableReadPane("reading_scroll_read_view", &readPaneSignal, mainData.loadedPage, &mainData.scrollCache, &mainData.jumpVerseRequest);
+          readPane.box.depth = -1;
 
           auto verseStyle = ScopedStyle(&mainData.styleVerse);
 

@@ -7,8 +7,9 @@ import std.math;
 @nogc: nothrow:
 
 Vec2 renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
-  auto rect = box.rect + drawOffset;
-  rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
+  auto thisDepth = depthOffset(box.computedDepth, screen, side, slider3DState);
+  auto rect      = box.rect + drawOffset + Vec2(thisDepth, 0);
+  rect.left      = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
   final switch (box.justification) {
@@ -38,7 +39,8 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   bool pressed = box.activeT == 1;
   auto result = Vec2(0, pressed * BUTTON_DEPRESS_NORMAL);
 
-  auto rect = box.rect + result + drawOffset;
+  auto thisDepth = depthOffset(box.computedDepth, screen, side, slider3DState);
+  auto rect = box.rect + result + drawOffset + Vec2(thisDepth, 0);
   rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
@@ -326,8 +328,9 @@ Vec2 renderListButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnable
 
   bool pressed = box.activeT == 1;
 
-  auto rect = box.rect + drawOffset;
-  rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
+  auto thisDepth = depthOffset(box.computedDepth, screen, side, slider3DState);
+  auto rect      = box.rect + drawOffset + Vec2(thisDepth, 0);
+  rect.left      = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
   final switch (box.justification) {
@@ -419,11 +422,13 @@ Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
   env = C3D_GetTexEnv(2); //must be done to mark the texenv as dirty! without this, each indicator will have one alpha
   C3D_TexEnvColor(env, C2D_Color32(0xFF, 0xFF, 0xFF, alpha));
 
+  float thisDepth = depthOffset(box.depth, screen, side, slider3DState);
+
   //tlX, tlY, etc. here mean "top-left quad of the selection indicator shape", top-left corner being the origin
-  float tlX = rect.left - LINE_WIDTH;
+  float tlX = rect.left - LINE_WIDTH + thisDepth;
   float tlY = rect.top  - LINE_WIDTH;
 
-  float trX = rect.right - (tex.width - LINE_WIDTH);
+  float trX = rect.right - (tex.width - LINE_WIDTH) + thisDepth;
   float trY = tlY;
 
   float blX = tlX;
@@ -547,7 +552,7 @@ void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, fl
 // 3DS-Styled Striped Background
 ////////
 
-void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint colorStripesLight) {
+void drawBackground(GFXScreen screen, GFX3DSide side, float slider3DState, uint colorBg, uint colorStripesDark, uint colorStripesLight, int depth) {
   C2Di_Context* ctx = C2Di_GetContext();
 
   C2D_Flush();
@@ -563,16 +568,18 @@ void drawBackground(GFXScreen screen, uint colorBg, uint colorStripesDark, uint 
 
   auto thisScreenWidth = screenWidth(screen);
 
+  float thisDepth = depthOffset(depth, screen, side, slider3DState);
+
   C2Di_Vertex[6] vertex_list = [
     // First face (PZ)
     // First triangle
-    { 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
-    { thisScreenWidth, 0.0f,          0.0f,  28.0f,  0.0f,  2.0f, -1.0f,  0xFF<<24 },
-    { thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
+    { thisDepth + 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
+    { thisDepth + thisScreenWidth, 0.0f,          0.0f,  28.0f,  0.0f,  2.0f, -1.0f,  0xFF<<24 },
+    { thisDepth + thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
     // Second triangle
-    { thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
-    { 0.0f,            SCREEN_HEIGHT, 0.0f,   0.0f, 28.0f,  0.0f,  1.0f,  0xFF<<24 },
-    { 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
+    { thisDepth + thisScreenWidth, SCREEN_HEIGHT, 0.0f,  28.0f, 28.0f,  2.0f,  1.0f,  0xFF<<24 },
+    { thisDepth + 0.0f,            SCREEN_HEIGHT, 0.0f,   0.0f, 28.0f,  0.0f,  1.0f,  0xFF<<24 },
+    { thisDepth + 0.0f,            0.0f,          0.0f,   0.0f,  0.0f,  0.0f, -1.0f,  0xFF<<24 },
   ];
 
   static if (true) {
@@ -662,7 +669,8 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   auto colorPushing        = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_pushing]);
   auto colorPushingOutline = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_pushing_outline]);
 
-  auto rect = box.rect + drawOffset;
+  float thisDepth  = depthOffset(box.depth, screen, side, slider3DState);
+  auto rect        = box.rect + drawOffset + Vec2(thisDepth, 0);
   float viewHeight = box.related.computedSize[Axis2.y];
 
 
@@ -911,7 +919,8 @@ Vec2 scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled
   C2D_Sprite sprite;
   C2D_SpriteFromImage(&sprite, cacheImage);
 
-  auto drawPos = Vec2(rect.left, rect.top) + drawOffset;
+  auto thisDepth = depthOffset(box.computedDepth, screen, side, slider3DState);
+  auto drawPos   = Vec2(rect.left, rect.top) + drawOffset + Vec2(thisDepth, 0);
   C2D_SpriteSetPos(&sprite, drawPos.x, drawPos.y);
   C2D_SpriteSetDepth(&sprite, z);
   C2D_DrawSprite(&sprite);
@@ -952,3 +961,7 @@ void renderPage(
     i++;
   }
 }}
+
+float depthOffset(int depth, GFXScreen screen, GFX3DSide side, float slider3DState) {
+  return screen == GFXScreen.bottom ? 0 : round((2*side-1) * depth * slider3DState);
+}

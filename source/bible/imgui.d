@@ -174,6 +174,7 @@ struct Box {
   Vec2 computedRelPosition;
   Vec2 computedSize;
   Rectangle rect;
+  short depth, computedDepth;
 
   uint lastFrameTouchedIndex;
 
@@ -1063,6 +1064,8 @@ void frameEnd() { with (gUiData) {
     box.rect.top    += box.parent.rect.top;
     box.rect.right  += box.parent.rect.left;
     box.rect.bottom += box.parent.rect.top;
+
+    box.computedDepth = cast(short) (box.parent.computedDepth + box.depth);
 
     return false;
   });
