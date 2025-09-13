@@ -1189,7 +1189,7 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
           innerLayout3.scrollInfo.limitMin = 0;
           innerLayout3.scrollInfo.limitMax = 1;
 
-          label("In the beginning...##").semanticSize[Axis2.x] = SIZE_FILL_PARENT;
+          label("In the beginning...").semanticSize[Axis2.x] = SIZE_FILL_PARENT;
 
           scrollIndicator("", innerLayout3.box, Justification.max, false).semanticSize[Axis2.x] = Size(SizeKind.pixels, 1, 1);
         }

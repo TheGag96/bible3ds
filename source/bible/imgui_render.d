@@ -279,7 +279,7 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
     C3D_TexEnvInit(env);
 
     // Left-side border line
-    if (!boxIsNull(box.prev)) {
+    if ((box.parent.flags & BoxFlags.horizontal_children) && !boxIsNull(box.prev)) {
       pushQuad(rect.left - tex.width/2, rect.top + 1 - pressed * BUTTON_DEPRESS_BOTTOM, rect.left + tex.width/2, rect.bottom, z, 0, 1 - 1.0/tex.height, 1, 0);
 
       // Unfortunate that we can't batch these because of the potential color difference...
