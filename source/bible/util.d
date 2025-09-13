@@ -598,6 +598,29 @@ bool canFind(T)(T haystack, T needle) {
   return false;
 }
 
+// Assumes ASCII...
+bool canFindNoCase(const(char)[] haystack, const(char)[] needle) {
+  if (needle.length > haystack.length) return false;
+
+  foreach (a; 0..haystack.length - needle.length + 1) {
+    bool found = true;
+
+    foreach (b; 0..needle.length) {
+      char x = needle[b], y = haystack[a+b];
+      char xLower = cast(char) (x + (x >= 'A' && x <= 'Z' ? ('a' - 'A') : 0));
+      char yLower = cast(char) (y + (y >= 'A' && y <= 'Z' ? ('a' - 'A') : 0));
+
+      if (xLower != yLower) {
+        found = false;
+        break;
+      }
+    }
+    if (found) return true;
+  }
+
+  return false;
+}
+
 enum StrSearchFlags : uint {
   defaults       = 0,
   include_needle = (1 << 0),  // Whether the return value includes the needle

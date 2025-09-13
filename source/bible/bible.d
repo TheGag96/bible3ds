@@ -275,9 +275,11 @@ BibleSearchResults* bibleSearch(Arena* arena, const(char)[] searchString) {
   foreach (book; enumRange!Book) {
     if (cancelled()) break;
 
-    foreach (chapterNum, lines; bibleData.books[book].chapters) {
+    foreach (chapterNum, lines; bibleData.books[book].chapters[1..$]) {
       foreach (verseNum, line; lines[1..$]) {
-        if (line.representation.canFind(searchString.representation)) {
+        consumeUntil(&line, "] ", StrSearchFlags.skip_needle);
+
+        if (line.canFindNoCase(searchString)) {
           SearchResult* newHit = push!SearchResult(arena, ArenaFlags.soft_fail);
           if (!newHit) break search_book;
 
@@ -288,8 +290,6 @@ BibleSearchResults* bibleSearch(Arena* arena, const(char)[] searchString) {
           );
           if (!newHit.locString) break search_book;
           newHit.verseText = line;
-
-          consumeUntil(&newHit.verseText, "] ", StrSearchFlags.skip_needle);
 
           linkedListPushBack(&result.list, &result.listLast, newHit);
           result.count++;
