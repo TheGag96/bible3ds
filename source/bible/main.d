@@ -203,8 +203,15 @@ extern(C) int main(int argc, char** argv) {
     //debug printf("\x1b[6;1HTS: watermark: %4d, high: %4d\x1b[K", gTempStorage.watermark, gTempStorage.highWatermark);
     arenaClear(&gTempStorage);
 
-    // @Bug: If it takes more than one second for the Bible to load while in the read view, we won't render when it completes.
-    if (mainData.curView == View.reading && input.framesNoInput > 60) {
+    void* bibleLoadJustDone;
+    getJobResult!bibleLoad(  &mainData.jobBibleLoad,   &bibleLoadJustDone);
+    auto searchResultsOld = mainData.searchResults;
+    getJobResult!bibleSearch(&mainData.jobBibleSearch, &mainData.searchResults);
+    bool bibleSearchJustDone = searchResultsOld != mainData.searchResults;
+
+    // Idle optimization
+    // @TODO: Make smarter / less brittle with regard to animations!
+    if (input.framesNoInput > 60 && !bibleLoadJustDone && !bibleSearchJustDone) {
       ////
       // Dormant frame
       ////
@@ -454,9 +461,6 @@ void mainGui(MainData* mainData, Input* input) {
 
   enum LOAD_BOOK_PROGRESS = 0;
 
-  void* unused;  // @TODO: This job result is a dummy. Change the API to remove??
-  getJobResult!bibleLoad(  &mainData.jobBibleLoad,   &unused);
-  getJobResult!bibleSearch(&mainData.jobBibleSearch, &mainData.searchResults);
   mainData.bible = bibleDataGet();
   scope(exit) bibleDataRelease(&mainData.bible);
 
