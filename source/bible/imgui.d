@@ -1492,7 +1492,7 @@ void respondToScroll(Box* box, Signal* result, Vec2 scrollDiff) { with (gUiData)
     startedScrolling = OneFrameEvent.already_processed;
   }
 
-  if (floor(offset/SCROLL_TICK_DISTANCE) != floor(offsetLast/SCROLL_TICK_DISTANCE)) {
+  if (floorSlop(offset/SCROLL_TICK_DISTANCE) != floorSlop(offsetLast/SCROLL_TICK_DISTANCE)) {
     audioPlaySound(box.style.soundScrollTick);
   }
 

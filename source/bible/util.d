@@ -521,6 +521,11 @@ T clamp(T)(T x, T min, T max) {
   return x;
 }
 
+T floorSlop(T)(T value) {
+  // Floor, but try to prevent rounding down when we're very close to the next whole number.
+  return floor(value + 0.001);
+}
+
 struct EnumRange(T) if (is(T == enum)) {
   T first, last;
 

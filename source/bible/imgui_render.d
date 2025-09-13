@@ -8,7 +8,7 @@ import std.math;
 
 Vec2 renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   auto rect = box.rect + drawOffset;
-  rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
+  rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
   final switch (box.justification) {
@@ -39,7 +39,7 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   auto result = Vec2(0, pressed * BUTTON_DEPRESS_NORMAL);
 
   auto rect = box.rect + result + drawOffset;
-  rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
+  rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
   final switch (box.justification) {
@@ -133,7 +133,7 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   auto result = Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM);
 
   auto rect = box.rect + result + drawOffset;
-  rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
+  rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
   final switch (box.justification) {
@@ -327,7 +327,7 @@ Vec2 renderListButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnable
   bool pressed = box.activeT == 1;
 
   auto rect = box.rect + drawOffset;
-  rect.left = floor(rect.left); rect.top = floor(rect.top); rect.right = floor(rect.right); rect.bottom = floor(rect.bottom);
+  rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
   final switch (box.justification) {
@@ -795,8 +795,8 @@ private void _scrollCacheRenderScrollUpdateImpl(
 ) { with (scrollCache) with (scrollInfo) {
   float drawStart, drawEnd;
 
-  float scroll     = floor(offset),
-        scrollLast = floor(offsetLast);
+  float scroll     = floorSlop(offset),
+        scrollLast = floorSlop(offsetLast);
 
   if (needsRepaint) {
     needsRepaint = false;
@@ -895,8 +895,8 @@ Tex3DS_SubTexture scrollCacheGetUvs(
     height : cast(ushort) height,
     left   : 0,
     right  : width/texWidth,
-    top    : 1.0f - yOffset         /texHeight - floor(wrap(scroll, texHeight))/texHeight,
-    bottom : 1.0f - (yOffset+height)/texHeight - floor(wrap(scroll, texHeight))/texHeight,
+    top    : 1.0f - yOffset         /texHeight - floorSlop(wrap(scroll, texHeight))/texHeight,
+    bottom : 1.0f - (yOffset+height)/texHeight - floorSlop(wrap(scroll, texHeight))/texHeight,
   };
   return result;
 }}
@@ -935,7 +935,7 @@ void renderPage(
 
   C2D_TextGetDimensions(&loadedPage.textArray[0], textSize, textSize, &width, &height);
 
-  int virtualLine = min(max(cast(int) floor((round(from-startY))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
+  int virtualLine = min(max(cast(int) floorSlop((round(from-startY))/glyphSize.y), 0), cast(int)loadedPage.actualLineNumberTable.length-1);
   int startLine = loadedPage.actualLineNumberTable[virtualLine].textLineIndex;
   float offsetY = loadedPage.actualLineNumberTable[virtualLine].realPos + startY;
 
