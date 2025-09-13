@@ -1810,6 +1810,8 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
     result = &hashTable.temp[hashTable.tempPos];
     hashTable.tempPos++;
 
+    *result = *gNullBox;
+
     return result;
   }
 
@@ -1855,11 +1857,10 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
       hashTable.table[index] = result;
     }
 
-    result.freeListNext = gNullBox;
+    *result             = *gNullBox;
     result.hashKey      = key;
     if (!boxIsNull(last)) last.hashNext = result;
     result.hashPrev     = last;
-    result.hashNext     = gNullBox;
   }
 
   return result;
