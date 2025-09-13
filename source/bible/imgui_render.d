@@ -243,7 +243,66 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
     C3D_TexEnvInit(env);
   }
 
-  C2D_DrawRectSolid(rect.left, rect.top, z, rect.right-rect.left, 1, lineColor);
+  // Top border line
+  // Left-side border line (if there is a left neighbor), with a fade of two different colors on each side.
+  {
+    auto tex = &gUiAssets.bottomButtonLineTex;
+
+    C2Di_SetTex(tex);
+    C2Di_Update();
+
+    // For the top line:
+    // color.rgb = mix(lineColor, box.style.colors[Color.button_bottom_above_fade], texture(texture0, uv).rgb);
+    // color.a   = texture(texture0, uv).a;
+    //
+    // For the side line:
+    // color.rgb = mix(box.style.colors[Color.button_bottom_line], box.style.colors[Color.button_bottom_above_fade], texture(texture0, uv).rgb);
+    // color.a   = texture(texture0, uv).a;
+    //
+    // The side line always gets colored with the unpressed line color.
+
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
+
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_line]);
+
+    env = C3D_GetTexEnv(5);
+    C3D_TexEnvInit(env);
+
+    // Left-side border line
+    if (!boxIsNull(box.prev)) {
+      pushQuad(rect.left - tex.width/2, rect.top + 1 - pressed * BUTTON_DEPRESS_BOTTOM, rect.left + tex.width/2, rect.bottom, z, 0, 1 - 1.0/tex.height, 1, 0);
+
+      // Unfortunate that we can't batch these because of the potential color difference...
+      C2D_Flush();
+    }
+
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvColor(env, lineColor);
+
+    // Top line
+    // If unpressed, draw one extra pixel to the left, so that even with a pressed left neighbor, there wil still be a
+    // square border.
+    float unpressedExtra = !pressed;
+    pushQuad(rect.left - unpressedExtra, rect.top, rect.right, rect.top + 1, z, 0, 1, 1, 1 - 1.0/tex.height);
+
+    C2D_Flush();
+
+    //Cleanup, resetting things to how C2D normally expects
+    C2D_Prepare(C2DShader.normal, true);
+
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvInit(env);
+  }
 
   // @TODO: Flipped for dark bottom button
   //int textBevelOffset = pressed ? -1 : 1;
@@ -418,7 +477,7 @@ Vec2 renderVerse(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, fl
 struct Assets {
   C3D_Tex vignetteTex, lineTex; //@TODO: Move somewhere probably
   C3D_Tex selectorTex;
-  C3D_Tex buttonTex, bottomButtonTex, bottomButtonAboveFadeTex;
+  C3D_Tex buttonTex, bottomButtonTex, bottomButtonAboveFadeTex, bottomButtonLineTex;
   C3D_Tex indicatorTex;
 }
 
@@ -450,6 +509,8 @@ void loadAssets() {
     if (!loadTextureFromFile(&bottomButtonTex, null, "romfs:/gfx/bottom_button.t3x"))
       svcBreak(UserBreakType.panic);
     if (!loadTextureFromFile(&bottomButtonAboveFadeTex, null, "romfs:/gfx/bottom_button_above_fade.t3x"))
+      svcBreak(UserBreakType.panic);
+    if (!loadTextureFromFile(&bottomButtonLineTex, null, "romfs:/gfx/bottom_button_line.t3x"))
       svcBreak(UserBreakType.panic);
     if (!loadTextureFromFile(&indicatorTex, null, "romfs:/gfx/scroll_indicator.t3x"))
       svcBreak(UserBreakType.panic);
