@@ -275,18 +275,20 @@ BibleSearchResults* bibleSearch(Arena* arena, const(char)[] searchString) {
   foreach (book; enumRange!Book) {
     if (cancelled()) break;
 
-    foreach (chapterNum, lines; bibleData.books[book].chapters[1..$]) {
-      foreach (verseNum, line; lines[1..$]) {
+    foreach (chapterNum; 1..bibleData.books[book].chapters.length) {
+      auto lines = bibleData.books[book].chapters[chapterNum];
+
+      foreach (verseNum, line; lines) {
         consumeUntil(&line, "] ", StrSearchFlags.skip_needle);
 
         if (line.canFindNoCase(searchString)) {
           SearchResult* newHit = push!SearchResult(arena, ArenaFlags.soft_fail);
           if (!newHit) break search_book;
 
-          newHit.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) verseNum);
+          newHit.loc       = BibleLoc(book, cast(ubyte) chapterNum, cast(ushort) (verseNum + 1));
           newHit.locString = afprintf(
             arena, ArenaFlags.soft_fail, "%s %d:%d",
-            BOOK_NAMES[book].ptr, chapterNum+1, verseNum+2
+            BOOK_NAMES[book].ptr, chapterNum, verseNum + 1
           );
           if (!newHit.locString) break search_book;
           newHit.verseText = line;
