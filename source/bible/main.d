@@ -1254,23 +1254,9 @@ char[] getKeyboardInput(Arena* arena, size_t maxCharacters = 64) {
   ubyte[] buffer = remaining(arena)[0..min($, maxCharacters+1)];  // Leave room for the null-terminator
   char[]  str    = (cast(char*) buffer.ptr)[0..buffer.length];
 
-  bool shouldQuit = false;
-  do {
-    swkbdSetInitialText(&swkbd, "");
-    SWKBDButton button = swkbdInputText(&swkbd, str.ptr, str.length);
-
-    if (button != SWKBDButton.none) break;
-
-    SWKBDResult res = swkbdGetResult(&swkbd);
-    if (res == SWKBDResult.resetpressed) {
-      shouldQuit = true;
-      aptSetChainloaderToSelf();
-      break;
-    }
-    else if (res != SWKBDResult.homepressed && res != SWKBDResult.powerpressed) break; // An actual error happened
-
-    shouldQuit = !aptMainLoop();
-  } while (!shouldQuit);
+  swkbdSetInitialText(&swkbd, "");
+  SWKBDButton button = swkbdInputText(&swkbd, str.ptr, str.length);
+  SWKBDResult res    = swkbdGetResult(&swkbd);
 
   str = str[0..strlen(str.ptr)];
   pushBytes(arena, str.length, ArenaFlags.no_init);
