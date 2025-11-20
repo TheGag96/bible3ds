@@ -15,6 +15,7 @@ import bible.profiling;
 
 //debug import bible.debugging;
 
+import core.stdc.math;
 import core.stdc.signal;
 import core.stdc.stdio;
 import core.stdc.stdlib;
@@ -43,10 +44,23 @@ struct UiView {
   ui.UiData uiData;
   alias uiData this;
 
-  Rectangle rect;
+  //Rectangle rect;
+
+  // For modals, really.
+  bool closing;
+  float opacity       = 0;
+  float scale         = 0;
+  float targetOpacity = 0;
+  float targetScale   = 0;
 }
 
-alias ModalCallback = bool function(MainData* mainData, UiView* uiView);
+enum ModalResult : ubyte {
+  still_open,
+  close_cancel,
+  close_ok,
+}
+
+alias ModalCallback = ModalResult function(MainData* mainData, UiView* uiView);
 
 struct MainData {
   View curView;
@@ -56,9 +70,8 @@ struct MainData {
   UiView modal;
   ModalCallback modalCallback;
   bool renderModal;
-  ui.ScrollCache scrollCache;
-
-  float size = 0;
+  ui.OffscreenRenderTex renderTexModal;
+  ui.OffscreenRenderTex scrollCache;
 
   bool needLoadPage;
   PageId pageId, pendingPageId;
@@ -243,18 +256,25 @@ extern(C) int main(int argc, char** argv) {
       if (mainData.curView == View.reading) {
         mixin(timeBlock("render > scroll cache"));
 
-        ui.scrollCacheBeginFrame(&mainData.scrollCache);
+        ui.offscreenRenderBegin(&mainData.scrollCache);
         ui.scrollCacheRenderScrollUpdate(
           &mainData.scrollCache,
           mainData.loadedPage.scrollInfo,
           &ui.renderPage, &mainData.loadedPage,
           mainData.colorTable[ui.Color.clear_color],
         );
-        ui.scrollCacheEndFrame(&mainData.scrollCache);
+        ui.offscreenRenderEnd(&mainData.scrollCache);
       }
 
       auto mainUiData  = &mainData.views[mainData.curView].uiData;
       auto modalUiData = &mainData.modal.uiData;
+
+      if (mainData.renderModal) {
+        mixin(timeBlock("render > modal"));
+        ui.offscreenRenderBegin(&mainData.renderTexModal);
+        ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
+        ui.offscreenRenderEnd(&mainData.renderTexModal);
+      }
 
       {
         mixin(timeBlock("render > left"));
@@ -262,7 +282,7 @@ extern(C) int main(int argc, char** argv) {
         C2D_SceneBegin(topLeft);
         C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
         C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
-        if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
+        //if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
         ui.drawBackground(
           GFXScreen.top, GFX3DSide.left, slider, mainData.colorTable[ui.Color.bg_bg],
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
@@ -276,7 +296,7 @@ extern(C) int main(int argc, char** argv) {
         C2D_SceneBegin(topRight);
         C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
         C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
-        if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
+        //if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
         ui.drawBackground(
           GFXScreen.top, GFX3DSide.right, slider, mainData.colorTable[ui.Color.bg_bg],
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
@@ -290,12 +310,22 @@ extern(C) int main(int argc, char** argv) {
         C2D_SceneBegin(bottom);
         C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
         C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
-        if (mainData.renderModal) ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
         ui.drawBackground(
           GFXScreen.bottom, GFX3DSide.left, slider, mainData.colorTable[ui.Color.bg_bg],
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0
         );
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
+        if (mainData.renderModal) {
+          C2D_Sprite spriteModal = ui.spriteFromOffscreenRenderTex(&mainData.renderTexModal);
+          C2D_ImageTint tint;
+
+          C2D_SpriteSetDepth(&spriteModal, 0.1);
+          C2D_SpriteSetPos(&spriteModal, SCREEN_BOTTOM_WIDTH/2, SCREEN_HEIGHT/2);
+          C2D_SpriteSetCenter(&spriteModal, 0.5, 0.5);
+          C2D_SpriteScale(&spriteModal, mainData.modal.scale, mainData.modal.scale);
+          C2D_AlphaImageTint(&tint, mainData.modal.opacity);
+          C2D_DrawSpriteTinted(&spriteModal, &tint);
+        }
       }
     }
 
@@ -323,7 +353,8 @@ void initMainData(MainData* mainData) { with (mainData) {
   }
   ui.init(&modal.uiData);
 
-  scrollCache = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
+  renderTexModal = ui.offscreenRenderTexCreate(cast(ushort) SCREEN_BOTTOM_WIDTH, cast(ushort) SCREEN_HEIGHT);
+  scrollCache    = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   colorTable = COLOR_THEMES[gSaveFile.settings.colorTheme];
 
@@ -431,6 +462,11 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
 void openModal(MainData* mainData, ModalCallback modalCallback) {
   mainData.modalCallback = modalCallback;
   ui.clear(&mainData.modal.uiData);
+  mainData.modal.closing       = false;
+  mainData.modal.scale         = 0.5;
+  mainData.modal.targetScale   = 1;
+  mainData.modal.opacity       = 0;
+  mainData.modal.targetOpacity = 1;
 }
 
 // Returns the ScrollInfo needed to update the reading view's scroll cache.
@@ -549,13 +585,17 @@ void mainGui(MainData* mainData, Input* input) {
     mainData.fadingBetweenThemes = changed;
   }
 
-  Input* mainInput = input;
+  Input* inputMain = input;
   if (mainData.modalCallback) {
     mainData.renderModal = true;
 
-    frameStart(&mainData.modal.uiData, input);
+    Input* inputModal = mainData.modal.closing ? gNullInput : input;
+    frameStart(&mainData.modal.uiData, inputModal);
+    if (inputModal) {
+      inputMain = gNullInput;
+    }
 
-    bool result;
+    ModalResult result;
     {
       // Set up some nice defaults, including being on the bottom screen with a background
       auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
@@ -585,18 +625,32 @@ void mainGui(MainData* mainData, Input* input) {
 
     frameEnd();
 
-    if (result) {
+    if (!mainData.modal.closing) {
+      if (result == ModalResult.close_cancel) {
+        mainData.modal.closing       = true;
+        mainData.modal.targetOpacity = 0;
+        mainData.modal.targetScale   = 0.5;
+      }
+      else if (result == ModalResult.close_ok) {
+        mainData.modal.closing       = true;
+        mainData.modal.targetOpacity = 0;
+        mainData.modal.targetScale   = 1.5;
+      }
+    }
+
+    mainData.modal.opacity += (mainData.modal.targetOpacity - mainData.modal.opacity) * 0.25;
+    mainData.modal.scale   += (mainData.modal.targetScale   - mainData.modal.scale)   * 0.25;
+
+    if (mainData.modal.closing && fabs(mainData.modal.targetOpacity - mainData.modal.opacity) <= 0.001) {
       // Don't set renderModal to false here so that we get one more frame to render
       mainData.modalCallback = null;
     }
-
-    mainInput = gNullInput;
   }
   else {
     mainData.renderModal   = false;
   }
 
-  frameStart(&mainData.views[mainData.curView].uiData, mainInput);
+  frameStart(&mainData.views[mainData.curView].uiData, inputMain);
 
   auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 
@@ -681,7 +735,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         if (bottomButton("Bookmarks").clicked) {
           openModal(mainData, (MainData* mainData, UiView* uiView) {
-            bool result = false;
+            ModalResult result = ModalResult.still_open;
 
             Signal scrollSignal;
             {
@@ -695,13 +749,13 @@ void mainGui(MainData* mainData, Input* input) {
                     BibleLoc(bookmark.book, bookmark.chapter, bookmark.verse),
                     &mainData.views[View.book].uiData
                   );
-                  result = true;
+                  result = ModalResult.close_ok;
                 }
               }
             }
 
             if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
-              result = true;
+              result = ModalResult.close_cancel;
 
               audioPlaySound(SoundEffect.button_back, 0.5);
             }
@@ -812,7 +866,7 @@ void mainGui(MainData* mainData, Input* input) {
               enum CHAPTERS_PER_ROW    = 5;
               enum CHAPTER_BUTTON_SIZE = 40;
 
-              bool result = false;
+              ModalResult result = ModalResult.still_open;
 
               Signal scrollSignal;
               auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
@@ -844,7 +898,7 @@ void mainGui(MainData* mainData, Input* input) {
                         BibleLoc(mainData.pageId.book, cast(ubyte) chapter, 0),
                         &mainData.views[View.reading].uiData,
                       );
-                      result = true;
+                      result = ModalResult.close_ok;
                     }
                   }
 
@@ -858,7 +912,7 @@ void mainGui(MainData* mainData, Input* input) {
               spacer(4);
 
               if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
-                result = true;
+                result = ModalResult.close_cancel;
 
                 audioPlaySound(SoundEffect.button_back, 0.5);
               }
@@ -977,7 +1031,7 @@ void mainGui(MainData* mainData, Input* input) {
         }
 
         settingsListEntry("Translation", TRANSLATION_NAMES_LONG[gSaveFile.settings.translation], (mainData, uiView) {
-          bool result = false;
+          ModalResult result = ModalResult.still_open;
 
           foreach (i, translation; TRANSLATION_NAMES_LONG) {
             if (button(translation).clicked) {
@@ -988,7 +1042,7 @@ void mainGui(MainData* mainData, Input* input) {
           }
 
           if (button("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-            result = true;
+            result = ModalResult.close_ok;
             audioPlaySound(SoundEffect.button_back, 0.5);
 
             if (!mainData.bible || mainData.bible.translation != gSaveFile.settings.translation) {
@@ -1001,7 +1055,7 @@ void mainGui(MainData* mainData, Input* input) {
         });
 
         settingsListEntry("Color Theme", COLOR_THEME_NAMES[gSaveFile.settings.colorTheme], (mainData, uiView) {
-          bool result = false;
+          ModalResult result = ModalResult.still_open;
 
           nColumnGrid("lt_color_theme_", 2, enumRange!ColorTheme, (ColorTheme colorTheme) {
             if (colorThemePreviewButton(colorTheme).clicked) {
@@ -1014,7 +1068,7 @@ void mainGui(MainData* mainData, Input* input) {
           });
 
           if (button("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-            result = true;
+            result = ModalResult.close_ok;
             audioPlaySound(SoundEffect.button_back, 0.5);
           }
 

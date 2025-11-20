@@ -1,6 +1,6 @@
 module bible.imgui_render;
 
-import bible.imgui, bible.util;
+import bible.imgui, bible.util, bible.profiling;
 import ctru, citro2d, citro3d;
 import std.math;
 
@@ -732,57 +732,81 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
 // Scroll Cache
 ////////
 
-struct ScrollCache {
-  C3D_Tex scrollTex;
-  C3D_RenderTarget* scrollTarget;
+struct OffscreenRenderTex {
+  C3D_Tex tex;
+  Tex3DS_SubTexture subtex;
+  C3D_RenderTarget* renderTarget;
   float desiredWidth = 0, desiredHeight = 0, texWidth = 0, texHeight = 0;
 
+  C2DShader shader;
+
+  // For scroll caches specifically
   bool needsRepaint;
   int u_scrollRenderOffset; // location of uniform from scroll_cache.v.pica
   ubyte curStencilVal;
 }
 
-ScrollCache scrollCacheCreate(ushort width, ushort height) {
+OffscreenRenderTex offscreenRenderTexCreate(ushort width, ushort height, C2DShader shader = C2DShader.normal) {
   import std.math.algebraic : nextPow2;
 
-  ScrollCache result;
+  OffscreenRenderTex result;
 
-  with (result) {
-    //round sizes to power of two if needed
-    desiredWidth  = width;
-    desiredHeight = height;
-    width         = (width  & (width  - 1)) ? nextPow2(width)  : width;
-    height        = (height & (height - 1)) ? nextPow2(height) : height;
-    texWidth      = width;
-    texHeight     = height;
+  //round sizes to power of two if needed
+  result.desiredWidth  = width;
+  result.desiredHeight = height;
+  width                = cast(ushort) ceilPow2(width);
+  height               = cast(ushort) ceilPow2(height);
+  result.texWidth      = width;
+  result.texHeight     = height;
+  result.shader        = shader;
 
-    C3D_TexInitVRAM(&scrollTex, width, height, GPUTexColor.rgba8);
-    C3D_TexSetWrap(&scrollTex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
-    scrollTarget = C3D_RenderTargetCreateFromTex(&scrollTex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
-    u_scrollRenderOffset = C2D_ShaderGetUniformLocation(C2DShader.scroll_cache, GPUShaderType.vertex_shader, "scrollRenderOffset");
+  C3D_TexInitVRAM(&result.tex, width, height, GPUTexColor.rgba8);
+  C3D_TexSetWrap(&result.tex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
+  result.renderTarget = C3D_RenderTargetCreateFromTex(&result.tex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
+
+  if (shader == C2DShader.scroll_cache) {
+    result.u_scrollRenderOffset = C2D_ShaderGetUniformLocation(shader, GPUShaderType.vertex_shader, "scrollRenderOffset");
   }
+
+  result.subtex = Tex3DS_SubTexture(
+    width  : cast(ushort) result.desiredWidth,
+    height : cast(ushort) result.desiredHeight,
+    left   : 0,
+    right  : 1.0f*result.desiredWidth/result.texWidth,
+    top    : 1,
+    bottom : 1.0 - 1.0f*result.desiredHeight/result.texHeight,
+  );
 
   return result;
 }
 
+OffscreenRenderTex scrollCacheCreate(ushort width, ushort height) {
+  return offscreenRenderTexCreate(width, height, C2DShader.scroll_cache);
+}
+
 alias renderCallback(T) = void function(T* userData, float from, float to);
 
-void scrollCacheBeginFrame(ScrollCache* scrollCache) { with (scrollCache) {
+void offscreenRenderBegin(OffscreenRenderTex* offscreenTex) { with (offscreenTex) {
+  mixin(timeBlock("offscreenRenderBegin"));
   C2D_Flush();
-  C3D_RenderTargetClear(scrollTarget, C3DClearBits.clear_depth, 0, 0);
-  C2D_SceneBegin(scrollTarget);
-  C2D_Prepare(C2DShader.scroll_cache);
+  C3D_RenderTargetClear(renderTarget, shader == C2DShader.scroll_cache ? C3DClearBits.clear_depth : C3DClearBits.clear_all, 0, 0);
+  if (shader != C2DShader.scroll_cache) {
+    C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
+    C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
+  }
+  C2D_SceneBegin(renderTarget);
+  C2D_Prepare(shader);
   curStencilVal = 1;
 }}
 
-void scrollCacheEndFrame(ScrollCache* scrollCache) { with (scrollCache) {
+void offscreenRenderEnd(OffscreenRenderTex* offscreenTex) { with (offscreenTex) {
   C2D_Prepare(C2DShader.normal);
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
 }}
 
 pragma(inline, true)
 void scrollCacheRenderScrollUpdate(T)(
-  ScrollCache* scrollCache,
+  OffscreenRenderTex* scrollCache,
   in ScrollInfo scrollInfo,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
   uint clearColor = 0,
@@ -796,7 +820,7 @@ void scrollCacheRenderScrollUpdate(T)(
 }
 
 private void _scrollCacheRenderScrollUpdateImpl(
-  ScrollCache* scrollCache,
+  OffscreenRenderTex* scrollCache,
   in ScrollInfo scrollInfo,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
   uint clearColor = 0,
@@ -828,7 +852,7 @@ private void _scrollCacheRenderScrollUpdateImpl(
 
 pragma(inline, true)
 void scrollCacheRenderRegion(T)(
-  ScrollCache* scrollCache,
+  OffscreenRenderTex* scrollCache,
   float from, float to,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
   uint clearColor = 0,
@@ -842,7 +866,7 @@ void scrollCacheRenderRegion(T)(
 }
 
 private void _scrollCacheRenderRegionImpl(
-  ScrollCache* scrollCache,
+  OffscreenRenderTex* scrollCache,
   float from, float to,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
   uint clearColor = 0,
@@ -895,7 +919,7 @@ private void _scrollCacheRenderRegionImpl(
 }}
 
 Tex3DS_SubTexture scrollCacheGetUvs(
-  in ScrollCache scrollCache,
+  in OffscreenRenderTex scrollCache,
   float width, float height, float yOffset, float scroll
 ) { with (scrollCache) {
   Tex3DS_SubTexture result = {
@@ -909,13 +933,21 @@ Tex3DS_SubTexture scrollCacheGetUvs(
   return result;
 }}
 
+C2D_Sprite spriteFromOffscreenRenderTex(OffscreenRenderTex* renderTex) {
+  C2D_Image image = { &renderTex.tex, &renderTex.subtex };
+  C2D_Sprite sprite;
+  C2D_SpriteFromImage(&sprite, image);
+
+  return sprite;
+}
+
 Vec2 scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   auto rect = clipWithinOther(box.rect, SCREEN_RECT[screen]);
 
 
   Tex3DS_SubTexture subtex = scrollCacheGetUvs(*box.scrollCache, rect.right-rect.left, rect.bottom-rect.top, rect.top, box.scrollInfo.offset);
 
-  C2D_Image cacheImage = { &box.scrollCache.scrollTex, &subtex };
+  C2D_Image cacheImage = { &box.scrollCache.tex, &subtex };
   C2D_Sprite sprite;
   C2D_SpriteFromImage(&sprite, cacheImage);
 

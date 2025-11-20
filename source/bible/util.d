@@ -526,6 +526,18 @@ T floorSlop(T)(T value) {
   return floor(value + 0.001);
 }
 
+// Thanks, AI.
+uint ceilPow2(uint v) {
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v++;
+  return v;
+}
+
 struct EnumRange(T) if (is(T == enum)) {
   T first, last;
 

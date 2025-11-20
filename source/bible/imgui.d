@@ -162,7 +162,7 @@ struct Box {
   int hoveredChild, selectedChild;
 
   ScrollInfo scrollInfo;
-  ScrollCache* scrollCache;
+  OffscreenRenderTex* scrollCache;
 
   BoxFlags flags;
   Justification justification;
@@ -556,7 +556,7 @@ ScopedLayout ScopedListButtonLayout(
   return result;
 }
 
-ScopedSignalLayout!() ScopedScrollableReadPane(const(char)[] id, Signal* signalToWrite, in LoadedPage loadedPage, ScrollCache* scrollCache, int* jumpVerseRequest) {
+ScopedSignalLayout!() ScopedScrollableReadPane(const(char)[] id, Signal* signalToWrite, in LoadedPage loadedPage, OffscreenRenderTex* scrollCache, int* jumpVerseRequest) {
   auto box = ScopedSignalLayout!()(id, signalToWrite, Axis2.y, Justification.center, LayoutKind.fill_parent, BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus);
 
   box.semanticSize[] = [SIZE_FILL_PARENT, SIZE_FILL_PARENT].s;
@@ -1530,6 +1530,7 @@ void sendCommand(uint code, uint value, UiData* uiData = gUiData) { with (uiData
 void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, float z = 0) { with (uiData) {
   mixin(timeBlock("render single screen"));
 
+  bool isModal = z != 0; // @HACK This is the only way to detect if we're rendering to a modal / offscreen texture right now from here.
   auto thisScreenWidth = screenWidth(screen);
 
   C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
@@ -1621,12 +1622,19 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
         auto rect = runner.rect + drawOffset;
 
         // This function has a totally different coordinate orientation...
-        Scissor scissor = {
+        // Not only that, but it's also very different when the current render target is a texture instead of a screen.
+        // @TODO: Replace with wrapper that uses some context to know the dimensions of the render target and whether it's a texture!!!
+        Scissor scissor = isModal ? Scissor(
+          left   : cast(uint) round(rect.left),
+          top    : cast(uint) round(256   - rect.bottom),
+          right  : cast(uint) round(rect.right),
+          bottom : cast(uint) round(256   - rect.top),
+        ) : Scissor(
           left   : cast(uint) round(SCREEN_HEIGHT   - rect.bottom),
           top    : cast(uint) round(thisScreenWidth - rect.right),
           right  : cast(uint) round(SCREEN_HEIGHT   - rect.top),
           bottom : cast(uint) round(thisScreenWidth - rect.left),
-        };
+        );
         scissorStackPos++;
         scissorStack[scissorStackPos] = scissor;
 
