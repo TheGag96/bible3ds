@@ -70,8 +70,8 @@ struct MainData {
   UiView modal;
   ModalCallback modalCallback;
   bool renderModal;
-  ui.OffscreenRenderTex renderTexModal;
-  ui.OffscreenRenderTex scrollCache;
+  ui.RenderTarget renderTexModal;
+  ui.RenderTarget scrollCache;
 
   bool needLoadPage;
   PageId pageId, pendingPageId;
@@ -165,9 +165,9 @@ extern(C) int main(int argc, char** argv) {
   audioInit();
 
   // Create screens
-  C3D_RenderTarget* topLeft  = C2D_CreateScreenTarget(GFXScreen.top,    GFX3DSide.left);
-  C3D_RenderTarget* topRight = C2D_CreateScreenTarget(GFXScreen.top,    GFX3DSide.right);
-  C3D_RenderTarget* bottom   = C2D_CreateScreenTarget(GFXScreen.bottom, GFX3DSide.left);
+  ui.RenderTarget topLeft  = ui.screenRenderTargetCreate(GFXScreen.top,    GFX3DSide.left);
+  ui.RenderTarget topRight = ui.screenRenderTargetCreate(GFXScreen.top,    GFX3DSide.right);
+  ui.RenderTarget bottom   = ui.screenRenderTargetCreate(GFXScreen.bottom, GFX3DSide.left);
 
   osTickCounterStart(&tickCounter);
 
@@ -256,14 +256,14 @@ extern(C) int main(int argc, char** argv) {
       if (mainData.curView == View.reading) {
         mixin(timeBlock("render > scroll cache"));
 
-        ui.offscreenRenderBegin(&mainData.scrollCache);
+        ui.renderTargetBegin(&mainData.scrollCache);
         ui.scrollCacheRenderScrollUpdate(
           &mainData.scrollCache,
           mainData.loadedPage.scrollInfo,
           &ui.renderPage, &mainData.loadedPage,
           mainData.colorTable[ui.Color.clear_color],
         );
-        ui.offscreenRenderEnd(&mainData.scrollCache);
+        ui.renderTargetEnd(&mainData.scrollCache);
       }
 
       auto mainUiData  = &mainData.views[mainData.curView].uiData;
@@ -271,45 +271,36 @@ extern(C) int main(int argc, char** argv) {
 
       if (mainData.renderModal) {
         mixin(timeBlock("render > modal"));
-        ui.offscreenRenderBegin(&mainData.renderTexModal);
+        ui.renderTargetBegin(&mainData.renderTexModal);
         ui.render(modalUiData, GFXScreen.bottom, GFX3DSide.left, false, 0, 0.1);
-        ui.offscreenRenderEnd(&mainData.renderTexModal);
+        ui.renderTargetEnd(&mainData.renderTexModal);
       }
 
       {
         mixin(timeBlock("render > left"));
-        C2D_TargetClear(topLeft, mainData.colorTable[ui.Color.clear_color]);
-        C2D_SceneBegin(topLeft);
-        C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
-        C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
-        //if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.left, _3DEnabled, slider, 0.1);
+        ui.renderTargetBegin(&topLeft, mainData.colorTable[ui.Color.clear_color]);
         ui.drawBackground(
           GFXScreen.top, GFX3DSide.left, slider, mainData.colorTable[ui.Color.bg_bg],
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
         );
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
+        ui.renderTargetEnd(&topLeft);
       }
 
       if (_3DEnabled) {
         mixin(timeBlock("render > right"));
-        C2D_TargetClear(topRight, mainData.colorTable[ui.Color.clear_color]);
-        C2D_SceneBegin(topRight);
-        C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
-        C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
-        //if (mainData.renderModal) ui.render(modalUiData, GFXScreen.top, GFX3DSide.right, _3DEnabled, slider, 0.1);
+        ui.renderTargetBegin(&topRight, mainData.colorTable[ui.Color.clear_color]);
         ui.drawBackground(
           GFXScreen.top, GFX3DSide.right, slider, mainData.colorTable[ui.Color.bg_bg],
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
         );
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
+        ui.renderTargetEnd(&topRight);
       }
 
       {
         mixin(timeBlock("render > bottom"));
-        C2D_TargetClear(bottom, mainData.colorTable[ui.Color.clear_color]);
-        C2D_SceneBegin(bottom);
-        C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
-        C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
+        ui.renderTargetBegin(&bottom, mainData.colorTable[ui.Color.clear_color]);
         ui.drawBackground(
           GFXScreen.bottom, GFX3DSide.left, slider, mainData.colorTable[ui.Color.bg_bg],
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0
@@ -326,6 +317,7 @@ extern(C) int main(int argc, char** argv) {
           C2D_AlphaImageTint(&tint, mainData.modal.opacity);
           C2D_DrawSpriteTinted(&spriteModal, &tint);
         }
+        ui.renderTargetEnd(&bottom);
       }
     }
 
@@ -353,8 +345,9 @@ void initMainData(MainData* mainData) { with (mainData) {
   }
   ui.init(&modal.uiData);
 
-  renderTexModal = ui.offscreenRenderTexCreate(cast(ushort) SCREEN_BOTTOM_WIDTH, cast(ushort) SCREEN_HEIGHT);
-  scrollCache    = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
+  renderTexModal        = ui.offscreenRenderTexCreate(cast(ushort) SCREEN_BOTTOM_WIDTH, cast(ushort) SCREEN_HEIGHT);
+  renderTexModal.screen = GFXScreen.bottom;
+  scrollCache           = ui.scrollCacheCreate(SCROLL_CACHE_WIDTH, SCROLL_CACHE_HEIGHT);
 
   colorTable = COLOR_THEMES[gSaveFile.settings.colorTheme];
 

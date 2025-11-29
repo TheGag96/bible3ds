@@ -162,7 +162,7 @@ struct Box {
   int hoveredChild, selectedChild;
 
   ScrollInfo scrollInfo;
-  OffscreenRenderTex* scrollCache;
+  RenderTarget* scrollCache;
 
   BoxFlags flags;
   Justification justification;
@@ -556,7 +556,7 @@ ScopedLayout ScopedListButtonLayout(
   return result;
 }
 
-ScopedSignalLayout!() ScopedScrollableReadPane(const(char)[] id, Signal* signalToWrite, in LoadedPage loadedPage, OffscreenRenderTex* scrollCache, int* jumpVerseRequest) {
+ScopedSignalLayout!() ScopedScrollableReadPane(const(char)[] id, Signal* signalToWrite, in LoadedPage loadedPage, RenderTarget* scrollCache, int* jumpVerseRequest) {
   auto box = ScopedSignalLayout!()(id, signalToWrite, Axis2.y, Justification.center, LayoutKind.fill_parent, BoxFlags.view_scroll | BoxFlags.manual_scroll_limits | BoxFlags.demand_focus);
 
   box.semanticSize[] = [SIZE_FILL_PARENT, SIZE_FILL_PARENT].s;

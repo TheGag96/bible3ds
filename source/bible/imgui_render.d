@@ -732,11 +732,20 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
 // Scroll Cache
 ////////
 
-struct OffscreenRenderTex {
+enum RTKind : ubyte {
+  screen,
+  texture,
+}
+
+struct RenderTarget {
+  RTKind kind;
+  GFXScreen screen;
+  GFX3DSide side;
+  float desiredWidth = 0, desiredHeight = 0, realWidth = 0, realHeight = 0;
+
   C3D_Tex tex;
   Tex3DS_SubTexture subtex;
-  C3D_RenderTarget* renderTarget;
-  float desiredWidth = 0, desiredHeight = 0, texWidth = 0, texHeight = 0;
+  C3D_RenderTarget* c3dTarget;
 
   C2DShader shader;
 
@@ -746,23 +755,37 @@ struct OffscreenRenderTex {
   ubyte curStencilVal;
 }
 
-OffscreenRenderTex offscreenRenderTexCreate(ushort width, ushort height, C2DShader shader = C2DShader.normal) {
+RenderTarget screenRenderTargetCreate(GFXScreen screen, GFX3DSide side) {
+  RenderTarget result;
+
+  result.kind          = RTKind.screen;
+  result.c3dTarget     = C2D_CreateScreenTarget(screen, side);
+  result.desiredWidth  = screenWidth(screen);
+  result.desiredHeight = SCREEN_HEIGHT;
+  result.realWidth     = result.desiredWidth;
+  result.realHeight    = result.desiredHeight;
+
+  return result;
+}
+
+RenderTarget offscreenRenderTexCreate(ushort width, ushort height, C2DShader shader = C2DShader.normal) {
   import std.math.algebraic : nextPow2;
 
-  OffscreenRenderTex result;
+  RenderTarget result;
 
   //round sizes to power of two if needed
+  result.kind          = RTKind.texture;
   result.desiredWidth  = width;
   result.desiredHeight = height;
   width                = cast(ushort) ceilPow2(width);
   height               = cast(ushort) ceilPow2(height);
-  result.texWidth      = width;
-  result.texHeight     = height;
+  result.realWidth     = width;
+  result.realHeight    = height;
   result.shader        = shader;
 
   C3D_TexInitVRAM(&result.tex, width, height, GPUTexColor.rgba8);
   C3D_TexSetWrap(&result.tex, GPUTextureWrapParam.repeat, GPUTextureWrapParam.repeat);
-  result.renderTarget = C3D_RenderTargetCreateFromTex(&result.tex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
+  result.c3dTarget = C3D_RenderTargetCreateFromTex(&result.tex, GPUTexFace.texface_2d, 0, C3D_DEPTHTYPE(GPUDepthBuf.depth24_stencil8));
 
   if (shader == C2DShader.scroll_cache) {
     result.u_scrollRenderOffset = C2D_ShaderGetUniformLocation(shader, GPUShaderType.vertex_shader, "scrollRenderOffset");
@@ -772,41 +795,41 @@ OffscreenRenderTex offscreenRenderTexCreate(ushort width, ushort height, C2DShad
     width  : cast(ushort) result.desiredWidth,
     height : cast(ushort) result.desiredHeight,
     left   : 0,
-    right  : 1.0f*result.desiredWidth/result.texWidth,
+    right  : 1.0f*result.desiredWidth/result.realWidth,
     top    : 1,
-    bottom : 1.0 - 1.0f*result.desiredHeight/result.texHeight,
+    bottom : 1.0 - 1.0f*result.desiredHeight/result.realHeight,
   );
 
   return result;
 }
 
-OffscreenRenderTex scrollCacheCreate(ushort width, ushort height) {
+RenderTarget scrollCacheCreate(ushort width, ushort height) {
   return offscreenRenderTexCreate(width, height, C2DShader.scroll_cache);
 }
 
 alias renderCallback(T) = void function(T* userData, float from, float to);
 
-void offscreenRenderBegin(OffscreenRenderTex* offscreenTex) { with (offscreenTex) {
-  mixin(timeBlock("offscreenRenderBegin"));
+void renderTargetBegin(RenderTarget* renderTarget, uint clearColor = 0) { with (renderTarget) {
+  mixin(timeBlock("renderTargetBegin"));
   C2D_Flush();
-  C3D_RenderTargetClear(renderTarget, shader == C2DShader.scroll_cache ? C3DClearBits.clear_depth : C3DClearBits.clear_all, 0, 0);
+  C3D_RenderTargetClear(c3dTarget, shader == C2DShader.scroll_cache ? C3DClearBits.clear_depth : C3DClearBits.clear_all, clearColor, 0);
   if (shader != C2DShader.scroll_cache) {
     C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
     C3D_SetScissor(GPUScissorMode.disable, 0, 0, 0, 0);
   }
-  C2D_SceneBegin(renderTarget);
+  C2D_SceneBegin(c3dTarget);
   C2D_Prepare(shader);
   curStencilVal = 1;
 }}
 
-void offscreenRenderEnd(OffscreenRenderTex* offscreenTex) { with (offscreenTex) {
+void renderTargetEnd(RenderTarget* renderTarget) { with (renderTarget) {
   C2D_Prepare(C2DShader.normal);
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
 }}
 
 pragma(inline, true)
 void scrollCacheRenderScrollUpdate(T)(
-  OffscreenRenderTex* scrollCache,
+  RenderTarget* scrollCache,
   in ScrollInfo scrollInfo,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
   uint clearColor = 0,
@@ -820,7 +843,7 @@ void scrollCacheRenderScrollUpdate(T)(
 }
 
 private void _scrollCacheRenderScrollUpdateImpl(
-  OffscreenRenderTex* scrollCache,
+  RenderTarget* scrollCache,
   in ScrollInfo scrollInfo,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
   uint clearColor = 0,
@@ -833,13 +856,13 @@ private void _scrollCacheRenderScrollUpdateImpl(
   if (needsRepaint) {
     needsRepaint = false;
     drawStart = scroll;
-    drawEnd   = scroll+texHeight;
+    drawEnd   = scroll+realHeight;
   }
   else {
     if (offset == offsetLast) return;
 
-    drawStart  = (scrollLast < scroll) ? scrollLast + texHeight : scroll;
-    drawEnd    = (scrollLast < scroll) ? scroll     + texHeight : scrollLast;
+    drawStart  = (scrollLast < scroll) ? scrollLast + realHeight : scroll;
+    drawEnd    = (scrollLast < scroll) ? scroll     + realHeight : scrollLast;
   }
 
   _scrollCacheRenderRegionImpl(
@@ -852,7 +875,7 @@ private void _scrollCacheRenderScrollUpdateImpl(
 
 pragma(inline, true)
 void scrollCacheRenderRegion(T)(
-  OffscreenRenderTex* scrollCache,
+  RenderTarget* scrollCache,
   float from, float to,
   void function(T* userData, float from, float to) @nogc nothrow render, T* userData,
   uint clearColor = 0,
@@ -866,19 +889,19 @@ void scrollCacheRenderRegion(T)(
 }
 
 private void _scrollCacheRenderRegionImpl(
-  OffscreenRenderTex* scrollCache,
+  RenderTarget* scrollCache,
   float from, float to,
   void function(void* userData, float from, float to) @nogc nothrow render, void* userData,
   uint clearColor = 0,
 ) { with (scrollCache) {
   float drawStart  = from;
   float drawEnd    = to;
-  float drawOffset = -(drawStart - wrap(drawStart, texHeight));
+  float drawOffset = -(drawStart - wrap(drawStart, realHeight));
   float drawHeight = drawEnd-drawStart;
 
-  float drawStartOnTexture = wrap(drawStart, texHeight);
+  float drawStartOnTexture = wrap(drawStart, realHeight);
   float drawEndOnTexture   = drawStartOnTexture + drawHeight;
-  float drawOffTexture     = max(drawEndOnTexture - texHeight, 0);
+  float drawOffTexture     = max(drawEndOnTexture - realHeight, 0);
 
   C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset, 0, 0);
 
@@ -900,8 +923,8 @@ private void _scrollCacheRenderRegionImpl(
   curStencilVal++;
 
   //draw from top if we draw past the bottom. use a different stencil to prevent overwriting stuff we just drew
-  if (drawEndOnTexture >= texHeight) {
-    C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - texHeight, 0, 0);
+  if (drawEndOnTexture >= realHeight) {
+    C3D_FVUnifSet(GPUShaderType.vertex_shader, u_scrollRenderOffset, 0, drawOffset - realHeight, 0, 0);
     C3D_StencilTest(true, GPUTestFunc.always, curStencilVal, 0xFF, 0xFF);
     C3D_StencilOp(GPUStencilOp.replace, GPUStencilOp.replace, GPUStencilOp.replace);
     C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.zero, GPUBlendFactor.src_alpha, GPUBlendFactor.zero);
@@ -919,21 +942,21 @@ private void _scrollCacheRenderRegionImpl(
 }}
 
 Tex3DS_SubTexture scrollCacheGetUvs(
-  in OffscreenRenderTex scrollCache,
+  in RenderTarget scrollCache,
   float width, float height, float yOffset, float scroll
 ) { with (scrollCache) {
   Tex3DS_SubTexture result = {
     width  : cast(ushort) width,
     height : cast(ushort) height,
     left   : 0,
-    right  : width/texWidth,
-    top    : 1.0f - yOffset         /texHeight - floorSlop(wrap(scroll, texHeight))/texHeight,
-    bottom : 1.0f - (yOffset+height)/texHeight - floorSlop(wrap(scroll, texHeight))/texHeight,
+    right  : width/realWidth,
+    top    : 1.0f - yOffset         /realHeight - floorSlop(wrap(scroll, realHeight))/realHeight,
+    bottom : 1.0f - (yOffset+height)/realHeight - floorSlop(wrap(scroll, realHeight))/realHeight,
   };
   return result;
 }}
 
-C2D_Sprite spriteFromOffscreenRenderTex(OffscreenRenderTex* renderTex) {
+C2D_Sprite spriteFromOffscreenRenderTex(RenderTarget* renderTex) {
   C2D_Image image = { &renderTex.tex, &renderTex.subtex };
   C2D_Sprite sprite;
   C2D_SpriteFromImage(&sprite, image);
