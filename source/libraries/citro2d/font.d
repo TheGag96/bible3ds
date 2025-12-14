@@ -30,6 +30,7 @@ struct C2D_Font_s
   CFNT_s* cfnt;
   C3D_Tex* glyphSheets;
   float textScale = 0;
+  fontGlyphPos_s[128] asciiCache;
 };
 alias C2D_Font = C2D_Font_s*;
 
@@ -182,8 +183,13 @@ void C2D_FontCalcGlyphPos(C2D_Font font, fontGlyphPos_s* out_, int glyphIndex, u
 void C2D_FontCalcGlyphPosFromCodePoint(C2D_Font font, fontGlyphPos_s* out_, uint codePoint, uint flags, float scaleX, float scaleY)
 {
   // Building glyph positions is pretty expensive, but we could just store the results for plain ASCII of the system font.
-  if (!font && codePoint < __C2Di_SystemFontAsciiCache.length && flags == 0 && scaleX == 1 && scaleY == 1) {
-    *out_ = __C2Di_SystemFontAsciiCache[codePoint];
+  if (codePoint < __C2Di_SystemFontAsciiCache.length && flags == 0 && scaleX == 1 && scaleY == 1) {
+    if (font) {
+      *out_ = font.asciiCache[codePoint];
+    }
+    else {
+      *out_ = __C2Di_SystemFontAsciiCache[codePoint];
+    }
   }
   else {
     C2D_FontCalcGlyphPos(font, out_, C2D_FontGlyphIndexFromCodePoint(font, codePoint), 0, 1.0f, 1.0f);
@@ -235,8 +241,7 @@ C2D_Font C2Di_PostLoadFont(C2D_Font font)
       return null;
     }
 
-    int i;
-    for (i = 0; i < glyphInfo.nSheets; i++)
+    for (int i = 0; i < glyphInfo.nSheets; i++)
     {
       C3D_Tex* tex = &font.glyphSheets[i];
       tex.data = &glyphInfo.sheetData[glyphInfo.sheetSize*i];
@@ -248,6 +253,10 @@ C2D_Font C2Di_PostLoadFont(C2D_Font font)
         | GPU_TEXTURE_WRAP_S(GPUTextureWrapParam.clamp_to_border) | GPU_TEXTURE_WRAP_T(GPUTextureWrapParam.clamp_to_border);
       tex.border = 0xFFFFFFFF;
       tex.lodParam = 0;
+    }
+
+    foreach (i, ref slot; font.asciiCache) {
+      fontCalcGlyphPos(&slot, font.cfnt, fontGlyphIndexFromCodePoint(font.cfnt, i), 0, 1.0, 1.0);
     }
   }
   return font;
