@@ -354,7 +354,7 @@ const(char)[] C2D_TextFontParseLine (C2D_Text* text, C2D_Font font, C2D_TextBuf 
     lineStart = false;
   }
   text.end = buf.glyphCount;
-  text.width *= s_textScale;
+  text.width *= font ? font.textScale : s_textScale;
   text.lines = 1;
   text.words = wordNum;
   return cast(const(char)[])p;
@@ -532,6 +532,15 @@ C2D_WrapInfo C2D_CalcWrapInfo(const(C2D_Text)* text_, Arena* arena, float scaleX
   biggerBytes += C2D_WrapInfo.sizeof;
   lesserBytes += (C2Di_LineInfo*).sizeof * 2;
 
+  if (text.font)
+  {
+    scaleX *= text.font.textScale;
+  }
+  else
+  {
+    scaleX *= s_textScale;
+  }
+
   C2Di_CalcLineInfo(text, lines, words);
   // The first word will never have a wrap offset in X or Y
   for (uint i = 1; i < text.words; i++)
@@ -610,6 +619,15 @@ const(char)[] C2D_CalcTextWrapFirstLine(C2D_Font font, float scale, const(char)[
   size_t lastLineStart   = 0;
   size_t index           = 0;
   size_t indexNext       = 0;
+
+  if (font)
+  {
+    scale *= font.textScale;
+  }
+  else
+  {
+    scale *= s_textScale;
+  }
 
   static struct WordInfo {
     bool   endOfLine;
@@ -738,18 +756,20 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
   C2Di_Glyph* cur;
   CFNT_s* systemFont = fontGetSystemFont();
 
-  scaleX *= s_textScale;
-  scaleY *= s_textScale;
-
   float glyphZ = z;
   float glyphH;
   float dispY;
   if (text.font)
   {
+    scaleX *= text.font.textScale;
+    scaleY *= text.font.textScale;
     glyphH = scaleY*text.font.cfnt.finf.tglp.cellHeight;
     dispY = ceil(scaleY*text.font.cfnt.finf.lineFeed);
-  } else
+  }
+  else
   {
+    scaleX *= s_textScale;
+    scaleY *= s_textScale;
     glyphH = scaleY*fontGetGlyphInfo(systemFont).cellHeight;
     dispY = ceil(scaleY*fontGetInfo(systemFont).lineFeed);
   }
