@@ -584,7 +584,7 @@ void mainGui(MainData* mainData, Input* input) {
 
     Input* inputModal = mainData.modal.closing ? gNullInput : input;
     frameStart(&mainData.modal.uiData, inputModal);
-    if (inputModal) {
+    if (!inputIsNull(inputModal)) {
       inputMain = gNullInput;
     }
 
