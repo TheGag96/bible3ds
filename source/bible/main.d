@@ -135,7 +135,7 @@ extern(C) int main(int argc, char** argv) {
   // Try to start loading the Bible as soon as possible asynchronously
   mainData.jobBibleLoad = startJob!bibleLoad(gSaveFile.settings.translation);
 
-  static if (PROFILING_ENABLED) {
+  version (Profiling) {
     int ret;
     // allocate buffer for SOC service
     SOC_buffer = cast(uint*) memalign(SOC_ALIGN, SOC_BUFFERSIZE);

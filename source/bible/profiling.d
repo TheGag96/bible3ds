@@ -19,8 +19,6 @@ import core.stdc.stdio;
 
 @nogc: nothrow:
 
-enum PROFILING_ENABLED = false;
-
 struct TimerData {
   ulong elapsedExclusive;  // Excludes time spent in children
   ulong elapsedInclusive;  // Includes time spent in children
@@ -39,7 +37,7 @@ ulong readTimestamp() {
 }
 
 void beginProfile() {
-  static if (PROFILING_ENABLED) {
+  version (Profiling) {
     gTimerInfo[] = TimerData.init;
     gProfilingStartTime = readTimestamp();
   }
@@ -90,7 +88,7 @@ struct TimeBlock {
 
 // Generate a string to mixin to conveniently create a scoped timer block
 string timeBlock(string name = __FUNCTION__) {
-  static if (PROFILING_ENABLED) {
+  version (Profiling) {
     char[] filtered = new char[name.length];
     size_t counter = 0;
     foreach (c; cast(ubyte[]) name) {
@@ -109,7 +107,7 @@ string timeBlock(string name = __FUNCTION__) {
 }
 
 void endProfileAndLog() {
-  static if (PROFILING_ENABLED) {
+  version (Profiling) {
     auto profilingEndTime = readTimestamp();
     auto totalTime        = profilingEndTime - gProfilingStartTime;
 

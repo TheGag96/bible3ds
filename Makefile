@@ -90,6 +90,8 @@ ifeq ($(DCOMPILER),GDC)
 else # LDC
 	ifeq ($(BUILD_TYPE),RELEASE)
 		PERF_FLAGS	:=	-O3 -release -boundscheck=off --enable-cross-module-inlining=true
+	else ifeq ($(BUILD_TYPE),PROFILING)
+		PERF_FLAGS	:=	-O3 -release -boundscheck=off --enable-cross-module-inlining=true --d-version=Profiling
 	else ifeq ($(BUILD_TYPE),DEBUG_FAST)
 		PERF_FLAGS	:=	-g -O --d-debug --enable-cross-module-inlining=true
 	else
