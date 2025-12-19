@@ -316,7 +316,7 @@ void spacer(float size) {
 }
 
 void spacer(Size size) {
-  Box* box = makeBox(cast(BoxFlags) 0, "");
+  Box* box = makeBox(cast(BoxFlags) 0, 0, "");
 
   auto oppSize = SIZE_FILL_PARENT;
 
@@ -724,7 +724,20 @@ Box* makeBox(BoxFlags flags, const(char)[] text) {
 Box* makeBox(BoxFlags flags, const(char)[] id, const(char)[] displayText) { with (gUiData) {
   mixin(timeBlock("makeBox 2"));
 
-  Box* result = hashTableFindOrAlloc(&boxes, id);
+  ulong hashKey = boxHashStart();
+  if (!boxIsNull(curBox)) {
+    hashKey = curBox.hashKey;
+    boxHashAdd(&hashKey, &curBox.numChildren);
+  }
+  boxHashAdd(&hashKey, id);
+
+  return makeBox(flags, hashKey, displayText);
+}}
+
+Box* makeBox(BoxFlags flags, ulong hashKey, const(char)[] displayText) { with (gUiData) {
+  mixin(timeBlock("makeBox 3"));
+
+  Box* result = hashTableFindOrAlloc(&boxes, hashKey);
   result.lastFrameTouchedIndex = frameIndex;
   debug result.debugString = displayText;
 
@@ -1783,14 +1796,30 @@ struct BoxHashTable {
   }
 }
 
-ulong boxHash(const(char)[] text) {
-  // @TODO: This hash sucks!!!! Replace it!
-  ulong hash = 5381;
+ulong boxHashStart() {
+  return 5381;
+}
 
+void boxHashAdd(ulong* hash, const(char)[] text) {
+  ulong temp = *hash;
   foreach (c; cast(const(ubyte)[]) text) {
-    hash = hash * 33 ^ c;
+    temp = temp * 33 ^ c;
   }
+  *hash = temp;
+}
 
+void boxHashAdd(T)(ulong* hash, const(T)* thing) {
+  ulong temp = *hash;
+  auto bytes = (cast(const(ubyte)*) thing)[0..T.sizeof];
+  foreach (c; bytes) {
+    temp = temp * 33 ^ c;
+  }
+  *hash = temp;
+}
+
+ulong boxHash(const(char)[] text) {
+  ulong hash = boxHashStart();
+  boxHashAdd(&hash, text);
   return hash;
 }
 
@@ -1807,13 +1836,13 @@ BoxHashTable hashTableMake(Arena* arena, size_t maxElements, size_t tableElement
   return result;
 }
 
-Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
+Box* hashTableFindOrAlloc(BoxHashTable* hashTable, ulong key) {
   mixin(timeBlock("hashTableFindOrAlloc"));
 
   Box* result = gNullBox;
 
   // If we're passed an empty ID, allocate it on the per-frame temporary box arena
-  if (!text.length) {
+  if (key == 0) {
     assert(hashTable.tempPos < hashTable.temp.length);
     result = &hashTable.temp[hashTable.tempPos];
     hashTable.tempPos++;
@@ -1823,7 +1852,6 @@ Box* hashTableFindOrAlloc(BoxHashTable* hashTable, const(char)[] text) {
     return result;
   }
 
-  auto key    = boxHash(text);
   auto index  = cast(size_t) (key % hashTable.table.length);
   Box* runner = hashTable.table[index], last = gNullBox;
 
