@@ -353,13 +353,13 @@ enum LayoutKind {
 }
 
 Box* makeLayout(
-  const(char)[] id,
   Axis2 flowDirection,
   Justification justification = Justification.center,
   LayoutKind layoutKind = LayoutKind.init,
   BoxFlags flags = BoxFlags.init,
+  const(char)[] id = "",
 ) {
-  Box* box = makeBox(cast(BoxFlags) ((flowDirection == Axis2.x) * BoxFlags.horizontal_children) | flags, id);
+  Box* box = makeBox(cast(BoxFlags) ((flowDirection == Axis2.x) * BoxFlags.horizontal_children) | flags, id, "");
 
   Size flowAxisSize, oppAxisSize;
   final switch (layoutKind) {
@@ -388,13 +388,13 @@ Box* makeLayout(
 }
 
 Box* pushLayout(
-  const(char)[] id,
   Axis2 flowDirection,
   Justification justification = Justification.center,
   LayoutKind layoutKind = LayoutKind.init,
   BoxFlags flags = BoxFlags.init,
+  const(char)[] id = "",
 ) {
-  auto result = makeLayout(id, flowDirection, justification, layoutKind, flags);
+  auto result = makeLayout(flowDirection, justification, layoutKind, flags, id);
   pushParent(result);
   return result;
 }
@@ -409,13 +409,13 @@ struct ScopedLayout {
 
   pragma (inline, true)
   this(
-    const(char)[] id,
     Axis2 flowDirection,
     Justification justification = Justification.center,
     LayoutKind layoutKind = LayoutKind.init,
     BoxFlags flags = BoxFlags.init,
+    const(char)[] id = "",
   ) {
-    box = pushLayout(id, flowDirection, justification, layoutKind, flags);
+    box = pushLayout(flowDirection, justification, layoutKind, flags, id);
   }
 
   pragma (inline, true)
@@ -442,7 +442,7 @@ struct ScopedSignalLayout(BoxFlags defaultFlags = BoxFlags.init, LayoutKind defa
     LayoutKind layoutKind = defaultLayoutKind,
     BoxFlags flags = BoxFlags.init,
   ) {
-    box = pushLayout(id, flowDirection, justification, layoutKind, flags | defaultFlags);
+    box = pushLayout(flowDirection, justification, layoutKind, flags | defaultFlags, id);
     this.signalToWrite = signalToWrite;
   }
 
@@ -466,11 +466,11 @@ struct ScopedCombinedScreenSplitLayout {
   @disable this();
 
   pragma (inline, true)
-  this(const(char)[] mainId, const(char)[] leftId, const(char)[] centerId, const(char)[] rightId) {
-    main   = pushLayout(mainId,   Axis2.x);
-    left   = makeLayout(leftId,   Axis2.y);
-    center = makeLayout(centerId, Axis2.y);
-    right  = makeLayout(rightId,  Axis2.y);
+  this(const(char)[] mainId, const(char)[] leftId = "", const(char)[] centerId = "", const(char)[] rightId = "") {
+    main   = pushLayout(Axis2.x, id : mainId);
+    left   = makeLayout(Axis2.y, id : leftId);
+    center = makeLayout(Axis2.y, id : centerId);
+    right  = makeLayout(Axis2.y, id : rightId);
     // @TODO: Fix layout violation resolution so that the left and right sizes are figured out automatically...
     main.semanticSize[Axis2.x]   = Size(SizeKind.pixels, SCREEN_TOP_WIDTH,  1);
     main.semanticSize[Axis2.y]   = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
@@ -505,10 +505,10 @@ struct ScopedDoubleScreenSplitLayout {
   @disable this();
 
   pragma (inline, true)
-  this(const(char)[] mainId, const(char)[] topId, const(char)[] bottomId) {
-    main   = pushLayout(mainId,   Axis2.y);
-    top    = makeLayout(topId,    Axis2.x);
-    bottom = makeLayout(bottomId, Axis2.x);
+  this(const(char)[] mainId, const(char)[] topId = "", const(char)[] bottomId = "") {
+    main   = pushLayout(Axis2.y, id : mainId);
+    top    = makeLayout(Axis2.x, id : topId);
+    bottom = makeLayout(Axis2.x, id : bottomId);
     // @TODO: Fix layout violation resolution so that the top and bottom sizes are figured out automatically...
     main.semanticSize[Axis2.x]   = SIZE_FILL_PARENT;
     main.semanticSize[Axis2.y]   = Size(SizeKind.pixels, SCREEN_HEIGHT * 2, 1);
@@ -537,7 +537,7 @@ ScopedLayout ScopedButtonLayout(
   LayoutKind layoutKind = LayoutKind.init,
   BoxFlags flags = BoxFlags.init,
 ) {
-  auto result = ScopedLayout(id, flowDirection, justification, layoutKind, flags | BoxFlags.clickable);
+  auto result = ScopedLayout(flowDirection, justification, layoutKind, flags | BoxFlags.clickable, id);
   result.render = &renderNormalButton;
 
   return result;
@@ -550,7 +550,7 @@ ScopedLayout ScopedListButtonLayout(
   LayoutKind layoutKind = LayoutKind.init,
   BoxFlags flags = BoxFlags.init,
 ) {
-  auto result = ScopedLayout(id, flowDirection, justification, layoutKind, flags | BoxFlags.clickable);
+  auto result = ScopedLayout(flowDirection, justification, layoutKind, flags | BoxFlags.clickable, id);
   result.render = &renderListButton;
 
   return result;

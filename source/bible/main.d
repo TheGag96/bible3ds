@@ -593,20 +593,16 @@ void mainGui(MainData* mainData, Input* input) {
       // Set up some nice defaults, including being on the bottom screen with a background
       auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 
-      auto mainLayout = ScopedCombinedScreenSplitLayout(
-        "lt_modal_main", "lt_modal_left", "lt_modal_center", "lt_modal_right"
-      );
+      auto mainLayout = ScopedCombinedScreenSplitLayout("");
       mainLayout.startCenter();
 
-      auto split = ScopedDoubleScreenSplitLayout(
-        "lt_modal_split_main", "lt_modal_split_top", "lt_modal_split_bottom"
-      );
+      auto split = ScopedDoubleScreenSplitLayout("");
       split.startBottom();
       split.bottom.justification = Justification.center;
 
       spacer();
       {
-        auto modalLayout = ScopedLayout("lt_modal_container", Axis2.y);
+        auto modalLayout = ScopedLayout(Axis2.y);
         modalLayout.render = &renderModalBackground;
         modalLayout.semanticSize[Axis2.x] = Size(SizeKind.pixels, SCREEN_BOTTOM_WIDTH - 2*10, 1);
         modalLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT       - 2*10, 1);
@@ -647,7 +643,7 @@ void mainGui(MainData* mainData, Input* input) {
 
   auto defaultStyle = ScopedStyle(&mainData.styleButtonBook);
 
-  auto mainLayout = ScopedCombinedScreenSplitLayout("lt_main", "lt_left", "lt_center", "lt_right");
+  auto mainLayout = ScopedCombinedScreenSplitLayout("");
   mainLayout.startCenter();
 
   final switch (mainData.curView) {
@@ -666,7 +662,7 @@ void mainGui(MainData* mainData, Input* input) {
         spacer(SCREEN_HEIGHT + 8);
 
         {
-          auto horziontalLayout = ScopedLayout("lt_book_grid_horiz", Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
+          auto horziontalLayout = ScopedLayout(Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
 
           Signal leftColumnSignal;
           {
@@ -718,7 +714,7 @@ void mainGui(MainData* mainData, Input* input) {
 
       {
         auto bottomLayout = ScopedLayout(
-          "lt_book_bottom", Axis2.x, Justification.center, LayoutKind.fit_children
+          Axis2.x, Justification.center, LayoutKind.fit_children
         );
         auto style = ScopedStyle(&mainData.styleButtonBottom);
 
@@ -765,7 +761,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("lt_book_right_split_main", "lt_book_right_split_top", "lt_book_split_bottom");
+        auto rightSplit = ScopedDoubleScreenSplitLayout("");
 
         rightSplit.startTop();
 
@@ -827,7 +823,7 @@ void mainGui(MainData* mainData, Input* input) {
         }
 
         {
-          auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
+          auto bottomLayout = ScopedLayout(Axis2.x, Justification.center, LayoutKind.fit_children);
           auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
           {
@@ -863,8 +859,8 @@ void mainGui(MainData* mainData, Input* input) {
 
               Signal scrollSignal;
               auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
-              auto horizLayout  = ScopedLayout(      "lt_chapter_horiz",                 Axis2.x, Justification.center, LayoutKind.fit_children);
-              auto vertLayout   = ScopedLayout(      "lt_chapter_vert",                  Axis2.y, Justification.center, LayoutKind.grow_children);
+              auto horizLayout  = ScopedLayout(                                          Axis2.x, Justification.center, LayoutKind.fit_children);
+              auto vertLayout   = ScopedLayout(                                          Axis2.y, Justification.center, LayoutKind.grow_children);
 
               auto numChapters = mainData.bible.books[mainData.pageId.book].chapters.length - 1; // Minus 1 because the 0th chapter is a dummy
               auto numRows = (numChapters + CHAPTERS_PER_ROW - 1) / CHAPTERS_PER_ROW;
@@ -875,7 +871,7 @@ void mainGui(MainData* mainData, Input* input) {
                 spacer(4);
 
                 {
-                  auto rowLayout = ScopedLayout(tnum("lt_chapter_row_", row), Axis2.x, Justification.center, LayoutKind.grow_children);
+                  auto rowLayout = ScopedLayout(Axis2.x, Justification.center, LayoutKind.grow_children);
                   // @TODO: Reconsider the meaning of LayoutKind.grow_children to do this instead?
                   rowLayout.box.semanticSize[] = SIZE_CHILDREN_SUM;
 
@@ -951,7 +947,7 @@ void mainGui(MainData* mainData, Input* input) {
         mainLayout.startRight();
 
         {
-          auto rightSplit = ScopedDoubleScreenSplitLayout("lt_reading_right_split_main", "lt_reading_right_split_top", "lt_reading_right_split_bottom");
+          auto rightSplit = ScopedDoubleScreenSplitLayout("");
 
           rightSplit.startTop();
 
@@ -962,7 +958,7 @@ void mainGui(MainData* mainData, Input* input) {
         // Bible data is still loading.
         // @TODO: Prettify
         {
-          auto searchingLayout = ScopedLayout("lt_loading", Axis2.y);
+          auto searchingLayout = ScopedLayout(Axis2.y);
           searchingLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
 
           spacer();
@@ -973,7 +969,7 @@ void mainGui(MainData* mainData, Input* input) {
         spacer();
 
         {
-          auto bottomLayout = ScopedLayout("lt_reading_bottom", Axis2.x, Justification.center, LayoutKind.fit_children);
+          auto bottomLayout = ScopedLayout(Axis2.x, Justification.center, LayoutKind.fit_children);
           auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
           {
@@ -1004,7 +1000,7 @@ void mainGui(MainData* mainData, Input* input) {
 
         void settingsListEntry(const(char)[] labelText, const(char)[] valueText, ModalCallback callback) {
           {
-            auto layout = ScopedLayout(tconcat("lt_settings_entry_", labelText), Axis2.x, Justification.min, LayoutKind.fit_children);
+            auto layout = ScopedLayout(Axis2.x, Justification.min, LayoutKind.fit_children);
 
             auto settingLabel = label(labelText);
             settingLabel.semanticSize[Axis2.x] = Size(SizeKind.percent_of_parent, 0.4, 1);
@@ -1082,7 +1078,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("lt_options_right_split_main", "lt_options_right_split_top", "lt_options_right_split_bottom");
+        auto rightSplit = ScopedDoubleScreenSplitLayout("");
 
         rightSplit.startTop();
 
@@ -1154,7 +1150,7 @@ void mainGui(MainData* mainData, Input* input) {
       else {
         // @TODO: Prettify
         {
-          auto searchingLayout = ScopedLayout("lt_searching", Axis2.y);
+          auto searchingLayout = ScopedLayout(Axis2.y);
           searchingLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT, 1);
 
           spacer();
@@ -1176,7 +1172,7 @@ void mainGui(MainData* mainData, Input* input) {
       mainLayout.startRight();
 
       {
-        auto rightSplit = ScopedDoubleScreenSplitLayout("search_right_split_layout_main", "search_right_split_layout_top", "search_right_split_layout_bottom");
+        auto rightSplit = ScopedDoubleScreenSplitLayout("");
 
         rightSplit.startTop();
 
@@ -1231,21 +1227,18 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
 
     {
       auto innerLayout1 = ScopedLayout(
-        tnum("lt_color_theme_preview_inner_1_", colorTheme),
         Axis2.x, Justification.center, LayoutKind.fit_children
       );
 
       spacer(8);
       {
         auto innerLayout2 = ScopedLayout(
-          tnum("lt_color_theme_preview_inner_2_", colorTheme),
           Axis2.y, Justification.min, LayoutKind.grow_children
         );
         innerLayout2.render = &renderPlainBackground;
 
         {
           auto innerLayout3 = ScopedLayout(
-            tnum("lt_color_theme_preview_inner_3_", colorTheme),
             Axis2.x, Justification.min, LayoutKind.fit_children
           );
           innerLayout3.scrollInfo.limitMin = 0;
@@ -1274,10 +1267,10 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
 void nColumnGrid(Range, Value)(const(char)[] idPrefix, int numCols, Range range, scope void delegate(Value value) @nogc nothrow func) {
   import bible.imgui;
 
-  auto horziontalLayout = ScopedLayout(tconcat(idPrefix, "grid"), Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
+  auto horziontalLayout = ScopedLayout(Axis2.x, justification : Justification.min, layoutKind : LayoutKind.fit_children);
 
   foreach (a; 0..numCols) {
-    auto inner = ScopedLayout(tprint("%sgrid_inner_%d", idPrefix.ptr, a), Axis2.y);
+    auto inner = ScopedLayout(Axis2.y);
 
     int b = 0;
     foreach (value; range) {
