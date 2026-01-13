@@ -536,14 +536,6 @@ bool C2D_Init(size_t maxObjects)
 
     C3D_FrameEndHook(&C2Di_FrameEndHook, null);
 
-    // Initialize system font ASCII cache for C2D_FontCalcGlyphPosFromCodePoint
-    {
-      auto systemFont = fontGetSystemFont();
-      foreach (i, ref slot; __C2Di_SystemFontAsciiCache) {
-        fontCalcGlyphPos(&slot, systemFont, fontGlyphIndexFromCodePoint(systemFont, i), 0, 1.0, 1.0);
-      }
-    }
-
     return true;
 }
 

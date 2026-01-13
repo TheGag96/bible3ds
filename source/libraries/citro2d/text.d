@@ -28,8 +28,8 @@ import bible.util, bible.profiling;
 
 nothrow: @nogc:
 
-C3D_Tex* s_glyphSheets;
-float s_textScale;
+__gshared C3D_Tex* s_glyphSheets;
+__gshared float s_textScale;
 
 enum C2D_ParseFlags : uint {
   none,
@@ -143,13 +143,13 @@ void C2Di_TextEnsureLoad()
   // Load the glyph texture sheets
   CFNT_s* font = fontGetSystemFont();
   TGLP_s* glyphInfo = fontGetGlyphInfo(font);
-  s_glyphSheets = cast(C3D_Tex*) malloc(C3D_Tex.sizeof*glyphInfo.nSheets);
+  // nSheets plus 1, because we're sneakily putting in our combined super sheet at the end!
+  s_glyphSheets = cast(C3D_Tex*) malloc(C3D_Tex.sizeof*(glyphInfo.nSheets+1));
   s_textScale = 30.0f / glyphInfo.cellHeight;
   if (!s_glyphSheets)
     svcBreak(UserBreakType.panic);
 
-  int i;
-  for (i = 0; i < glyphInfo.nSheets; i ++)
+  for (int i = 0; i < glyphInfo.nSheets; i ++)
   {
     C3D_Tex* tex = &s_glyphSheets[i];
     tex.data = fontGetGlyphSheetTex(font, i);
@@ -161,6 +161,32 @@ void C2Di_TextEnsureLoad()
       | GPU_TEXTURE_WRAP_S(GPUTextureWrapParam.clamp_to_border) | GPU_TEXTURE_WRAP_T(GPUTextureWrapParam.clamp_to_border);
     tex.border = 0xFFFFFFFF;
     tex.lodParam = 0;
+  }
+
+  // As it turns out, the sytem font texture sheets are all 128x32 pixels and adjacent in memory! We can reinterpet
+  // the memory starting at sheet 0 and describe a much bigger texture that encompasses all of the ASCII glyphs and
+  // make our cache use that instead of the individual sheets. This will massively improve performance by reducing
+  // texture swaps within a piece of text, down to 0 if it's all English. We don't need any extra linear allocating to
+  // do this!
+  C3D_Tex* tex = &s_glyphSheets[glyphInfo.nSheets];
+  *tex = s_glyphSheets[0];
+  tex.height = cast(ushort) (tex.height * 32);
+  tex.size   = tex.size   * 32;
+
+  // Initialize system font ASCII cache for C2D_FontCalcGlyphPosFromCodePoint
+  {
+    auto systemFont = fontGetSystemFont();
+    foreach (i, ref slot; __C2Di_SystemFontAsciiCache) {
+      fontCalcGlyphPos(&slot, systemFont, fontGlyphIndexFromCodePoint(systemFont, i), 0, 1.0, 1.0);
+
+      if (slot.sheetIndex < 32) {
+        // Readjust glyph UVs to account for being a part of the combined texture.
+        slot.texcoord.top    = (slot.texcoord.top    + (32 - slot.sheetIndex - 1)) / 32.0f;
+        slot.texcoord.bottom = (slot.texcoord.bottom + (32 - slot.sheetIndex - 1)) / 32.0f;
+
+        slot.sheetIndex = glyphInfo.nSheets;
+      }
+    }
   }
 }
 
