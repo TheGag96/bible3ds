@@ -6,6 +6,7 @@
 module citro2d.font;
 
 import citro2d.base;
+import citro2d.text;
 import ctru.allocator;
 import ctru.font;
 import ctru.gpu.enums;
@@ -175,9 +176,27 @@ charWidthInfo_s* C2D_FontGetCharWidthInfo(C2D_Font font, int glyphIndex)
 void C2D_FontCalcGlyphPos(C2D_Font font, fontGlyphPos_s* out_, int glyphIndex, uint flags, float scaleX, float scaleY)
 {
   if (!font)
+  {
     fontCalcGlyphPos(out_, fontGetSystemFont(), glyphIndex, flags, scaleX, scaleY);
+
+    if (out_.sheetIndex < s_numSheetsThatWereCombined)
+    {
+      uint indexWithinBigSheet = out_.sheetIndex % SHEETS_PER_BIG_SHEET;
+      out_.sheetIndex /= SHEETS_PER_BIG_SHEET;
+
+      // Readjust glyph UVs to account for being a part of the combined texture.
+      out_.texcoord.top    = (out_.texcoord.top    + (SHEETS_PER_BIG_SHEET - indexWithinBigSheet - 1)) / cast(float) SHEETS_PER_BIG_SHEET;
+      out_.texcoord.bottom = (out_.texcoord.bottom + (SHEETS_PER_BIG_SHEET - indexWithinBigSheet - 1)) / cast(float) SHEETS_PER_BIG_SHEET;
+    }
+    else
+    {
+      out_.sheetIndex -= s_numSheetsThatWereCombined * SHEETS_PER_BIG_SHEET;
+    }
+  }
   else
+  {
     fontCalcGlyphPos(out_, font.cfnt, glyphIndex, flags, scaleX, scaleY);
+  }
 }
 
 void C2D_FontCalcGlyphPosFromCodePoint(C2D_Font font, fontGlyphPos_s* out_, uint codePoint, uint flags, float scaleX, float scaleY)

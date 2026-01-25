@@ -30,6 +30,7 @@ nothrow: @nogc:
 
 __gshared C3D_Tex* s_glyphSheets;
 __gshared float s_textScale;
+__gshared uint s_numSheetsThatWereCombined;
 
 enum C2D_ParseFlags : uint {
   none,
@@ -42,8 +43,9 @@ enum C2Di_GlyphFlags : uint {
   italicized = (1 << 1),
 }
 
-enum float SMALL_SCALE        = 0.7;
-enum float ITALICS_SKEW_RATIO = 0.1;
+enum float SMALL_SCALE         = 0.7;
+enum float ITALICS_SKEW_RATIO  = 0.1;
+enum uint SHEETS_PER_BIG_SHEET = 32;
 
 struct C2Di_Glyph
 {
@@ -143,16 +145,27 @@ void C2Di_TextEnsureLoad()
   // Load the glyph texture sheets
   CFNT_s* font = fontGetSystemFont();
   TGLP_s* glyphInfo = fontGetGlyphInfo(font);
-  // nSheets plus 1, because we're sneakily putting in our combined super sheet at the end!
-  s_glyphSheets = cast(C3D_Tex*) malloc(C3D_Tex.sizeof*(glyphInfo.nSheets+1));
+
+  // As it turns out, the sytem font texture sheets are all 128x32 pixels and adjacent in memory! We can reinterpet
+  // the memory starting at sheet 0 and describe a much bigger texture that encompasses all of the ASCII glyphs and
+  // make our cache use that instead of the individual sheets. This will massively improve performance by reducing
+  // texture swaps within a piece of text, down to 0 if it's all English. We don't need any extra linear allocating to
+  // do this!
+  uint numSheetsBig   = glyphInfo.nSheets / SHEETS_PER_BIG_SHEET;
+  uint numSheetsSmall = glyphInfo.nSheets % SHEETS_PER_BIG_SHEET;
+  uint numSheetsTotal = numSheetsBig + numSheetsSmall;
+  s_numSheetsThatWereCombined = glyphInfo.nSheets - numSheetsSmall;
+
+  s_glyphSheets = cast(C3D_Tex*) malloc(C3D_Tex.sizeof*numSheetsTotal);
   s_textScale = 30.0f / glyphInfo.cellHeight;
   if (!s_glyphSheets)
-    svcBreak(UserBreakType.panic);
-
-  for (int i = 0; i < glyphInfo.nSheets; i ++)
   {
-    C3D_Tex* tex = &s_glyphSheets[i];
-    tex.data = fontGetGlyphSheetTex(font, i);
+    svcBreak(UserBreakType.panic);
+  }
+
+  void fillSheet(C3D_Tex* tex, void* data)
+  {
+    tex.data = data;
     tex.fmt = cast(GPUTexColor) glyphInfo.sheetFmt;
     tex.size = glyphInfo.sheetSize;
     tex.width = glyphInfo.sheetWidth;
@@ -163,29 +176,26 @@ void C2Di_TextEnsureLoad()
     tex.lodParam = 0;
   }
 
-  // As it turns out, the sytem font texture sheets are all 128x32 pixels and adjacent in memory! We can reinterpet
-  // the memory starting at sheet 0 and describe a much bigger texture that encompasses all of the ASCII glyphs and
-  // make our cache use that instead of the individual sheets. This will massively improve performance by reducing
-  // texture swaps within a piece of text, down to 0 if it's all English. We don't need any extra linear allocating to
-  // do this!
-  C3D_Tex* tex = &s_glyphSheets[glyphInfo.nSheets];
-  *tex = s_glyphSheets[0];
-  tex.height = cast(ushort) (tex.height * 32);
-  tex.size   = tex.size   * 32;
+  foreach (i; 0..numSheetsBig)
+  {
+    C3D_Tex* tex = &s_glyphSheets[i];
+    fillSheet(tex, fontGetGlyphSheetTex(font, i * SHEETS_PER_BIG_SHEET));
+    tex.height = cast(ushort) (tex.height * SHEETS_PER_BIG_SHEET);
+    tex.size   = tex.size * SHEETS_PER_BIG_SHEET;
+  }
+
+  foreach (i; 0..numSheetsSmall)
+  {
+    fillSheet(&s_glyphSheets[numSheetsBig + i], fontGetGlyphSheetTex(font, numSheetsBig * SHEETS_PER_BIG_SHEET + i));
+  }
 
   // Initialize system font ASCII cache for C2D_FontCalcGlyphPosFromCodePoint
   {
     auto systemFont = fontGetSystemFont();
-    foreach (i, ref slot; __C2Di_SystemFontAsciiCache) {
-      fontCalcGlyphPos(&slot, systemFont, fontGlyphIndexFromCodePoint(systemFont, i), 0, 1.0, 1.0);
-
-      if (slot.sheetIndex < 32) {
-        // Readjust glyph UVs to account for being a part of the combined texture.
-        slot.texcoord.top    = (slot.texcoord.top    + (32 - slot.sheetIndex - 1)) / 32.0f;
-        slot.texcoord.bottom = (slot.texcoord.bottom + (32 - slot.sheetIndex - 1)) / 32.0f;
-
-        slot.sheetIndex = glyphInfo.nSheets;
-      }
+    foreach (i, ref slot; __C2Di_SystemFontAsciiCache)
+    {
+      // This will readjust glyph UVs to account for being a part of the combined texture.
+      C2D_FontCalcGlyphPos(null, &slot, fontGlyphIndexFromCodePoint(systemFont, i), 0, 1.0, 1.0);
     }
   }
 }
