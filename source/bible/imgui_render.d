@@ -823,6 +823,7 @@ void renderTargetBegin(RenderTarget* renderTarget, uint clearColor = 0) { with (
 }}
 
 void renderTargetEnd(RenderTarget* renderTarget) { with (renderTarget) {
+  C2D_Flush();
   C2D_Prepare(C2DShader.normal);
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
 }}
