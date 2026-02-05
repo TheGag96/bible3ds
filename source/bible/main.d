@@ -92,6 +92,8 @@ struct MainData {
   JobHandle!bibleSearch jobBibleSearch;
   Arena searchArena;
   BibleSearchResults* searchResults;
+
+  Vec4 overlayColorCur, overlayColorTarget;
 }
 MainData mainData;
 
@@ -240,6 +242,8 @@ extern(C) int main(int argc, char** argv) {
 
       mainGui(&mainData, &input);
 
+      mainData.overlayColorCur += (mainData.overlayColorTarget - mainData.overlayColorCur) * 0.1;
+
       audioUpdate();
 
       //debug printf("\x1b[3;1HCPU:     %6.2f%%\x1b[K", C3D_GetProcessingTime()*6.0f);
@@ -284,6 +288,7 @@ extern(C) int main(int argc, char** argv) {
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
         );
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.left, _3DEnabled, slider);
+        renderScreenRect(GFXScreen.top, mainData.overlayColorCur, 0.9);
         ui.renderTargetEnd(&topLeft);
       }
 
@@ -295,6 +300,7 @@ extern(C) int main(int argc, char** argv) {
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0,
         );
         ui.render(mainUiData,  GFXScreen.top, GFX3DSide.right, _3DEnabled, slider);
+        renderScreenRect(GFXScreen.top, mainData.overlayColorCur, 0.9);
         ui.renderTargetEnd(&topRight);
       }
 
@@ -317,6 +323,7 @@ extern(C) int main(int argc, char** argv) {
           C2D_AlphaImageTint(&tint, mainData.modal.opacity);
           C2D_DrawSpriteTinted(&spriteModal, &tint);
         }
+        renderScreenRect(GFXScreen.bottom, mainData.overlayColorCur, 0.9);
         ui.renderTargetEnd(&bottom);
       }
     }
@@ -378,6 +385,9 @@ void initMainData(MainData* mainData) { with (mainData) {
   styleVerse.soundButtonOff          = SoundPlay.init;
 
   searchArena                        = arenaMake(kilobytes(128));
+
+  overlayColorCur                    = Vec4(0, 0, 0, 1);
+  overlayColorTarget                 = Vec4(0, 0, 0, 0);
 }}
 
 void loadBiblePage(MainData* mainData) { with (mainData) {
@@ -1302,6 +1312,13 @@ char[] getKeyboardInput(Arena* arena, size_t maxCharacters = 64) {
   pushBytes(arena, str.length, ArenaFlags.no_init);
 
   return str;
+}
+
+void renderScreenRect(GFXScreen screen, in Vec4 color, float z) {
+  // Skip if it's entirely transparent.
+  if (color.w != 0) {
+    C2D_DrawRectSolid(0, 0, z, screenWidth(screen), SCREEN_HEIGHT, C2D_Color32f(color.x, color.y, color.z, color.w));
+  }
 }
 
 extern(C) void crashHandler(ERRF_ExceptionInfo* excep, CpuRegisters* regs) {
