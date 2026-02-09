@@ -134,7 +134,8 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   bool pressed = box.activeT == 1;
   auto result = Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM);
 
-  auto rect = box.rect + result + drawOffset;
+  auto rectNoPressed = box.rect + drawOffset;
+  auto rect = rectNoPressed + result;
   rect.left = floorSlop(rect.left); rect.top = floorSlop(rect.top); rect.right = floorSlop(rect.right); rect.bottom = floorSlop(rect.bottom);
 
   float textX, textY;
@@ -194,7 +195,8 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
     env = C3D_GetTexEnv(5);
     C3D_TexEnvInit(env);
 
-    pushQuad(rect.left, rect.top - tex.height + 1, rect.right, rect.top + 1, z, 0, 1, 1, 0);
+    // Don't draw this with the pressed offset!
+    pushQuad(rectNoPressed.left, rectNoPressed.top - tex.height + 2, rectNoPressed.right, rectNoPressed.top + 2, z, 0, 1, 1, 0);
 
     C2D_Flush();
   }
