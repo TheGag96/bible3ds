@@ -77,6 +77,17 @@ struct Vec(size_t n) {
 
   pragma(inline, true)
   pure
+  Vec!n opBinaryRight(string op)(float v) const
+  if (op == "*") {
+    Vec!n result = this;
+
+    mixin("result " ~ op ~ "= v;");
+
+    return result;
+  }
+
+  pragma(inline, true)
+  pure
   ref Vec!n opOpAssign(string op)(const Vec!n other) return
   if (op == "+" || op == "-" || op == "*" || op == "/") {
     static foreach (i; 0..n) {
@@ -204,6 +215,15 @@ struct Rectangle {
   pure
   Rectangle opBinary(string op)(float v) const
   if (op == "*" || op == "/") {
+    Rectangle result = this;
+    mixin("result " ~ op ~ "= v;");
+    return result;
+  }
+
+  pragma(inline, true)
+  pure
+  Rectangle opBinaryRight(string op)(float v) const
+  if (op == "*") {
     Rectangle result = this;
     mixin("result " ~ op ~ "= v;");
     return result;

@@ -35,6 +35,14 @@ static immutable Rectangle[GFXScreen.max+1] SCREEN_RECT = [
   ),
 ];
 
+// The standard modal size on official 3DS apps.
+enum MODAL_WIDTH  = 280.0f;
+enum MODAL_HEIGHT = 200.0f;
+enum MODAL_VEC    = Vec2(MODAL_WIDTH, MODAL_HEIGHT);
+enum MODAL_RECT   = Rectangle(left: 0, top: 0, right: MODAL_WIDTH, bottom: MODAL_HEIGHT);
+
+enum MODAL_BOTTOM_BUTTON_HEIGHT = 40.0f;
+
 enum BoxFlags : uint {
   none                 = 0,
   clickable            = 1 << 0,
@@ -296,6 +304,14 @@ Signal bottomButton(const(char)[] text) {
   box.semanticSize[] = [SIZE_FILL_PARENT, Size(SizeKind.text_content, 0, 1)].s;
   box.justification = Justification.center;
   box.render = &renderBottomButton;
+  return signalFromBox(box);
+}
+
+Signal modalBottomButton(const(char)[] text) {
+  Box* box = makeBox(BoxFlags.clickable | BoxFlags.draw_text, text);
+  box.semanticSize[] = [SIZE_FILL_PARENT, Size(SizeKind.pixels, MODAL_BOTTOM_BUTTON_HEIGHT, 1)].s;
+  box.justification = Justification.center;
+  box.render = &renderModalBottomButton;
   return signalFromBox(box);
 }
 

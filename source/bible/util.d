@@ -25,6 +25,9 @@ version (_3DS) {
 
 enum SCREEN_HEIGHT       = 240.0f;
 
+Vec2      screenVec (GFXScreen screen) { return Vec2(screenWidth(screen), SCREEN_HEIGHT); }
+Rectangle screenRect(GFXScreen screen) { return Rectangle(left: 0, top: 0, right: screenWidth(screen), bottom: SCREEN_HEIGHT); }
+
 enum FRAMERATE    = 60.0;
 
 ///////////////////////

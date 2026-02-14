@@ -256,6 +256,8 @@ extern(C) int main(int argc, char** argv) {
       C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
       beginProfile();
 
+      C3D_AlphaBlend(GPUBlendEquation.add, GPUBlendEquation.add, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha, GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha);
+
       mixin(timeBlock("render"));
       if (mainData.curView == View.reading) {
         mixin(timeBlock("render > scroll cache"));
@@ -312,17 +314,29 @@ extern(C) int main(int argc, char** argv) {
           mainData.colorTable[ui.Color.bg_stripes_dark], mainData.colorTable[ui.Color.bg_stripes_light], 0
         );
         ui.render(mainUiData,  GFXScreen.bottom, GFX3DSide.left, false, 0);
+
         if (mainData.renderModal) {
+          C2D_Flush();
+
+          float zModal = 0.1;
+
+          Vec2 modalShadowSize = mainData.modal.scale * 1.11428571428571428571 * ui.MODAL_VEC;
+          Rectangle rectModalShadow = Rectangle(left: 0, top: 0, right: modalShadowSize.x, modalShadowSize.y) + screenVec(GFXScreen.bottom)/2 - modalShadowSize/2;
+
+          renderScreenRect(GFXScreen.bottom, Vec4(0, 0, 0, mainData.modal.opacity * 0.3), zModal);
+          ui.renderModalShadow(rectModalShadow, GFXScreen.bottom, GFX3DSide.left, _3DEnabled, slider, zModal, mainData.modal.opacity * 0.4);
+
           C2D_Sprite spriteModal = ui.spriteFromOffscreenRenderTex(&mainData.renderTexModal);
           C2D_ImageTint tint;
 
-          C2D_SpriteSetDepth(&spriteModal, 0.1);
+          C2D_SpriteSetDepth(&spriteModal, zModal);
           C2D_SpriteSetPos(&spriteModal, SCREEN_BOTTOM_WIDTH/2, SCREEN_HEIGHT/2);
           C2D_SpriteSetCenter(&spriteModal, 0.5, 0.5);
           C2D_SpriteScale(&spriteModal, mainData.modal.scale, mainData.modal.scale);
           C2D_AlphaImageTint(&tint, mainData.modal.opacity);
           C2D_DrawSpriteTinted(&spriteModal, &tint);
         }
+
         renderScreenRect(GFXScreen.bottom, mainData.overlayColorCur, 0.9);
         ui.renderTargetEnd(&bottom);
       }
@@ -614,8 +628,8 @@ void mainGui(MainData* mainData, Input* input) {
       {
         auto modalLayout = ScopedLayout(Axis2.y);
         modalLayout.render = &renderModalBackground;
-        modalLayout.semanticSize[Axis2.x] = Size(SizeKind.pixels, SCREEN_BOTTOM_WIDTH - 2*10, 1);
-        modalLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, SCREEN_HEIGHT       - 2*10, 1);
+        modalLayout.semanticSize[Axis2.x] = Size(SizeKind.pixels, MODAL_WIDTH,  1);
+        modalLayout.semanticSize[Axis2.y] = Size(SizeKind.pixels, MODAL_HEIGHT, 1);
 
         result = mainData.modalCallback(mainData, &mainData.modal);
       }
@@ -736,11 +750,11 @@ void mainGui(MainData* mainData, Input* input) {
           openModal(mainData, (MainData* mainData, UiView* uiView) {
             ModalResult result = ModalResult.still_open;
 
+            label("Bookmarks", Justification.center).semanticSize[Axis2.x] = SIZE_FILL_PARENT;
+
             Signal scrollSignal;
             {
               auto scrollLayout = ScopedScrollLayout("lt_chapter_scroll", &scrollSignal, Axis2.y, Justification.min,    LayoutKind.fill_parent);
-
-              label("Bookmarks", Justification.center).semanticSize[Axis2.x] = SIZE_FILL_PARENT;
 
               foreach (i, bookmark; gSaveFile.bookmarks[0..gSaveFile.numBookmarks]) {
                 if (listButton(tprint("%s %d:%d##bookmark_%d", BOOK_NAMES[bookmark.book].ptr, bookmark.chapter, bookmark.verse, i)).clicked) {
@@ -753,10 +767,14 @@ void mainGui(MainData* mainData, Input* input) {
               }
             }
 
-            if (gUiData.input.down(Key.b) && boxIsNull(gUiData.active)) {
-              result = ModalResult.close_cancel;
+            {
+              auto bottomLayout = ScopedLayout(Axis2.x, layoutKind : LayoutKind.fit_children);
+              auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
-              audioPlaySound(SoundEffect.button_back, 0.5);
+              if (modalBottomButton("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+                result = ModalResult.close_cancel;
+                audioPlaySound(SoundEffect.button_back, 0.5);
+              }
             }
 
             return result;
