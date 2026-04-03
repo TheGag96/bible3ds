@@ -46,6 +46,13 @@ struct C2Di_Vertex
     uint color;
 }
 
+alias C2D_QuadVerts = C2Di_Vertex[6];
+
+struct C2D_QuadExtra {
+  uint[3] colorUniforms;
+  C3D_Tex* tex;
+}
+
 struct C2Di_Context
 {
     DVLB_s* shader;

@@ -7,6 +7,15 @@ import std.algorithm;
 
 @nogc: nothrow:
 
+void batchText(const(C2D_Text)* text_, uint flags, GFXScreen screen, float x, float y, float z, float scaleX, float scaleY, uint color) {
+  VertexBatch*    batch  = &gVertexBatches[Drawable.text];
+  C2D_QuadVerts[] quads  = batch.buf[batch.index..$];
+  C2D_QuadExtra[] extras = batch.extra[batch.index..$];
+  C2D_DrawText2(text_, &quads, &extras, flags, screen, x, y, z, scaleX, scaleY, color);
+
+  batch.index += quads.ptr - &batch.buf[batch.index];
+}
+
 Vec2 renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   auto thisDepth = depthOffset(box.computedDepth, screen, side, slider3DState);
   auto rect      = box.rect + drawOffset + Vec2(thisDepth, 0);
@@ -26,7 +35,7 @@ Vec2 renderLabel(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, fl
       break;
   }
 
-  C2D_DrawText(
+  batchText(
     &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
   );
 
@@ -58,31 +67,7 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
       break;
   }
 
-  C2Di_Context* ctx = C2Di_GetContext();
-  C2D_Prepare(C2DShader.normal);
-
   auto tex = &gUiAssets.buttonTex;
-
-  C2Di_SetTex(tex);
-  C2Di_Update();
-
-  C3D_ProcTexBind(1, null);
-  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
-
-  // Apply dynamic color
-  auto env = C3D_GetTexEnv(0);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.texture0, GPUTevSrc.constant);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.modulate);
-  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
-  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
-  C3D_TexEnvColor(env, box.style.colors[Color.button_normal]);
-
-  env = C3D_GetTexEnv(1);
-  C3D_TexEnvInit(env);
-
-  env = C3D_GetTexEnv(5);
-  C3D_TexEnvInit(env);
 
   enum CORNER_WIDTH = 6.0f, CORNER_HEIGHT = 4.0f;
 
@@ -98,28 +83,23 @@ Vec2 renderNormalButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   float brX = trX;
   float brY = blY;
 
+  Drawable d = Drawable.button;
+  C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [box.style.colors[Color.button_normal], 0, 0].s);
 
-  pushQuad(tlX, tlY, tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, 0, 1, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height); // top-left
-  pushQuad(trX, tlY, trX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), 1, 0, 1-CORNER_HEIGHT/tex.height); // top-right
-  pushQuad(blX, blY, blX + CORNER_WIDTH, blY + CORNER_HEIGHT, z, 0, (16.0f+CORNER_HEIGHT)/tex.height, (CORNER_WIDTH/tex.width), 16.0f/tex.height); // bottom-left
-  pushQuad(brX, brY, brX + CORNER_WIDTH, brY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height, 0, 16.0f/tex.height); // bottom-right
+  pushQuad(d, tlX, tlY, tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, 0, 1, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height, extra : extra); // top-left
+  pushQuad(d, trX, tlY, trX + CORNER_WIDTH, tlY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), 1, 0, 1-CORNER_HEIGHT/tex.height, extra : extra); // top-right
+  pushQuad(d, blX, blY, blX + CORNER_WIDTH, blY + CORNER_HEIGHT, z, 0, (16.0f+CORNER_HEIGHT)/tex.height, (CORNER_WIDTH/tex.width), 16.0f/tex.height, extra : extra); // bottom-left
+  pushQuad(d, brX, brY, brX + CORNER_WIDTH, brY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height, 0, 16.0f/tex.height, extra : extra); // bottom-right
 
-  pushQuad(tlX + CORNER_WIDTH, tlY,                 trX,                tlY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), 1,          1, 1-CORNER_HEIGHT/tex.height); //top
-  pushQuad(blX + CORNER_WIDTH, blY,                 brX,                blY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height,          1, 16.0f/tex.height); //bottom
-  pushQuad(tlX,                tlY + CORNER_HEIGHT, tlX + CORNER_WIDTH, blY,                 z, 0,           1-CORNER_HEIGHT/tex.height, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height); //left
-  pushQuad(trX,                trY + CORNER_HEIGHT, trX + CORNER_WIDTH, brY,                 z, (CORNER_WIDTH/tex.width),           1-CORNER_HEIGHT/tex.height, 0, (16.0f+CORNER_HEIGHT)/tex.height); //right
+  pushQuad(d, tlX + CORNER_WIDTH, tlY,                 trX,                tlY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), 1,          1, 1-CORNER_HEIGHT/tex.height, extra : extra); //top
+  pushQuad(d, blX + CORNER_WIDTH, blY,                 brX,                blY + CORNER_HEIGHT, z, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height,          1, 16.0f/tex.height, extra : extra); //bottom
+  pushQuad(d, tlX,                tlY + CORNER_HEIGHT, tlX + CORNER_WIDTH, blY,                 z, 0,           1-CORNER_HEIGHT/tex.height, (CORNER_WIDTH/tex.width), (16.0f+CORNER_HEIGHT)/tex.height, extra : extra); //left
+  pushQuad(d, trX,                trY + CORNER_HEIGHT, trX + CORNER_WIDTH, brY,                 z, (CORNER_WIDTH/tex.width),           1-CORNER_HEIGHT/tex.height, 0, (16.0f+CORNER_HEIGHT)/tex.height, extra : extra); //right
 
-  pushQuad(tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, brX,                brY,                 z, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height,          1, (16.0f+CORNER_HEIGHT)/tex.height); //center
-  C2D_Flush();
-
-  //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
-
-  env = C3D_GetTexEnv(2);
-  C3D_TexEnvInit(env);
+  pushQuad(d, tlX + CORNER_WIDTH, tlY + CORNER_HEIGHT, brX,                brY,                 z, (CORNER_WIDTH/tex.width), 1-CORNER_HEIGHT/tex.height,          1, (16.0f+CORNER_HEIGHT)/tex.height, extra : extra); //center
 
   if (box.flags & BoxFlags.draw_text) {
-    C2D_DrawText(
+    batchText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, box.style.colors[Color.text]
     );
   }
@@ -178,74 +158,16 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   // light fade above bottom button
   {
     auto tex = &gUiAssets.bottomButtonAboveFadeTex;
-
-    C2Di_SetTex(tex);
-    C2Di_Update();
-
-    // multiply the alpha of the texture with a constant color
-
-    C3D_TexEnv* env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
-
-    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-
-    env = C3D_GetTexEnv(5);
-    C3D_TexEnvInit(env);
-
+    C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [box.style.colors[Color.button_bottom_above_fade], 0, 0].s);
     // Don't draw this with the pressed offset!
-    pushQuad(rectNoPressed.left, rectNoPressed.top - tex.height + 2, rectNoPressed.right, rectNoPressed.top + 2, z, 0, 1, 1, 0);
-
-    C2D_Flush();
+    pushQuad(Drawable.bottom_button_fade, rectNoPressed.left, rectNoPressed.top - tex.height + 2, rectNoPressed.right, rectNoPressed.top + 2, z, 0, 1, 1, 0, extra : extra);
   }
 
   // main button area
   {
     auto tex = &gUiAssets.bottomButtonTex;
-
-    C2Di_SetTex(tex);
-    C2Di_Update();
-
-    // use the value of the texture to interpolate between a top and bottom color.
-    // then, use the alpha of the texture to interpolate between THAT calculated color and the button's middle/base color.
-
-    C3D_TexEnv* env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, topColor);
-
-    env = C3D_GetTexEnv(1);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-    C3D_TexEnvColor(env, bottomColor);
-
-    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.constant);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-    C3D_TexEnvColor(env, baseColor);
-    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
-
-    env = C3D_GetTexEnv(5);
-    C3D_TexEnvInit(env);
-
-    pushQuad(rect.left, rect.top, rect.right, rect.bottom, z, 0, 1, 1, 0);
-
-    C2D_Flush();
-
-    //Cleanup, resetting things to how C2D normally expects
-    C2D_Prepare(C2DShader.normal, true);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
+    C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [topColor, bottomColor, baseColor].s);
+    pushQuad(Drawable.bottom_button, rect.left, rect.top, rect.right, rect.bottom, z, 0, 1, 1, 0, extra : extra);
   }
 
   // Top border line
@@ -253,60 +175,20 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   {
     auto tex = &gUiAssets.bottomButtonLineTex;
 
-    C2Di_SetTex(tex);
-    C2Di_Update();
-
-    // For the top line:
-    // color.rgb = mix(lineColor, box.style.colors[Color.button_bottom_above_fade], texture(texture0, uv).rgb);
-    // color.a   = texture(texture0, uv).a;
-    //
-    // For the side line:
-    // color.rgb = mix(box.style.colors[Color.button_bottom_line], box.style.colors[Color.button_bottom_above_fade], texture(texture0, uv).rgb);
-    // color.a   = texture(texture0, uv).a;
-    //
-    // The side line always gets colored with the unpressed line color.
-
-    C3D_TexEnv* env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
-
-    env = C3D_GetTexEnv(1);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_line]);
-
-    env = C3D_GetTexEnv(5);
-    C3D_TexEnvInit(env);
+    C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [box.style.colors[Color.button_bottom_above_fade], box.style.colors[Color.button_bottom_line], 0].s);
 
     // Left-side border line
     if ((box.parent.flags & BoxFlags.horizontal_children) && !boxIsNull(box.prev)) {
-      pushQuad(rect.left - tex.width/2, rect.top + 1 - pressed * BUTTON_DEPRESS_BOTTOM, rect.left + tex.width/2, rect.bottom, z, 0, 1 - 1.0/tex.height, 1, 0);
-
-      // Unfortunate that we can't batch these because of the potential color difference...
-      C2D_Flush();
+      pushQuad(Drawable.bottom_button_line, rect.left - tex.width/2, rect.top + 1 - pressed * BUTTON_DEPRESS_BOTTOM, rect.left + tex.width/2, rect.bottom, z, 0, 1 - 1.0/tex.height, 1, 0, extra : extra);
     }
 
-    env = C3D_GetTexEnv(1);
-    C3D_TexEnvColor(env, lineColor);
+    extra.colorUniforms[1] = lineColor;
 
     // Top line
     // If unpressed, draw one extra pixel to the left, so that even with a pressed left neighbor, there wil still be a
     // square border.
     float unpressedExtra = !pressed;
-    pushQuad(rect.left - unpressedExtra, rect.top, rect.right, rect.top + 1, z, 0, 1, 1, 1 - 1.0/tex.height);
-
-    C2D_Flush();
-
-    //Cleanup, resetting things to how C2D normally expects
-    C2D_Prepare(C2DShader.normal, true);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
+    pushQuad(Drawable.bottom_button_line, rect.left - unpressedExtra, rect.top, rect.right, rect.top + 1, z, 0, 1, 1, 1 - 1.0/tex.height, extra : extra);
   }
 
   // @TODO: Flipped for dark bottom button
@@ -314,11 +196,11 @@ Vec2 renderBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnab
   int textBevelOffset = 1;
 
   if (box.flags & BoxFlags.draw_text) {
-    C2D_DrawText(
+    batchText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY + textBevelOffset, z, box.style.textSize, box.style.textSize, bevelTexColor
     );
 
-    C2D_DrawText(
+    batchText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, textColor
     );
   }
@@ -372,7 +254,7 @@ Vec2 renderListButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnable
 
   auto result = Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM);
   if (box.flags & BoxFlags.draw_text) {
-    C2D_DrawText(
+    batchText(
       &box.text, C2D_WithColor, GFXScreen.top, textX + result.x, textY + result.y, z, box.style.textSize, box.style.textSize, textColor
     );
   }
@@ -381,49 +263,11 @@ Vec2 renderListButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnable
 }
 
 Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
-  C2Di_Context* ctx = C2Di_GetContext();
-
-  C2D_Prepare(C2DShader.normal);
-
   auto tex = &gUiAssets.selectorTex;
-
-  C2Di_SetTex(tex);
-  C2Di_Update();
-
-  C3D_ProcTexBind(1, null);
-  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
-
-  //consider texture's value to count as alpha as well as the texture's actual alpha
-  C3D_TexEnv* env = C3D_GetTexEnv(0);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0, GPUTevSrc.texture0);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
-  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_r);
-
-  //used to apply dynamic color
-  env = C3D_GetTexEnv(1);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.texture0);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.modulate);
-  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
-  C3D_TexEnvColor(env, box.style.colors[Color.button_sel_indicator]);
-
-  //used to apply dynamic fade alpha
-  env = C3D_GetTexEnv(2);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.previous, GPUTevSrc.constant);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
-  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
-
-  env = C3D_GetTexEnv(5);
-  C3D_TexEnvInit(env);
 
   enum LINE_WIDTH = 4;
 
   ubyte alpha  = cast(ubyte) round(0xFF*box.hotT);
-
-  env = C3D_GetTexEnv(2); //must be done to mark the texenv as dirty! without this, each indicator will have one alpha
-  C3D_TexEnvColor(env, C2D_Color32(0xFF, 0xFF, 0xFF, alpha));
 
   float thisDepth = depthOffset(box.depth, screen, side, slider3DState);
 
@@ -440,24 +284,17 @@ Vec2 renderButtonSelectionIndicator(Box* box, in Rectangle rect, GFXScreen scree
   float brX = trX;
   float brY = blY;
 
+  Drawable d = Drawable.selection_indicator;
+  C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [0, box.style.colors[Color.button_sel_indicator], C2D_Color32(0xFF, 0xFF, 0xFF, alpha)].s);
+  pushQuad(d, tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0, extra : extra); // top-left
+  pushQuad(d, trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0, extra : extra); // top-right
+  pushQuad(d, blX, blY, blX + tex.width, blY + tex.height, z, 0, 0, 1, 1, extra : extra); // bottom-left
+  pushQuad(d, brX, brY, brX + tex.width, brY + tex.height, z, 1, 0, 0, 1, extra : extra); // bottom-right
 
-  pushQuad(tlX, tlY, tlX + tex.width, tlY + tex.height, z, 0, 1, 1, 0); // top-left
-  pushQuad(trX, tlY, trX + tex.width, tlY + tex.height, z, 1, 1, 0, 0); // top-right
-  pushQuad(blX, blY, blX + tex.width, blY + tex.height, z, 0, 0, 1, 1); // bottom-left
-  pushQuad(brX, brY, brX + tex.width, brY + tex.height, z, 1, 0, 0, 1); // bottom-right
-
-  pushQuad(tlX + tex.width, tlY,              trX,             tlY + tex.height, z, 15.0f/16.0f, 1,          1, 0); //top
-  pushQuad(blX + tex.width, blY,              brX,             blY + tex.height, z, 15.0f/16.0f, 0,          1, 1); //bottom
-  pushQuad(tlX,             tlY + tex.height, tlX + tex.width, blY,              z, 0,           1.0f/16.0f, 1, 0); //left
-  pushQuad(trX,             trY + tex.height, trX + tex.width, brY,              z, 1,           1.0f/16.0f, 0, 0); //right
-
-  C2D_Flush(); //need this if alpha value changes
-
-  //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
-
-  env = C3D_GetTexEnv(2);
-  C3D_TexEnvInit(env);
+  pushQuad(d, tlX + tex.width, tlY,              trX,             tlY + tex.height, z, 15.0f/16.0f, 1,          1, 0, extra : extra); //top
+  pushQuad(d, blX + tex.width, blY,              brX,             blY + tex.height, z, 15.0f/16.0f, 0,          1, 1, extra : extra); //bottom
+  pushQuad(d, tlX,             tlY + tex.height, tlX + tex.width, blY,              z, 0,           1.0f/16.0f, 1, 0, extra : extra); //left
+  pushQuad(d, trX,             trY + tex.height, trX + tex.width, brY,              z, 1,           1.0f/16.0f, 0, 0, extra : extra); //right
 
   return Vec2(0);
 }
@@ -487,67 +324,13 @@ void renderModalShadow(in Rectangle rect, GFXScreen screen, GFX3DSide side, bool
     ctx.vtxBufPos += vertexList.length;
   }
   pushShadowQuad(rect.left, rect.top, rect.right, rect.bottom, z, -1, 1.1875, 1, 0.8125, C2D_Color32f(0, 0, 0, alpha));
-
-  //C2D_Flush();
-
-  ////Cleanup, resetting things to how C2D normally expects
-  //C2D_Prepare(C2DShader.normal, true);
-
-  //env = C3D_GetTexEnv(2);
-  //C3D_TexEnvInit(env);
 }
 
 Vec2 renderModalBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   // This function more or less assumes that the box has the size of MODAL_RECT.
-
   auto rect = box.rect + drawOffset;
 
-  C2D_Prepare(C2DShader.normal);
-
-  // We need to set the alpha blend function such that the output color is not multiplied by the modal texture's alpha!
-  // That will be done when we composite the offscreen modal texture to the screen. If we don't set this, the rounded
-  // corners of the modal will have dark edges because the alpha will have been unnecessarily multiplied twice.
-  C2D_Flush();
-  C3D_AlphaBlend(
-    GPUBlendEquation.add, GPUBlendEquation.add,
-    GPUBlendFactor.one, GPUBlendFactor.one_minus_src_alpha,
-    GPUBlendFactor.one, GPUBlendFactor.one_minus_src_alpha
-  );
-
-  C3D_TexSetWrap(&gUiAssets.modalBg, GPUTextureWrapParam.clamp_to_edge, GPUTextureWrapParam.mirrored_repeat);
-  C3D_TexSetFilter(&gUiAssets.modalBg, GPUTextureFilterParam.nearest, GPUTextureFilterParam.nearest);
-  C2Di_SetTex(&gUiAssets.lineTex);
-  C2Di_Update();
-  C3D_TexBind(1, &gUiAssets.modalBg);
-
-  C3D_ProcTexBind(1, null);
-  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
-
-  C3D_TexEnv* env = C3D_GetTexEnv(0);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-  C3D_TexEnvColor(env, box.style.colors[Color.bg_stripes_dark]);
-
-  env = C3D_GetTexEnv(1);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-  C3D_TexEnvColor(env, box.style.colors[Color.bg_stripes_light]);
-
-  env = C3D_GetTexEnv(2);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.previous, GPUTevSrc.texture1);
-  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.one_minus_src_color);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-  C3D_TexEnvColor(env, box.style.colors[Color.bg_bg]);
-
-  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture1);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha);
-
-  env = C3D_GetTexEnv(5);
-  C3D_TexEnvInit(env);
+  C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [box.style.colors[Color.bg_stripes_dark], box.style.colors[Color.bg_stripes_light], box.style.colors[Color.bg_bg],].s);
 
   float
     halfWidth = size(rect).x/2,
@@ -564,51 +347,12 @@ Vec2 renderModalBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
     brU2      = (halfWidth+4.0)/gUiAssets.modalBg.width,
     brV2      = 100.0/gUiAssets.modalBg.height;
 
-  static void pushModalBgQuad(
-    float tlX,  float tlY,  float brX,  float brY,
-    float z,
-    float tlU1, float tlV1, float brU1, float brV1,
-    float tlU2, float tlV2, float brU2, float brV2,
-  ) {
-    C2Di_Context* ctx = C2Di_GetContext();
-
-    C2Di_Vertex[6] vertexList = [
-      // Top-left quad
-      // First triangle
-      { tlX, tlY, z,   tlU1,  tlV1,  tlU2,  tlV2,  0xFF<<24 },
-      { brX, tlY, z,   brU1,  tlV1,  brU2,  tlV2,  0xFF<<24 },
-      { brX, brY, z,   brU1,  brV1,  brU2,  brV2,  0xFF<<24 },
-      // Second triangle
-      { brX, brY, z,   brU1,  brV1,  brU2,  brV2,  0xFF<<24 },
-      { tlX, brY, z,   tlU1,  brV1,  tlU2,  brV2,  0xFF<<24 },
-      { tlX, tlY, z,   tlU1,  tlV1,  tlU2,  tlV2,  0xFF<<24 },
-    ];
-
-    ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
-    ctx.vtxBufPos += vertexList.length;
-  }
-
-  pushModalBgQuad(tlX, tlY, brX, brY, z, tlU1, tlV1, brU1, brV1, tlU2, tlV2, brU2, brV2);
+  pushQuad(Drawable.modal_bg, tlX, tlY, brX, brY, z, tlU1, tlV1, brU1, brV1, tlU2, tlV2, brU2, brV2, 0xFF<<24, extra);
   tlX += halfWidth;
   brX += halfWidth;
   swap(tlU1, brU1);
   swap(tlU2, brU2);
-  pushModalBgQuad(tlX, tlY, brX, brY, z, tlU1, tlV1, brU1, brV1, tlU2, tlV2, brU2, brV2);
-
-  C2D_Flush();
-
-  //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
-
-  // Return to the typical alpha blend for offscreen buffer stuff.
-  C3D_AlphaBlend(
-    GPUBlendEquation.add, GPUBlendEquation.add,
-    GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha,
-    GPUBlendFactor.one,       GPUBlendFactor.one_minus_src_alpha
-  );
-
-  env = C3D_GetTexEnv(2);
-  C3D_TexEnvInit(env);
+  pushQuad(Drawable.modal_bg, tlX, tlY, brX, brY, z, tlU1, tlV1, brU1, brV1, tlU2, tlV2, brU2, brV2, 0xFF<<24, extra);
 
   return Vec2(0);
 }
@@ -657,45 +401,10 @@ Vec2 renderModalBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3
 
   // main button area
   {
-    C2Di_SetTex(&gUiAssets.modalRoundedRectMask);
-    C2Di_Update();
-    C3D_TexBind(1, &gUiAssets.modalButtonBottom);
+    VertexBatch* batch = &gVertexBatches[Drawable.modal_bottom_button];
+    C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [depthBottomColor, depthTopColor, 0].s);
 
-    C3D_ProcTexBind(1, null);
-    C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
-
-    C3D_TexEnv* env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
-    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, depthBottomColor);
-
-    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-
-    env = C3D_GetTexEnv(1);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.previous, GPUTevSrc.texture1);
-    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-    C3D_TexEnvColor(env, depthTopColor);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.primary_color, GPUTevSrc.texture1);
-    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-
-    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-
-    env = C3D_GetTexEnv(5);
-    C3D_TexEnvInit(env);
-
-    static void pushModalBtnQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV, uint topColor, uint bottomColor) {
-      C2Di_Context* ctx = C2Di_GetContext();
-
+    void pushModalBtnQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
       C2Di_Vertex[6] vertexList = [
         // Top-left quad
         // First triangle
@@ -708,8 +417,9 @@ Vec2 renderModalBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3
         { tlX, tlY, z,   tlU,  tlV,  tlU,  tlV,  topColor },
       ];
 
-      ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
-      ctx.vtxBufPos += vertexList.length;
+      batch.buf[batch.index]   = vertexList;
+      batch.extra[batch.index] = extra;
+      batch.index++;
     }
 
     float flatPartLeft  = rect.left;
@@ -719,52 +429,28 @@ Vec2 renderModalBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3
 
     if (boxIsNull(box.prev)) {
       flatPartLeft += texWidth;
-      pushModalBtnQuad(rect.left,     rect.top, flatPartLeft,  rect.bottom, z, 0,              1, 1, 1-40.0/textHeight, topColor, bottomColor);
+      pushModalBtnQuad(rect.left,     rect.top, flatPartLeft,  rect.bottom, z, 0,              1, 1, 1-40.0/textHeight);
     }
 
     if (boxIsNull(box.next)) {
       flatPartRight -= texWidth;
     }
 
-    pushModalBtnQuad(flatPartLeft,    rect.top, flatPartRight, rect.bottom, z, 1-1.0/texWidth, 1, 1, 1-40.0/textHeight, topColor, bottomColor);
+    pushModalBtnQuad(flatPartLeft,    rect.top, flatPartRight, rect.bottom, z, 1-1.0/texWidth, 1, 1, 1-40.0/textHeight);
 
     if (boxIsNull(box.next)) {
-      pushModalBtnQuad(flatPartRight, rect.top, rect.right,    rect.bottom, z, 1,              1, 0, 1-40.0/textHeight, topColor, bottomColor);
+      pushModalBtnQuad(flatPartRight, rect.top, rect.right,    rect.bottom, z, 1,              1, 0, 1-40.0/textHeight);
     }
-
-    C2D_Flush();
-
-    //Cleanup, resetting things to how C2D normally expects
-    C2D_Prepare(C2DShader.normal, true);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
   }
 
   // Top border line
   // Left-side border line (if there is a left neighbor)
   {
+    Drawable d = Drawable.modal_bottom_button_line;
+    VertexBatch* batch = &gVertexBatches[d];
+    C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [box.style.colors[Color.button_bottom_above_fade], box.style.colors[Color.button_bottom_line], 0].s);
+
     auto tex = &gUiAssets.modalButtonBottomLine;
-
-    C2Di_SetTex(tex);
-    C2Di_Update();
-
-    C3D_TexEnv* env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
-
-    env = C3D_GetTexEnv(1);
-    C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
-    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
-    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
-    C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_line]);
-
-    env = C3D_GetTexEnv(5);
-    C3D_TexEnvInit(env);
 
     float topLineLeft  = rect.left;
     float topLineRight = rect.right;
@@ -772,7 +458,7 @@ Vec2 renderModalBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3
     // Left-side border line
     if ((box.parent.flags & BoxFlags.horizontal_children) && !boxIsNull(box.prev)) {
       topLineLeft += 2;
-      pushQuad(rect.left - 2, rect.top - 2, rect.left + 2, rect.bottom, z, 0.5-2.0/tex.width, 1, 0.5+2.0/tex.width, -lineHeight/tex.height);
+      pushQuad(d, rect.left - 2, rect.top - 2, rect.left + 2, rect.bottom, z, 0.5-2.0/tex.width, 1, 0.5+2.0/tex.width, -lineHeight/tex.height, extra : extra);
     }
 
     if ((box.parent.flags & BoxFlags.horizontal_children) && !boxIsNull(box.next)) {
@@ -780,25 +466,17 @@ Vec2 renderModalBottomButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3
     }
 
     // Top line
-    pushQuad(topLineLeft, rect.top - 2, topLineRight, rect.top + 2, z, 0, 1, 2.0/tex.height, 1 - 4.0/tex.height);
-
-    C2D_Flush();
-
-    //Cleanup, resetting things to how C2D normally expects
-    C2D_Prepare(C2DShader.normal, true);
-
-    env = C3D_GetTexEnv(2);
-    C3D_TexEnvInit(env);
+    pushQuad(d, topLineLeft, rect.top - 2, topLineRight, rect.top + 2, z, 0, 1, 2.0/tex.height, 1 - 4.0/tex.height, extra : extra);
   }
 
   int textBevelOffset = 1;
 
   if (box.flags & BoxFlags.draw_text) {
-    C2D_DrawText(
+    batchText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY + textBevelOffset, z, box.style.textSize, box.style.textSize, bevelTexColor
     );
 
-    C2D_DrawText(
+    batchText(
       &box.text, C2D_WithColor, GFXScreen.top, textX, textY, z, box.style.textSize, box.style.textSize, textColor
     );
   }
@@ -830,6 +508,46 @@ struct Assets {
 }
 
 Assets gUiAssets;
+
+struct VertexBatch {
+  C2D_QuadVerts[] buf;
+  C2D_QuadExtra[] extra;
+  size_t index;
+}
+
+enum Drawable : ubyte {
+  background,
+  modal_bg,
+  button,
+  bottom_button_fade,
+  bottom_button,
+  modal_bottom_button,
+  bottom_button_line,
+  modal_bottom_button_line,
+  rectangle,
+  scroll_indicator,
+  text,
+  selection_indicator,
+}
+
+__gshared VertexBatch[Drawable.max+1] gVertexBatches;
+//__gshared size_t gOurVerticesStart;
+__gshared C3D_BufInfo gBufInfo;
+
+immutable VERTEX_BATCH_QUADS = arrayOfEnum!(Drawable, size_t)(
+  background               : 4,
+  modal_bg                 : 4,
+  button                   : 28*9,
+  bottom_button_fade       : 16,
+  bottom_button            : 16,
+  modal_bottom_button      : 16,
+  bottom_button_line       : 16,
+  modal_bottom_button_line : 16,
+  rectangle                : 16,
+  scroll_indicator         : 32,
+  text                     : 500,
+  selection_indicator      : 32,
+);
 
 bool loadTextureFromFile(C3D_Tex* tex, C3D_TexCube* cube, string filename) {
   auto bytes = readFile(filename);
@@ -882,25 +600,529 @@ void loadAssets() {
     C3D_TexSetWrap(&modalBg, GPUTextureWrapParam.mirrored_repeat, GPUTextureWrapParam.mirrored_repeat);
     C3D_TexSetFilter(&modalBg, GPUTextureFilterParam.linear, GPUTextureFilterParam.linear);
   }
+
+  size_t totalQuads = 0;
+  foreach (d; enumRange!Drawable) {
+    totalQuads += VERTEX_BATCH_QUADS[d];
+  }
+  C2Di_Context* ctx = C2Di_GetContext();
+  auto quads  = allocArray!(C2D_QuadVerts, false)(totalQuads);
+
+  auto extras = allocArray!(C2D_QuadExtra, false)(totalQuads);  // @TODO: Global arena?
+  foreach (d; enumRange!Drawable) {
+    size_t batchQuads = VERTEX_BATCH_QUADS[d];
+    gVertexBatches[d].buf   = quads[0..batchQuads];
+    gVertexBatches[d].extra = extras[0..batchQuads];
+    quads  = quads[batchQuads..$];
+    extras = extras[batchQuads..$];
+  }
 }
 
-void pushQuad(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
+void flushBatch(Drawable d) {
+  auto batch = &gVertexBatches[d];
+
   C2Di_Context* ctx = C2Di_GetContext();
+  if (batch.index == 0) return;
+
+  shaderCitro2DDefault();
+
+  //C3D_SetBufInfo(&gBufInfo);
+
+  final switch (d) {
+    case Drawable.background:
+      shaderBackground();
+      break;
+    case Drawable.modal_bg:
+      shaderModalBg();
+      break;
+    case Drawable.button:
+      shaderButton();
+      break;
+    case Drawable.bottom_button_fade:
+      shaderBottomButtonFade();
+      break;
+    case Drawable.bottom_button:
+      shaderBottomButton();
+      break;
+    case Drawable.modal_bottom_button:
+      shaderModalBottomButton();
+      break;
+    case Drawable.bottom_button_line:
+      shaderBottomButtonLine();
+      break;
+    case Drawable.modal_bottom_button_line:
+      shaderModalBottomButtonLine();
+      break;
+    case Drawable.rectangle:
+      C2Di_SetCircle(false);
+      C2Di_SetSrc(C2DiF_Src_None);
+      C2Di_Update();
+      break;
+    case Drawable.scroll_indicator:
+      shaderScrollIndicator();
+      break;
+    case Drawable.text:
+      // Defaults are fine
+      C2Di_SetCircle(false);
+      C2Di_SetSrc(C2DiF_Src_Tex);
+      C2Di_Update();
+      break;
+    case Drawable.selection_indicator:
+      shaderSelectionIndicator();
+      break;
+  }
+
+  C2D_QuadExtra extraLast = batch.extra[0];
+  size_t drawCallStart = 0;
+  C3D_Tex* lastTex = null;
+  do {
+    size_t drawCallEnd = drawCallStart + 1;
+    auto extraNew = extraLast;
+    for (; drawCallEnd < batch.index; drawCallEnd++) {
+      if (batch.extra[drawCallEnd] != extraLast) {
+        extraNew = batch.extra[drawCallEnd];
+        break;
+      }
+    }
+
+    foreach (i; 0..3) {
+      C3D_TexEnvColor(C3D_GetTexEnv(i), extraLast.colorUniforms[i]);
+    }
+    if (extraLast.tex && extraLast.tex != lastTex) {
+      lastTex = extraLast.tex;
+      C3D_TexBind(0, extraLast.tex);
+    }
+
+    size_t numVerts = (drawCallEnd - drawCallStart) * C2D_QuadVerts.length;
+    C2Di_Vertex[] verts = (batch.buf.ptr + drawCallStart).ptr[0..numVerts];
+    {
+      mixin(timeBlock("batch copy"));
+      ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos + verts.length] = verts;
+    }
+    ctx.vtxBufPos += verts.length;
+    C2D_Flush();
+
+    extraLast = extraNew;
+    drawCallStart = drawCallEnd;
+
+  } while (drawCallStart < batch.index);
+
+  batch.index = 0;
+
+  if (d == Drawable.modal_bg) {
+    // @HACK: Return to the typical alpha blend for offscreen buffer stuff.
+    C3D_AlphaBlend(
+      GPUBlendEquation.add, GPUBlendEquation.add,
+      GPUBlendFactor.src_alpha, GPUBlendFactor.one_minus_src_alpha,
+      GPUBlendFactor.one,       GPUBlendFactor.one_minus_src_alpha
+    );
+  }
+}
+
+void flushVertexBatches() {
+  foreach (d; enumRange!Drawable) {
+    flushBatch(d);
+  }
+
+  shaderCitro2DDefault();
+}
+
+void resetVertexBatches() {
+  foreach (d; enumRange!Drawable) {
+    gVertexBatches[d].index     = 0;
+  }
+}
+
+void shaderCitro2DDefault() {
+  C2D_Prepare(C2DShader.normal, force : true);
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  C3D_TexEnv* env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderBackground() {
+  //basically hijack a bunch of stuff C2D sets up so we can easily reuse the normal shader while still getting to
+  //define are own texenv stages
+  C3D_TexBind(0, &gUiAssets.lineTex);
+  C3D_TexBind(1, &gUiAssets.vignetteTex);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  static if (true) {
+    //overlay the vignette texture on top of the stripes/lines, using the line texture and some texenv stages to
+    //interpolate between two colors
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.replace);
+    //C3D_TexEnvColor(env, colorStripesDark);
+
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.interpolate);
+    //C3D_TexEnvColor(env, colorStripesLight);
+
+    env = C3D_GetTexEnv(2);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.previous, GPUTevSrc.texture1);
+    C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    //C3D_TexEnvColor(env, colorBg);
+  }
+  else {
+    //alternate method that uses the vignette texture to affect the alpha of the stripes
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+    //C3D_TexEnvColor(env, colorStripesLight);
+
+    env = C3D_GetTexEnv(1);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+    //C3D_TexEnvColor(env, colorStripesDark);
+
+    C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.constant, GPUTevSrc.texture1);
+    C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.one_minus_src_alpha, GPUTevOpA.src_alpha);
+    C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
+  }
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderModalBg() {
+  // We need to set the alpha blend function such that the output color is not multiplied by the modal texture's alpha!
+  // That will be done when we composite the offscreen modal texture to the screen. If we don't set this, the rounded
+  // corners of the modal will have dark edges because the alpha will have been unnecessarily multiplied twice.
+  C3D_AlphaBlend(
+    GPUBlendEquation.add, GPUBlendEquation.add,
+    GPUBlendFactor.one, GPUBlendFactor.one_minus_src_alpha,
+    GPUBlendFactor.one, GPUBlendFactor.one_minus_src_alpha
+  );
+
+  C3D_TexSetWrap(&gUiAssets.modalBg, GPUTextureWrapParam.clamp_to_edge, GPUTextureWrapParam.mirrored_repeat);
+  C3D_TexSetFilter(&gUiAssets.modalBg, GPUTextureFilterParam.nearest, GPUTextureFilterParam.nearest);
+  C3D_TexBind(0, &gUiAssets.lineTex);
+  C3D_TexBind(1, &gUiAssets.modalBg);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, box.style.colors[Color.bg_stripes_dark]);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  //C3D_TexEnvColor(env, box.style.colors[Color.bg_stripes_light]);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.previous, GPUTevSrc.texture1);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.one_minus_src_color);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  //C3D_TexEnvColor(env, box.style.colors[Color.bg_bg]);
+
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture1);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderBottomButtonFade() {
+  auto tex = &gUiAssets.bottomButtonAboveFadeTex;
+
+  C3D_TexBind(0, tex);
+
+  // multiply the alpha of the texture with a constant color
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
+
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderButton() {
+  auto tex = &gUiAssets.buttonTex;
+
+  C3D_TexBind(0, tex);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  // Apply dynamic color
+  auto env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.texture0, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.modulate);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_normal]);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderBottomButton() {
+  auto tex = &gUiAssets.bottomButtonTex;
+
+  C3D_TexBind(0, tex);
+
+  // use the value of the texture to interpolate between a top and bottom color.
+  // then, use the alpha of the texture to interpolate between THAT calculated color and the button's middle/base color.
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, topColor);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  //C3D_TexEnvColor(env, bottomColor);
+
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  //C3D_TexEnvColor(env, baseColor);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderModalBottomButton() {
+  C3D_TexBind(0, &gUiAssets.modalRoundedRectMask);
+  C3D_TexBind(1, &gUiAssets.modalButtonBottom);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, depthBottomColor);
+
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.previous, GPUTevSrc.texture1);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  //C3D_TexEnvColor(env, depthTopColor);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.primary_color, GPUTevSrc.texture1);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_alpha);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderBottomButtonLine() {
+  auto tex = &gUiAssets.bottomButtonLineTex;
+
+  C3D_TexBind(0, tex);
+
+  // For the top line:
+  // color.rgb = mix(lineColor, box.style.colors[Color.button_bottom_above_fade], texture(texture0, uv).rgb);
+  // color.a   = texture(texture0, uv).a;
+  //
+  // For the side line:
+  // color.rgb = mix(box.style.colors[Color.button_bottom_line], box.style.colors[Color.button_bottom_above_fade], texture(texture0, uv).rgb);
+  // color.a   = texture(texture0, uv).a;
+  //
+  // The side line always gets colored with the unpressed line color.
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_line]);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderModalBottomButtonLine() {
+  auto tex = &gUiAssets.modalButtonBottomLine;
+
+  C3D_TexBind(0, tex);
+
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_above_fade]);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.interpolate);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.replace);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_bottom_line]);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderScrollIndicator() {
+  C2D_Prepare(C2DShader.normal);
+
+  auto indicatorTex = &gUiAssets.indicatorTex;
+
+  C3D_TexBind(0, indicatorTex);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  //dynamically color the indicator. pure white on the indicator texture is the outline, while pure black is the filling
+  //use two texenvs to set up two colors and then use the texture values to interpolate between the two
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.replace);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha);
+  //C3D_TexEnvColor(env, colorOutlineC2d);
+
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.interpolate);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
+  //C3D_TexEnvColor(env, colorC2d);
+
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void shaderSelectionIndicator() {
+  auto tex = &gUiAssets.selectorTex;
+
+  C3D_TexBind(0, tex);
+
+  C3D_ProcTexBind(1, null);
+  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
+
+  //consider texture's value to count as alpha as well as the texture's actual alpha
+  C3D_TexEnv* env = C3D_GetTexEnv(0);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.texture0, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_r);
+
+  //used to apply dynamic color
+  env = C3D_GetTexEnv(1);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.rgb, GPUTevSrc.constant, GPUTevSrc.texture0);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.rgb, GPUCombineFunc.modulate);
+  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
+  //C3D_TexEnvColor(env, box.style.colors[Color.button_sel_indicator]);
+
+  //used to apply dynamic fade alpha
+  env = C3D_GetTexEnv(2);
+  C3D_TexEnvInit(env);
+  C3D_TexEnvSrc(env, C3DTexEnvMode.alpha, GPUTevSrc.previous, GPUTevSrc.constant);
+  C3D_TexEnvFunc(env, C3DTexEnvMode.alpha, GPUCombineFunc.modulate);
+  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
+
+  env = C3D_GetTexEnv(5);
+  C3D_TexEnvInit(env);
+}
+
+void pushQuad(
+  Drawable drawable,
+  float tlX, float tlY, float brX, float brY,
+  float z,
+  float tlU1, float tlV1, float brU1, float brV1,
+  float tlU2 = 0, float tlV2 = 0, float brU2 = 0, float brV2 = 0,
+  uint color = 0xFF<<24,
+  C2D_QuadExtra extra = C2D_QuadExtra.init,
+) {
+  VertexBatch* batch = &gVertexBatches[drawable];
 
   C2Di_Vertex[6] vertexList = [
     // Top-left quad
     // First triangle
-    { tlX, tlY, z,   tlU,  tlV,  0.0f, 0.0f,  0xFF<<24 },
-    { brX, tlY, z,   brU,  tlV,  0.0f, 0.0f,  0xFF<<24 },
-    { brX, brY, z,   brU,  brV,  0.0f, 0.0f,  0xFF<<24 },
+    { tlX, tlY, z,   tlU1,  tlV1,  tlU2,  tlV2,  color },
+    { brX, tlY, z,   brU1,  tlV1,  brU2,  tlV2,  color },
+    { brX, brY, z,   brU1,  brV1,  brU2,  brV2,  color },
     // Second triangle
-    { brX, brY, z,   brU,  brV,  0.0f, 0.0f,  0xFF<<24 },
-    { tlX, brY, z,   tlU,  brV,  0.0f, 0.0f,  0xFF<<24 },
-    { tlX, tlY, z,   tlU,  tlV,  0.0f, 0.0f,  0xFF<<24 },
+    { brX, brY, z,   brU1,  brV1,  brU2,  brV2,  color },
+    { tlX, brY, z,   tlU1,  brV1,  tlU2,  brV2,  color },
+    { tlX, tlY, z,   tlU1,  tlV1,  tlU2,  tlV2,  color },
   ];
 
-  ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
-  ctx.vtxBufPos += vertexList.length;
+  batch.buf[batch.index]   = vertexList;
+  batch.extra[batch.index] = extra;
+  batch.index++;
 }
 
 ////////
@@ -1000,25 +1222,6 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
     return Vec2(0);
   }
 
-  C2Di_Context* ctx = C2Di_GetContext();
-
-  void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
-    C2Di_Vertex[6] vertexList = [
-      // Top-left quad
-      // First triangle
-      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
-      { brX, tlY, z,   tlV,  brU,  0.0f,  0.0f,  0xFF<<24 },
-      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
-      // Second triangle
-      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
-      { tlX, brY, z,   brV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
-      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
-    ];
-
-    ctx.vtxBuf[ctx.vtxBufPos..ctx.vtxBufPos+vertexList.length] = vertexList[];
-    ctx.vtxBufPos += vertexList.length;
-  }
-
   auto colorNormal         = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator]);
   auto colorNormalOutline  = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_outline]);
   auto colorPushing        = rgba8ToRgbaF(box.style.colors[Color.scroll_indicator_pushing]);
@@ -1040,45 +1243,35 @@ Vec2 renderScrollIndicator(Box* box, GFXScreen screen, GFX3DSide side, bool _3DE
   float scale = (rect.bottom - rect.top) / (box.related.scrollInfo.limitMax - box.related.scrollInfo.limitMin + viewHeight);
   float height = viewHeight * scale;
 
-  C2D_Prepare(C2DShader.normal);
-
   auto indicatorTex = &gUiAssets.indicatorTex;
-
-  C2Di_SetTex(indicatorTex);
-  C2Di_Update();
-
-  C3D_ProcTexBind(1, null);
-  C3D_ProcTexLutBind(GPUProcTexLutId.alphamap, null);
-
-  //dynamically color the indicator. pure white on the indicator texture is the outline, while pure black is the filling
-  //use two texenvs to set up two colors and then use the texture values to interpolate between the two
-  C3D_TexEnv* env = C3D_GetTexEnv(0);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.constant);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.replace);
-  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color);
-  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha);
-  C3D_TexEnvColor(env, colorOutlineC2d);
-
-  env = C3D_GetTexEnv(1);
-  C3D_TexEnvInit(env);
-  C3D_TexEnvSrc(env, C3DTexEnvMode.both, GPUTevSrc.previous, GPUTevSrc.constant, GPUTevSrc.texture0);
-  C3D_TexEnvFunc(env, C3DTexEnvMode.both, GPUCombineFunc.interpolate);
-  C3D_TexEnvOpRgb(env, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color, GPUTevOpRGB.src_color);
-  C3D_TexEnvOpAlpha(env, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha, GPUTevOpA.src_alpha);
-  C3D_TexEnvColor(env, colorC2d);
-
-  env = C3D_GetTexEnv(5);
-  C3D_TexEnvInit(env);
 
   bool rightJustified = box.justification == Justification.max;
   float realX = round(rect.left - rightJustified*indicatorTex.width), realY = round(rect.top + box.related.scrollInfo.offset * scale);
+
+  VertexBatch* batch = &gVertexBatches[Drawable.scroll_indicator];
+  C2D_QuadExtra extra = C2D_QuadExtra(colorUniforms: [colorOutlineC2d, colorC2d, 0].s);
+
+  void pushQuadUvSwap(float tlX, float tlY, float brX, float brY, float z, float tlU, float tlV, float brU, float brV) {
+    C2Di_Vertex[6] vertexList = [
+      // Top-left quad
+      // First triangle
+      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+      { brX, tlY, z,   tlV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      // Second triangle
+      { brX, brY, z,   brV,  brU,  0.0f,  0.0f,  0xFF<<24 },
+      { tlX, brY, z,   brV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+      { tlX, tlY, z,   tlV,  tlU,  0.0f,  0.0f,  0xFF<<24 },
+    ];
+
+    batch.buf[batch.index]   = vertexList;
+    batch.extra[batch.index] = extra;
+    batch.index++;
+  }
+
   pushQuadUvSwap(realX, realY,                                realX + indicatorTex.width, realY + indicatorTex.width,           z,  0, 0,   1, 1);
   pushQuadUvSwap(realX, realY + indicatorTex.height,          realX + indicatorTex.width, realY + height - indicatorTex.height, z,  0, 0.5, 1, 1);
   pushQuadUvSwap(realX, realY + height - indicatorTex.height, realX + indicatorTex.width, realY + height,                       z,  1, 1,   0, 0);
-
-  //Cleanup, resetting things to how C2D normally expects
-  C2D_Prepare(C2DShader.normal, true);
 
   return Vec2(0);
 }
@@ -1166,7 +1359,7 @@ alias renderCallback(T) = void function(T* userData, float from, float to);
 
 void renderTargetBegin(RenderTarget* renderTarget, uint clearColor = 0) { with (renderTarget) {
   mixin(timeBlock("renderTargetBegin"));
-  C2D_Flush();
+  flushVertexBatches();
   C3D_RenderTargetClear(c3dTarget, shader == C2DShader.scroll_cache ? C3DClearBits.clear_depth : C3DClearBits.clear_all, clearColor, 0);
   if (shader != C2DShader.scroll_cache) {
     C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
@@ -1180,12 +1373,15 @@ void renderTargetBegin(RenderTarget* renderTarget, uint clearColor = 0) { with (
     );
   }
   C2D_SceneBegin(c3dTarget);
-  C2D_Prepare(shader);
+  C2Di_Context* ctx = C2Di_GetContext();
+  ctx.flags |= C2DiF_DirtyAny;
+  C2D_Prepare(shader, force : true);
+  C2Di_Update();
   curStencilVal = 1;
 }}
 
 void renderTargetEnd(RenderTarget* renderTarget) { with (renderTarget) {
-  C2D_Flush();
+  flushVertexBatches();
   C2D_Prepare(C2DShader.normal);
   C3D_StencilTest(false, GPUTestFunc.always, 0, 0, 0);
 }}
@@ -1330,6 +1526,7 @@ C2D_Sprite spriteFromOffscreenRenderTex(RenderTarget* renderTex) {
 Vec2 scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
   auto rect = clipWithinOther(box.rect, SCREEN_RECT[screen]);
 
+  flushVertexBatches();
 
   Tex3DS_SubTexture subtex = scrollCacheGetUvs(*box.scrollCache, rect.right-rect.left, rect.bottom-rect.top, rect.top, box.scrollInfo.offset);
 
@@ -1342,6 +1539,8 @@ Vec2 scrollCacheDraw(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled
   C2D_SpriteSetPos(&sprite, drawPos.x, drawPos.y);
   C2D_SpriteSetDepth(&sprite, z);
   C2D_DrawSprite(&sprite);
+
+  C2D_Flush();
 
   return Vec2(0);
 }

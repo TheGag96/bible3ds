@@ -1667,7 +1667,7 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
         scissorStackPos++;
         scissorStack[scissorStackPos] = scissor;
 
-        C2D_Flush();
+        flushVertexBatches(); // C2D_Flush();
         C3D_SetScissor(
           GPUScissorMode.normal, scissor.left, scissor.top, scissor.right, scissor.bottom
         );
@@ -1681,8 +1681,9 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
     else {
       while (true) {
         runner = runner.parent;
+        flushVertexBatches();
         if (runner.flags & BoxFlags.view_scroll) {
-          C2D_Flush();
+          //C2D_Flush();
 
           auto scissor = scissorStack[scissorStackPos];
           scissorStackPos--;
@@ -1705,6 +1706,7 @@ void render(UiData* uiData, GFXScreen screen, GFX3DSide side, bool _3DEnabled, f
     }
   }
 
+  flushVertexBatches();
 
   // Update animation info once per frame
   // Making this separate from the first traversal because we might skip children in that one, and this should happen

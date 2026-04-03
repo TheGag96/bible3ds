@@ -234,6 +234,7 @@ extern(C) int main(int argc, char** argv) {
       // In attempt to save battery life, do basically nothing if we're reading and have received no input for a while.
       C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
       C3D_FrameEnd(0);
+      ui.resetVertexBatches();
     }
     else {
       ////
@@ -317,6 +318,7 @@ extern(C) int main(int argc, char** argv) {
 
         if (mainData.renderModal) {
           C2D_Flush();
+          ui.shaderCitro2DDefault();
 
           float zModal = 0.1;
 
@@ -345,6 +347,7 @@ extern(C) int main(int argc, char** argv) {
     {
       mixin(timeBlock("C3D_FrameEnd"));
       C3D_FrameEnd(0);
+      ui.resetVertexBatches();
     }
   }
 

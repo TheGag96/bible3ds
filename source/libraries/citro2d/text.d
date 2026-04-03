@@ -1092,6 +1092,342 @@ extern(C) void C2D_DrawText(const(C2D_Text)* text_, uint flags, GFXScreen screen
   }
 }
 
+// @TODO @HACK: Don't just copy-paste this whole function!!! Deduplicate it!!!
+
+/** @brief Draws text using the GPU.
+ *  @param[in] text Pointer to text object.
+ *  @param[in, out] quads Pointer to slice of output vertex data.
+ *  @param[in, out] quads Pointer to slice of output extra quad data.
+ *  @param[in] flags Text drawing flags.
+ *  @param[in] x Horizontal position to draw the text on.
+ *  @param[in] y Vertical position to draw the text on. If C2D_AtBaseline is not specified (default), this
+ *               is the top left corner of the block of text; otherwise this is the position of the baseline
+ *               of the first line of text.
+ *  @param[in] z Depth value of the text. If unsure, pass 0.0f.
+ *  @param[in] scaleX Horizontal size of the font. 1.0f corresponds to the native size of the font.
+ *  @param[in] scaleY Vertical size of the font. 1.0f corresponds to the native size of the font.
+ *  @remarks The default 3DS system font has a glyph height of 30px, and the baseline is at 25px.
+ */
+extern(C) void C2D_DrawText2(const(C2D_Text)* text_, C2D_QuadVerts[]* quads, C2D_QuadExtra[]* extras, uint flags, GFXScreen screen, float x, float y, float z, float scaleX, float scaleY, ...)
+{
+  auto text  = cast(C2D_Text*) text_; // get around lack of head const
+
+  mixin(timeBlock("C2D_DrawText"));
+
+  C2Di_Context* ctx = C2Di_GetContext();
+
+  const screenWidth = screen == GFXScreen.top ? GSP_SCREEN_HEIGHT_TOP : GSP_SCREEN_HEIGHT_BOTTOM;
+
+  // If there are no words, we can't do the math calculations necessary with them. Just return; nothing would be drawn anyway.
+  if (text.words == 0)
+    return;
+  C2Di_Glyph* begin = &text.buf.glyphs[text.begin];
+  C2Di_Glyph* end   = &text.buf.glyphs[text.end];
+  C2Di_Glyph* cur;
+  CFNT_s* systemFont = fontGetSystemFont();
+
+  float glyphZ = z;
+  float glyphH;
+  float dispY;
+  if (text.font)
+  {
+    scaleX *= text.font.textScale;
+    scaleY *= text.font.textScale;
+    glyphH = scaleY*text.font.cfnt.finf.tglp.cellHeight;
+    dispY = ceil(scaleY*text.font.cfnt.finf.lineFeed);
+  }
+  else
+  {
+    scaleX *= s_textScale;
+    scaleY *= s_textScale;
+    glyphH = scaleY*fontGetGlyphInfo(systemFont).cellHeight;
+    dispY = ceil(scaleY*fontGetInfo(systemFont).lineFeed);
+  }
+  uint color = 0xFF000000;
+  float maxWidth = scaleX*text.width;
+
+  C2Di_LineInfo[] lines = null;
+  C2Di_WordInfo[] words = null;
+
+  va_list va;
+  va_start(va, scaleY);
+
+  if (flags & C2D_AtBaseline)
+  {
+    if (text.font)
+      y -= scaleY*text.font.cfnt.finf.tglp.baselinePos;
+    else
+      y -= scaleY*fontGetGlyphInfo(systemFont).baselinePos;
+  }
+  if (flags & C2D_WithColor)
+    color = va_arg!uint(va);
+  if (flags & C2D_WordWrap)
+    maxWidth = va_arg!double(va); // Passed as float, but varargs promotes to double.
+  if (flags & C2D_WordWrapPrecalc){
+    C2D_WrapInfo* C2D_wrapInfo = va_arg!(C2D_WrapInfo*)(va);
+    lines = C2D_wrapInfo.lines;
+    words = C2D_wrapInfo.words;
+  }
+
+  va_end(va);
+
+  C2Di_SetCircle(false);
+
+  if (flags & C2D_WordWrap)
+  {
+    lines = (cast(C2Di_LineInfo*) alloca(C2Di_LineInfo.sizeof*text.lines))[0..text.lines];
+    words = (cast(C2Di_WordInfo*) alloca(C2Di_WordInfo.sizeof*text.words))[0..text.words];
+    C2Di_CalcLineInfo(text, lines, words);
+    // The first word will never have a wrap offset in X or Y
+    for (uint i = 1; i < text.words; i++)
+    {
+      // If the current word was originally on a different line than the last one, only the difference between new line number and original line number should be the same
+      if (words[i-1].start.lineNo != words[i].start.lineNo)
+      {
+        words[i].wrapXOffset = 0;
+        words[i].newLineNumber = words[i].start.lineNo + (words[i-1].newLineNumber - words[i-1].start.lineNo);
+      }
+      // Otherwise, if the current word goes over the width, with the previous word's offset taken into account...
+      else if (scaleX*(words[i-1].wrapXOffset + words[i].end.xPos + words[i].end.width) > maxWidth)
+      {
+        // Then set the X offset to the negative of the original position
+        words[i].wrapXOffset = -words[i].start.xPos;
+        // And set the new line number based off the last word's
+        words[i].newLineNumber = words[i-1].newLineNumber + 1;
+      }
+      // Otherwise both X offset and new line number should be the same as the last word's
+      else
+      {
+        words[i].wrapXOffset = words[i-1].wrapXOffset;
+        words[i].newLineNumber = words[i-1].newLineNumber;
+      }
+    }
+  }
+
+  pragma(inline, true)
+  static void appendGlyphQuad(C2D_QuadVerts[]* quads, C2Di_Glyph* cur, float glyphX, float glyphY, float glyphW, float thisGlyphH, float glyphZ, float skew, uint color) {
+    float xMinSkewMin = glyphX-skew, xMinSkewMax = glyphX+skew, xMaxSkewMin = glyphX+glyphW-skew, xMaxSkewMax = glyphX+glyphW+skew;
+    float yMax = glyphY+thisGlyphH;
+    C2Di_Vertex vertex = {
+      x : xMinSkewMax, y : glyphY, z : glyphZ,
+      u : cur.texcoord.left, v : cur.texcoord.top,
+      ptX : 0.0f, ptY : 1.0f,
+      color : color,
+    };
+
+    C2D_QuadVerts* quad = &(*quads)[0];
+    *quads = (*quads)[1..$];
+    (*quad)[0] = vertex;
+    vertex.x = xMinSkewMin;
+    vertex.y = yMax;
+    vertex.v = cur.texcoord.bottom;
+    (*quad)[1] = vertex;
+    vertex.x = xMaxSkewMax;
+    vertex.y = glyphY;
+    vertex.u = cur.texcoord.right;
+    vertex.v = cur.texcoord.top;
+    (*quad)[2] = vertex;
+    (*quad)[3] = vertex;
+    vertex.x = xMinSkewMin;
+    vertex.y = yMax;
+    vertex.u = cur.texcoord.left;
+    vertex.v = cur.texcoord.bottom;
+    (*quad)[4] = vertex;
+    vertex.x = xMaxSkewMin;
+    vertex.u = cur.texcoord.right;
+    (*quad)[5] = vertex;
+  }
+
+  switch (flags & C2D_AlignMask)
+  {
+    case C2D_AlignLeft:
+      for (cur = begin; cur != end; ++cur)
+      {
+        float glyphW = scaleX*cur.width;
+        float glyphX;
+        float glyphY;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
+        if (flags & (C2D_WordWrap | C2D_WordWrapPrecalc))
+        {
+          uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
+          glyphX = x+scaleX*(cur.xPos + words[consecutiveWordNum].wrapXOffset);
+          glyphY = y+dispY*words[consecutiveWordNum].newLineNumber;
+        }
+        else
+        {
+          glyphX = x+scaleX*cur.xPos;
+          glyphY = y+dispY*cur.lineNo;
+        }
+
+        //if (glyphX > screenWidth || glyphX+glyphW < 0) {
+        //  continue;
+        //}
+
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
+        (*extras)[0] = C2D_QuadExtra(colorUniforms: [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF].s, tex: cur.sheet);
+        *extras = (*extras)[1..$];
+
+        appendGlyphQuad(quads, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
+      }
+      break;
+    case C2D_AlignRight:
+    {
+      //float[flags & C2D_WordWrap ? words[text.words-1].newLineNumber + 1 : text.lines] finalLineWidths;
+      size_t lineWidthsLength = flags & C2D_WordWrap ? words[text.words-1].newLineNumber + 1 : text.lines;
+      float* finalLineWidths = cast(float*) alloca(float.sizeof * (lineWidthsLength));
+
+      C2Di_CalcLineWidths(finalLineWidths, text, words, !!(flags & C2D_WordWrap));
+
+      for (cur = begin; cur != end; cur++)
+      {
+        float glyphW = scaleX*cur.width;
+        float glyphX;
+        float glyphY;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
+        if (flags & C2D_WordWrap)
+        {
+          uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
+          glyphX = x + scaleX*(cur.xPos + words[consecutiveWordNum].wrapXOffset - finalLineWidths[words[consecutiveWordNum].newLineNumber]);
+          glyphY = y + dispY*words[consecutiveWordNum].newLineNumber;
+        }
+        else
+        {
+          glyphX = x + scaleX*(cur.xPos - finalLineWidths[cur.lineNo]);
+          glyphY = y + dispY*cur.lineNo;
+        }
+
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
+        (*extras)[0] = C2D_QuadExtra(colorUniforms: [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF].s, tex: cur.sheet);
+        *extras = (*extras)[1..$];
+
+        appendGlyphQuad(quads, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
+      }
+    }
+    break;
+    case C2D_AlignCenter:
+    {
+      //float[flags & C2D_WordWrap ? words[text.words-1].newLineNumber + 1 : text.lines] finalLineWidths;
+      size_t lineWidthsLength = flags & C2D_WordWrap ? words[text.words-1].newLineNumber + 1 : text.lines;
+      float* finalLineWidths = cast(float*) alloca(float.sizeof * (lineWidthsLength));
+
+      C2Di_CalcLineWidths(finalLineWidths, text, words, !!(flags & C2D_WordWrap));
+
+      for (cur = begin; cur != end; cur++)
+      {
+        float glyphW = scaleX*cur.width;
+        float glyphX;
+        float glyphY;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
+        if (flags & C2D_WordWrap)
+        {
+          uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
+          glyphX = x + scaleX*(cur.xPos + words[consecutiveWordNum].wrapXOffset - finalLineWidths[words[consecutiveWordNum].newLineNumber]/2);
+          glyphY = y + dispY*words[consecutiveWordNum].newLineNumber;
+        }
+        else
+        {
+          glyphX = x + scaleX*(cur.xPos - finalLineWidths[cur.lineNo]/2);
+          glyphY = y + dispY*cur.lineNo;
+        }
+
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
+        (*extras)[0] = C2D_QuadExtra(colorUniforms: [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF].s, tex: cur.sheet);
+        *extras = (*extras)[1..$];
+
+        appendGlyphQuad(quads, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
+      }
+    }
+    break;
+    case C2D_AlignJustified:
+    {
+      if (!(flags & C2D_WordWrap))
+      {
+        lines = (cast(C2Di_LineInfo*) alloca(C2Di_LineInfo.sizeof*text.lines))[0..text.lines];
+        words = (cast(C2Di_WordInfo*) alloca(C2Di_WordInfo.sizeof*text.words))[0..text.words];
+        C2Di_CalcLineInfo(text, lines, words);
+      }
+      // Get total width available for whitespace for all lines after wrapping
+      struct jlinfo_t
+      {
+        float whitespaceWidth;
+        uint wordStart;
+        uint words;
+      }
+
+      size_t jlinfoSize = words[text.words - 1].newLineNumber + 1;
+      jlinfo_t* justifiedLineInfo = cast(jlinfo_t*) alloca(jlinfo_t.sizeof * jlinfoSize);
+
+      for (uint i = 0; i < words[text.words - 1].newLineNumber + 1; i++)
+      {
+        justifiedLineInfo[i].whitespaceWidth = 0;
+        justifiedLineInfo[i].words = 0;
+        justifiedLineInfo[i].wordStart = 0;
+      }
+      for (uint i = 0; i < text.words; i++)
+      {
+        // Calculate the total text width
+        justifiedLineInfo[words[i].newLineNumber].whitespaceWidth += words[i].end.xPos + words[i].end.width - words[i].start.xPos;
+        // Increment amount of words
+        justifiedLineInfo[words[i].newLineNumber].words++;
+        // And set the word starts
+        if (i > 0 && words[i-1].newLineNumber != words[i].newLineNumber)
+          justifiedLineInfo[words[i].newLineNumber].wordStart = i;
+      }
+      for (uint i = 0; i < words[text.words - 1].newLineNumber + 1; i++)
+      {
+        // Transform it from total text width to total whitespace width
+        justifiedLineInfo[i].whitespaceWidth = maxWidth - scaleX*justifiedLineInfo[i].whitespaceWidth;
+        // And then get the width of a single whitespace
+        if (justifiedLineInfo[i].words > 1)
+          justifiedLineInfo[i].whitespaceWidth /= justifiedLineInfo[i].words - 1;
+      }
+
+      // Set up final word beginnings and ends
+      struct wordPositions_t
+      {
+        float xBegin;
+        float xEnd;
+      }
+
+      wordPositions_t* wordPositions = cast(wordPositions_t*) alloca(wordPositions_t.sizeof * text.words);
+
+      wordPositions[0].xBegin = 0;
+      wordPositions[0].xEnd = wordPositions[0].xBegin + words[0].end.xPos + words[0].end.width - words[0].start.xPos;
+      for (uint i = 1; i < text.words; i++)
+      {
+        wordPositions[i].xBegin = words[i-1].newLineNumber != words[i].newLineNumber ? 0 : wordPositions[i-1].xEnd;
+        wordPositions[i].xEnd = wordPositions[i].xBegin + words[i].end.xPos + words[i].end.width - words[i].start.xPos;
+      }
+
+      for (cur = begin; cur != end; cur++)
+      {
+        uint consecutiveWordNum = cur.wordNo + lines[cur.lineNo].wordStart;
+        float glyphW = scaleX*cur.width;
+        // The given X position, plus the scaled beginning position for this word, plus the offset of this glyph within the word, plus the whitespace width for this line times the word number within the line
+        float glyphX = x + scaleX*wordPositions[consecutiveWordNum].xBegin + scaleX*(cur.xPos - words[consecutiveWordNum].start.xPos) + justifiedLineInfo[words[consecutiveWordNum].newLineNumber].whitespaceWidth*(consecutiveWordNum - justifiedLineInfo[words[consecutiveWordNum].newLineNumber].wordStart);
+        float glyphY = y + dispY*words[consecutiveWordNum].newLineNumber;
+        float thisGlyphH = glyphH * ((cur.flags & C2Di_GlyphFlags.small) ? SMALL_SCALE : 1.0);
+
+        float skew = (cur.flags & C2Di_GlyphFlags.italicized) ? thisGlyphH * ITALICS_SKEW_RATIO : 0.0;
+
+        (*extras)[0] = C2D_QuadExtra(colorUniforms: [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF].s, tex: cur.sheet);
+        *extras = (*extras)[1..$];
+
+        appendGlyphQuad(quads, cur, glyphX, glyphY, glyphW, thisGlyphH, glyphZ, skew, color);
+      }
+    }
+    break;
+
+    default: break;
+  }
+}
+
 /** @} */
 
 // Ported and modified from libctru's decode_utf8.c
