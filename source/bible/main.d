@@ -474,8 +474,9 @@ void handleChapterSwitchHotkeys(MainData* mainData, Input* input) { with (mainDa
   }
 
   if (pageId != newPageId) {
-    mainData.needLoadPage  = true;
-    mainData.pendingPageId = newPageId;
+    mainData.needLoadPage     = true;
+    mainData.pendingPageId    = newPageId;
+    mainData.jumpVerseRequest = 1;
   }
 }}
 
@@ -915,7 +916,7 @@ void mainGui(MainData* mainData, Input* input) {
 
                     if (chapterButton.clicked) {
                       sendOpenBookCommand(
-                        BibleLoc(mainData.pageId.book, cast(ubyte) chapter, 0),
+                        BibleLoc(mainData.pageId.book, cast(ubyte) chapter, 1),
                         &mainData.views[View.reading].uiData,
                       );
                       result = ModalResult.close_ok;
