@@ -1054,21 +1054,32 @@ void mainGui(MainData* mainData, Input* input) {
         settingsListEntry("Translation", TRANSLATION_NAMES_LONG[gSaveFile.settings.translation], (mainData, uiView) {
           ModalResult result = ModalResult.still_open;
 
-          foreach (i, translation; TRANSLATION_NAMES_LONG) {
-            if (button(translation).clicked) {
-              gSaveFile.settings.translation = cast(Translation) i;
-            }
+          spacer(16);
 
-            spacer(4);
+          {
+            Signal scrollLayoutSignal;
+            auto scrollLayout = ScopedScrollLayout("", &scrollLayoutSignal, Axis2.y);
+
+
+            foreach (i, translation; TRANSLATION_NAMES_LONG) {
+              if (listButton(translation).clicked) {
+                gSaveFile.settings.translation = cast(Translation) i;
+              }
+            }
           }
 
-          if (button("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-            result = ModalResult.close_ok;
-            audioPlaySound(SoundEffect.button_back, 0.5);
+          {
+            auto bottomLayout = ScopedLayout(Axis2.x, layoutKind : LayoutKind.fit_children);
+            auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
 
-            if (!mainData.bible || mainData.bible.translation != gSaveFile.settings.translation) {
-              cancelJob(&mainData.jobBibleLoad);
-              mainData.jobBibleLoad = startJob!bibleLoad(gSaveFile.settings.translation);
+            if (modalBottomButton("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+              result = ModalResult.close_ok;
+              audioPlaySound(SoundEffect.button_back, 0.5);
+
+              if (!mainData.bible || mainData.bible.translation != gSaveFile.settings.translation) {
+                cancelJob(&mainData.jobBibleLoad);
+                mainData.jobBibleLoad = startJob!bibleLoad(gSaveFile.settings.translation);
+              }
             }
           }
 
@@ -1078,19 +1089,36 @@ void mainGui(MainData* mainData, Input* input) {
         settingsListEntry("Color Theme", COLOR_THEME_NAMES[gSaveFile.settings.colorTheme], (mainData, uiView) {
           ModalResult result = ModalResult.still_open;
 
-          nColumnGrid("lt_color_theme_", 2, enumRange!ColorTheme, (ColorTheme colorTheme) {
-            if (colorThemePreviewButton(colorTheme).clicked) {
-              gSaveFile.settings.colorTheme = colorTheme;
+          spacer(16);
 
-              mainData.fadingBetweenThemes      = true;
-              mainData.scrollCache.needsRepaint = true;
+          {
+            Signal scrollLayoutSignal;
+            auto scrollLayout = ScopedScrollLayout("", &scrollLayoutSignal, Axis2.y);
+
+            nColumnGrid("lt_color_theme_", 2, enumRange!ColorTheme, (ColorTheme colorTheme) {
+              if (colorThemePreviewButton(colorTheme).clicked) {
+                gSaveFile.settings.colorTheme = colorTheme;
+
+                mainData.fadingBetweenThemes      = true;
+                mainData.scrollCache.needsRepaint = true;
+              }
+              spacer(4);
+            });
+          }
+
+          {
+            auto bottomLayout = ScopedLayout(Axis2.x, layoutKind : LayoutKind.fit_children);
+            auto bottomStyle  = ScopedStyle(&mainData.styleButtonBottom);
+
+            if (modalBottomButton("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
+              result = ModalResult.close_ok;
+              audioPlaySound(SoundEffect.button_back, 0.5);
+
+              if (!mainData.bible || mainData.bible.translation != gSaveFile.settings.translation) {
+                cancelJob(&mainData.jobBibleLoad);
+                mainData.jobBibleLoad = startJob!bibleLoad(gSaveFile.settings.translation);
+              }
             }
-            spacer(4);
-          });
-
-          if (button("\uE001 Close").clicked || (gUiData.input.down(Key.b) && boxIsNull(gUiData.active))) {
-            result = ModalResult.close_ok;
-            audioPlaySound(SoundEffect.button_back, 0.5);
           }
 
           return result;
@@ -1284,13 +1312,13 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
 
         {
           auto bottomStyle = ScopedStyle(previewStyleBottom);
-          fakeBottomButton("Options##");
+          fakeBottomButton(COLOR_THEME_NAMES[colorTheme]);
         }
       }
       spacer(8);
     }
 
-    label(COLOR_THEME_NAMES[colorTheme]);
+    spacer(8);
   }
 
   return signalFromBox(layoutBox);
