@@ -1229,7 +1229,8 @@ ui.Signal colorThemePreviewButton(ColorTheme colorTheme) {
 
   static Vec2 renderPlainBackground(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnabled, float slider3DState, Vec2 drawOffset, float z) {
     auto rect = box.rect + drawOffset;
-    C2D_DrawRectSolid(rect.left, rect.top, z, rect.right - rect.left, rect.bottom - rect.top, box.style.colors[Color.clear_color]);
+
+    pushColoredQuad(rect.left, rect.top, rect.right, rect.bottom, z, box.style.colors[Color.clear_color]);
     return Vec2(0);
   }
 

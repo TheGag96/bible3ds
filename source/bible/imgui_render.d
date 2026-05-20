@@ -245,11 +245,11 @@ Vec2 renderListButton(Box* box, GFXScreen screen, GFX3DSide side, bool _3DEnable
   }
 
   // main button area
-  C2D_DrawRectSolid(rect.left, rect.top, z, rect.right-rect.left, rect.bottom-rect.top, baseColor);
+  pushColoredQuad(rect.left, rect.top, rect.right, rect.bottom, z, baseColor);
 
-  C2D_DrawRectSolid(rect.left, rect.top, z, rect.right-rect.left, 1, lineColor);
+  pushColoredQuad(rect.left, rect.top, rect.right, rect.top+1, z, lineColor);
   if (boxIsNull(box.next)) {
-    C2D_DrawRectSolid(rect.left, rect.bottom, z, rect.right-rect.left, 1, lineColor);
+    pushColoredQuad(rect.left, rect.bottom, rect.right, rect.bottom+1, z, lineColor);
   }
 
   auto result = Vec2(0, pressed * BUTTON_DEPRESS_BOTTOM);
@@ -1123,6 +1123,11 @@ void pushQuad(
   batch.buf[batch.index]   = vertexList;
   batch.extra[batch.index] = extra;
   batch.index++;
+}
+
+void pushColoredQuad(float tlX, float tlY, float brX, float brY, float z, uint color) {
+  C2D_QuadExtra extra = { colorUniforms : [0xFFFFFFFF, 0, 0].s };
+  pushQuad(Drawable.rectangle, tlX, tlY, brX, brY, z, -1, -1, -1, -1, 0, 1, 0, 1, color, extra);
 }
 
 ////////
