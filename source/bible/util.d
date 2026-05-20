@@ -10,6 +10,36 @@ version (_3DS) {
 }
 import core.stdc.stdarg : va_list, va_start, va_end;
 
+// Generate an array with a value for each member of an enum.
+// @Compiler Bug: Doesn't work with large enums because of how many function parameters ther eare...
+template arrayOfEnum(T, V) if (is(T == enum)) {
+  static assert(T.min >= 0 && T.max >= 0, "This function doesn't handle enums with negative bounds!");
+
+  mixin(() {
+    import std.conv : to;
+    string result = "V[enumCount!T] arrayOfEnum(\n";
+
+    foreach (field; __traits(allMembers, T)) {
+      result ~= "  V ";
+      result ~= field;
+      result ~= ",\n";
+    }
+
+    result ~= ") {\n  V[enumCount!T] result;\n";
+
+    foreach (field; __traits(allMembers, T)) {
+      result ~= "  result[T.";
+      result ~= field;
+      result ~= "] = ";
+      result ~= field;
+      result ~= ";\n";
+    }
+
+    result ~= "  return result; }";
+    return result;
+  }());
+}
+
 nothrow: @nogc:
 
 ///////////////
@@ -25,8 +55,10 @@ version (_3DS) {
 
 enum SCREEN_HEIGHT       = 240.0f;
 
-Vec2      screenVec (GFXScreen screen) { return Vec2(screenWidth(screen), SCREEN_HEIGHT); }
-Rectangle screenRect(GFXScreen screen) { return Rectangle(left: 0, top: 0, right: screenWidth(screen), bottom: SCREEN_HEIGHT); }
+version (_3DS) {
+  Vec2      screenVec (GFXScreen screen) { return Vec2(screenWidth(screen), SCREEN_HEIGHT); }
+  Rectangle screenRect(GFXScreen screen) { return Rectangle(left: 0, top: 0, right: screenWidth(screen), bottom: SCREEN_HEIGHT); }
+}
 
 enum FRAMERATE    = 60.0;
 
@@ -68,8 +100,13 @@ T[n] s(T, size_t n)(auto ref T[n] array) pure nothrow @nogc @safe {
   return array;
 }
 
-inout(ubyte)[] representation(inout(char)[] s) {
-  return cast(typeof(return)) s;
+version (_3DS) {
+  inout(ubyte)[] representation(inout(char)[] s) {
+    return cast(typeof(return)) s;
+  }
+}
+else {
+  import std.string : representation;
 }
 
 inout(char)[] sliceCString(inout(char)* cStr) {
@@ -341,7 +378,7 @@ void append(T)(Arena* arena, T[]* arr, in T thing, ArenaFlags flags = ArenaFlags
     }
 
     auto newPart = copy(arena, thing, flags);
-    if (result.ptr && newPart.ptr) {
+    if (result.ptr && newPart) {
       result = result.ptr[0..result.length+1];
     }
   }
@@ -562,36 +599,6 @@ auto enumRange(T)(T first, T last) if (is(T == enum)) {
 }
 
 enum enumCount(T) = T.max-T.min+1;
-
-// Generate an array with a value for each member of an enum.
-// @Compiler Bug: Doesn't work with large enums because of how many function parameters ther eare...
-template arrayOfEnum(T, V) if (is(T == enum)) {
-  static assert(T.min >= 0 && T.max >= 0, "This function doesn't handle enums with negative bounds!");
-
-  mixin(() {
-    import std.conv : to;
-    string result = "V[enumCount!T] arrayOfEnum(\n";
-
-    foreach (field; __traits(allMembers, T)) {
-      result ~= "  V ";
-      result ~= field;
-      result ~= ",\n";
-    }
-
-    result ~= ") {\n  V[enumCount!T] result;\n";
-
-    foreach (field; __traits(allMembers, T)) {
-      result ~= "  result[T.";
-      result ~= field;
-      result ~= "] = ";
-      result ~= field;
-      result ~= ";\n";
-    }
-
-    result ~= "  return result; }";
-    return result;
-  }());
-}
 
 Vec4 rgba8ToRgbaF(uint color) {
   return Vec4(color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, color >> 24) / 255;
