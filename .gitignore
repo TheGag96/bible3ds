@@ -10,7 +10,7 @@
 /source/__SHBIN
 /working/
 /gfx/GENERATED/*/*.png
-/romfs/levels/*/*.dat
+/romfs/bibles/esv/
 .dub/
 /.idea/
 *.sublime-*

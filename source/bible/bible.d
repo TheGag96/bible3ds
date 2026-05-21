@@ -340,6 +340,7 @@ enum Translation : ubyte {
   kjv,
   web,
   ylt,
+  esv,
 }
 
 static immutable string[enumCount!Translation] TRANSLATION_NAMES = arrayOfEnum!(Translation, string)(
@@ -348,6 +349,7 @@ static immutable string[enumCount!Translation] TRANSLATION_NAMES = arrayOfEnum!(
   kjv : "kjv",
   web : "web",
   ylt : "ylt",
+  esv : "esv",
 );
 
 static immutable string[enumCount!Translation] TRANSLATION_NAMES_LONG = arrayOfEnum!(Translation, string)(
@@ -356,6 +358,7 @@ static immutable string[enumCount!Translation] TRANSLATION_NAMES_LONG = arrayOfE
   kjv : "King James Version",
   web : "World English Bible",
   ylt : "Young's Literal Translation",
+  esv : "English Standard Version",
 );
 
 enum Book : ubyte {
