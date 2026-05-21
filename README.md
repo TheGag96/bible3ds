@@ -13,10 +13,14 @@ Basically just all the versions from @scrollmapper's [`bible_databases`](https:/
 * KJV
 * WEB
 * YLT
+* ESV (manual steps required)
 
-Unfortunately, we can't just add any translation due to copyright concerns.
+Unfortunately, we can't just add any translation due to copyright concerns. However, I do provide a script that can take a [free downloadble EPUB of the ESV](https://www.crossway.org/books/esv-classic-reference-bible-ebook/) and transform it into the crummy text format I support. Checkout the `esv` branch, and run:
 
-**Note**: Need to actually add an options menu to change the translation...!
+```bash
+python esv_epub_to_txt.py path/to/your_epub.py
+```
+...and then compile (see below). I apologize for the script being fairly slow. It's possible other EPUBs of the ESV will work with the script, but I have not tried any others. (I should probably make it so you don't have to compile a separate branch to add your own copy.)
 
 ## Compiling
 
